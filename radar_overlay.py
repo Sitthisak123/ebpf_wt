@@ -6,7 +6,7 @@ from PyQt5.QtGui import QPainter, QPen, QColor, QFont
 
 # นำเข้าเครื่องมือสแกนเนอร์และสูตรคำนวณจากไฟล์ของคุณ
 from main import MemoryScanner, get_game_pid, get_game_base_address
-from src.untils.mul import get_cgame_base, get_view_matrix, world_to_screen, get_unit_pos, get_all_units
+from src.untils.mul import get_cgame_base, get_view_matrix, world_to_screen, get_unit_pos, get_all_units, get_unit_3d_box_data, calculate_3d_box_corners
 
 # 🎯 ตั้งค่าหน้าจอ (แก้ให้ตรงกับจอคุณ)
 SCREEN_WIDTH = 2560
@@ -69,58 +69,50 @@ class ESPOverlay(QWidget):
         painter.setPen(QPen(QColor(255, 0, 0, 255), 2))
 
         for u_ptr in all_units:
-            pos = get_unit_pos(self.scanner, u_ptr)
-            if not pos: continue 
+            # 1. ดึงข้อมูล 3D (องศา, ขนาด)
+            box_data = get_unit_3d_box_data(self.scanner, u_ptr)
+            if not box_data: continue
             
-            ex, ey, ez = pos # ez คือพิกัด "ฐานรถ/พื้นดิน" ที่แม่นยำที่สุด
+            pos, bmin, bmax, R = box_data
             
-            # โปรเจกต์จุดเดียวที่ "ฐานรถ" (ที่คุณบอกว่าตำแหน่งเป๊ะทุกมุมมอง!)
-            screen_pos = world_to_screen(view_matrix, ex, ey, ez, SCREEN_WIDTH, SCREEN_HEIGHT)
-
-            if screen_pos:
-                sx, sy, w = screen_pos # w คือระยะห่าง (Depth)
-
-                # ถ้ารถอยู่หลังกล้อง ให้ข้ามไป
-                if w < 0.1: continue
-
-                # 📐 1. FOV Dynamic Scale (คำนวณขนาดจากเลนส์กล้องของจริง!)
-                # view_matrix[5] คือค่าความซูม (FOV) ที่เปลี่ยนไปมาตอนส่องกล้อง
-                # สมมติว่ารถถังมีความสูงประมาณ 3.0 เมตรในโลก 3D
-                real_height = 3.0 
-                
-                # สูตรคำนวณความสูงหน้าจอ: (ความสูงจริง * ค่าซูม / ระยะห่าง) * ครึ่งนึงของจอ
-                box_h = int((real_height * abs(view_matrix[5]) / w) * (SCREEN_HEIGHT / 2))
-                box_w = int(box_h * 1.5) # ให้ความกว้างเป็น 1.5 เท่าของความสูง
-                
-                # ลิมิตขนาดกล่อง ไม่ให้เล็กจนมองไม่เห็น หรือใหญ่จนบั๊กบังจอ
-                box_w = max(8, min(box_w, 800))
-                box_h = max(8, min(box_h, 800))
-                
-                # 🚨 2. ล็อคขอบล่างของกล่อง (Anchor to Bottom)
-                # sx, sy คือพิกัดที่ติดพื้นดิน (ตีนตะขาบ)
-                draw_x = sx - (box_w // 2)
-                draw_y = sy - box_h 
-                
-                # อนุญาตให้วาดได้แม้มุมกล่องล้นขอบจอ เช็คแค่จุดศูนย์กลางที่พื้น
-                if -500 <= sx <= SCREEN_WIDTH + 500 and -500 <= sy <= SCREEN_HEIGHT + 500:
-                    drawn_count += 1
-                    # วาดกล่อง (สีแดงสด)
-                    painter.setPen(QPen(QColor(255, 0, 0, 255), 2))
-                    painter.drawRect(int(draw_x), int(draw_y), int(box_w), int(box_h))
+            # 2. คำนวณพิกัด 8 มุมในโลก 3D
+            corners_3d = calculate_3d_box_corners(pos, bmin, bmax, R)
+            
+            pts = []
+            all_valid = True
+            
+            # 3. แปลง 8 มุมนั้นมาลงหน้าจอ 2D
+            for c in corners_3d:
+                res = world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                if res and res[2] >= 0.001: # เช็คว่าทุกมุมต้องอยู่หน้ากล้อง
+                    pts.append((res[0], res[1]))
+                else:
+                    all_valid = False
+                    break
                     
-                    # 🚨 เติม int(sy) ลงไปตรงนี้ครับ!
-                    painter.setPen(QPen(QColor(255, 0, 0, 150), 1))
-                    painter.drawLine(SCREEN_WIDTH // 2, SCREEN_HEIGHT, int(sx), int(sy))
-
-
-        # ---------------------------------------------------------
-        # 4. อัปเดตข้อมูลบนจอ และ Print ลง Terminal
-        # ---------------------------------------------------------
-        painter.setPen(QColor(255, 255, 0, 255)) # สีเหลือง
-        painter.drawText(20, 60, f"Units Found: {len(all_units)} | Valid Pos: {valid_pos_count} | Drawn on Screen: {drawn_count}")
-
-        if should_log:
-            print(f"[*] Log (1s) -> CGame: {hex(cgame_base)} | Units: {len(all_units)} | On-Screen: {drawn_count}")
+            if not all_valid or len(pts) != 8:
+                continue
+                
+            drawn_count += 1
+            
+            # 4. วาดเส้น 12 เส้นประกอบเป็นกล่อง
+            painter.setPen(QPen(QColor(255, 0, 0, 255), 2)) # สีแดงสด
+            
+            # คู่ของจุดที่จะลากเส้นเข้าหากัน (อิงตาม Array ด้านบน)
+            edges = [
+                (0,1), (1,2), (2,3), (3,0), # ฐานล่าง 4 เส้น
+                (4,5), (5,6), (6,7), (7,4), # หลังคา 4 เส้น
+                (0,4), (1,5), (2,6), (3,7)  # เสาเชื่อม 4 เส้น
+            ]
+            
+            for e1, e2 in edges:
+                painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
+                
+            # แถม: Snapline ลากไปที่จุดกึ่งกลางของฐาน (จุด 0 กับ 2 ครอสกัน)
+            base_center_x = (pts[0][0] + pts[2][0]) / 2
+            base_center_y = (pts[0][1] + pts[2][1]) / 2
+            painter.setPen(QPen(QColor(255, 0, 0, 150), 1))
+            painter.drawLine(SCREEN_WIDTH // 2, SCREEN_HEIGHT, int(base_center_x), int(base_center_y))
 
 if __name__ == '__main__':
     print("[*] กำลังเปิดระบบ ESP Overlay พร้อม Smart Logger...")
