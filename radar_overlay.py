@@ -6,7 +6,10 @@ from PyQt5.QtGui import QPainter, QPen, QColor, QFont
 
 # นำเข้าเครื่องมือสแกนเนอร์และสูตรคำนวณจากไฟล์ของคุณ
 from main import MemoryScanner, get_game_pid, get_game_base_address
-from src.untils.mul import get_cgame_base, get_view_matrix, world_to_screen, get_unit_pos, get_all_units, get_unit_3d_box_data, calculate_3d_box_corners
+from src.untils.mul import (
+    get_cgame_base, get_view_matrix, world_to_screen, get_unit_pos, 
+    get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel
+)
 
 # 🎯 ตั้งค่าหน้าจอ (แก้ให้ตรงกับจอคุณ)
 SCREEN_WIDTH = 2560
@@ -67,24 +70,47 @@ class ESPOverlay(QWidget):
         
         # ตั้งค่าปากกาสีแดงสำหรับวาดกรอบ
         painter.setPen(QPen(QColor(255, 0, 0, 255), 2))
-
+        
+        all_units = get_all_units(self.scanner, cgame_base)
+        has_logged_this_frame = False # ตัวดักไม่ให้ Log สแปมรัวๆ
+        
         for u_ptr in all_units:
-            # 1. ดึงข้อมูล 3D (องศา, ขนาด)
             box_data = get_unit_3d_box_data(self.scanner, u_ptr)
             if not box_data: continue
             
             pos, bmin, bmax, R = box_data
-            
-            # 2. คำนวณพิกัด 8 มุมในโลก 3D
+
+            # อนุญาตให้ปริ้น Log ได้ ถ้าครบ 1 วินาที และเฟรมนี้ยังไม่ได้ปริ้นอะไรเลย
+            is_logging_target = should_log and not has_logged_this_frame
+
+            # -----------------------------------------------------
+            # 🔫 วาด Laser ปืน (Barrel ESP) - สีเขียว (Green)
+            # -----------------------------------------------------
+            try:
+                barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, R, should_log=is_logging_target)
+                
+                if barrel_data:
+                    if is_logging_target:
+                        # ถ้าคันนี้มีปืน ให้ล็อคไว้เลย คันต่อไปในวินาทีนี้จะได้ไม่แย่งปริ้น
+                        has_logged_this_frame = True 
+                        
+                    pivot_3d, tip_3d = barrel_data
+                    res_p = world_to_screen(view_matrix, pivot_3d[0], pivot_3d[1], pivot_3d[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                    res_t = world_to_screen(view_matrix, tip_3d[0], tip_3d[1], tip_3d[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                    
+                    if res_p and res_t and res_p[2] > 0 and res_t[2] > 0:
+                        painter.setPen(QPen(QColor(0, 255, 0, 255), 3)) 
+                        painter.drawLine(int(res_p[0]), int(res_p[1]), int(res_t[0]), int(res_t[1]))
+            except Exception as e:
+                pass
+
             corners_3d = calculate_3d_box_corners(pos, bmin, bmax, R)
-            
             pts = []
             all_valid = True
             
-            # 3. แปลง 8 มุมนั้นมาลงหน้าจอ 2D
             for c in corners_3d:
                 res = world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                if res and res[2] >= 0.001: # เช็คว่าทุกมุมต้องอยู่หน้ากล้อง
+                if res and res[2] >= 0.001:
                     pts.append((res[0], res[1]))
                 else:
                     all_valid = False
@@ -93,18 +119,12 @@ class ESPOverlay(QWidget):
             if not all_valid or len(pts) != 8:
                 continue
                 
-            drawn_count += 1
-            
-            # 4. วาดเส้น 12 เส้นประกอบเป็นกล่อง
-            painter.setPen(QPen(QColor(255, 0, 0, 255), 2)) # สีแดงสด
-            
-            # คู่ของจุดที่จะลากเส้นเข้าหากัน (อิงตาม Array ด้านบน)
+            painter.setPen(QPen(QColor(255, 0, 0, 255), 2))
             edges = [
-                (0,1), (1,2), (2,3), (3,0), # ฐานล่าง 4 เส้น
-                (4,5), (5,6), (6,7), (7,4), # หลังคา 4 เส้น
-                (0,4), (1,5), (2,6), (3,7)  # เสาเชื่อม 4 เส้น
+                (0,1), (1,2), (2,3), (3,0), 
+                (4,5), (5,6), (6,7), (7,4), 
+                (0,4), (1,5), (2,6), (3,7)  
             ]
-            
             for e1, e2 in edges:
                 painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
                 
