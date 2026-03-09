@@ -1,0 +1,39 @@
+# --- 🎯 2026 Verified Offsets from Ghidra ---
+GHIDRA_BASE = 0x400000
+DAT_MANAGER = 0x093924e0      # CGame Manager (Checked at +0x671)
+DAT_LOCAL_PLAYER = 0x09394240 # Local Player Pointer
+DAT_CONTROLLED_UNIT = 0x09394248 # The Tank you are actually driving
+
+# แปลงเป็น Offset สำหรับใช้กับ Base Address
+MANAGER_OFFSET = DAT_MANAGER - GHIDRA_BASE
+LOCAL_PLAYER_OFFSET = DAT_LOCAL_PLAYER - GHIDRA_BASE
+
+# Address จาก Ghidra: 0x093924e0
+C_GAME_PTR_ADDR = 0x093924e0 
+
+# ฟังก์ชันอ่าน Pointer แบบซ้อน (Dereference)
+def get_cgame_base(process_handle, base_addr):
+    # อ่านค่าที่อยู่ใน 0x093924e0 เพื่อดูว่า Object จริงๆ อยู่ที่ไหนใน RAM
+    raw_ptr = read_memory(process_handle, C_GAME_PTR_ADDR, 8)
+    return struct.unpack("<Q", raw_ptr)[0]
+
+OFF_UNIT_X = 0xb38
+OFF_UNIT_Y = 0xb3c
+OFF_UNIT_Z = 0xb40
+
+# --- 🔄 สูตรคำนวณที่ต้องระวัง ---
+def get_unit_pos(scanner, u_ptr):
+    # อ่านทีเดียว 12 bytes (X, Y, Z)
+    data = scanner.read_mem(u_ptr + OFF_UNIT_X, 12)
+    if len(data) < 12: return None
+    
+    x, y, z = struct.unpack("<fff", data)
+    
+    # 🛡️ เช็คค่าขยะก่อนส่งไปวาด (Anti-NaN)
+    if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+        return None
+    if abs(x) < 0.001 and abs(y) < 0.001: # ข้ามยูนิตที่พิกัดเป็น 0 (ยังไม่เกิด)
+        return None
+        
+    return (x, y, z)
+
