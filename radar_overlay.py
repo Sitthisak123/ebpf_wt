@@ -3,9 +3,11 @@ from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
 from main import MemoryScanner, get_game_pid, get_game_base_address
+
 from src.untils.mul import (
     get_cgame_base, get_view_matrix, world_to_screen, 
-    get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel
+    get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel,
+    get_local_team, get_unit_status, LinuxOffsets
 )
 
 SCREEN_WIDTH = 2560
@@ -35,46 +37,63 @@ class ESPOverlay(QWidget):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
 
-            # 🟢 วาดสถานะก่อนเลยเป็นอันดับแรก จะได้รู้ว่าโปรแกรมทำงานอยู่!
             painter.setFont(QFont("Arial", 14, QFont.Bold))
             painter.setPen(QColor(0, 255, 0, 255))
-            painter.drawText(20, 40, "🟢 DYNAMIC WTM BONE TRACKER: ACTIVE")
+            painter.drawText(20, 40, "🟢 LINUX NATIVE RADAR: ACTIVE")
 
             cgame_base = get_cgame_base(self.scanner, self.base_address)
-            
-            # ถ้าหาเกมไม่เจอ หรืออยู่หน้าล็อบบี้ ให้แจ้งเตือนแล้วข้ามไป
-            if cgame_base == 0: 
-                painter.setPen(QColor(255, 0, 0, 255))
-                painter.drawText(20, 70, "❌ Status: รอเข้าแมตช์ / ไม่พบเรดาร์...")
-                return
+            if cgame_base == 0: return
                 
             view_matrix = get_view_matrix(self.scanner, cgame_base)
             if not view_matrix: return
 
             all_units = get_all_units(self.scanner, cgame_base)
             
-            # แสดงจำนวนศัตรูบนจอ
-            painter.setPen(QColor(255, 255, 0, 255))
-            painter.drawText(20, 70, f"🎯 Targets in Match: {len(all_units)} Units")
+            # ดึงข้อมูลตัวเราเอง
+            my_unit, my_data = get_local_team(self.scanner, self.base_address)
 
+            valid_targets = []
+            
+            # ระบบกรองเป้าหมาย (Filter)
+            for u_ptr in all_units:
+                if u_ptr == my_unit: continue 
+                
+                status = get_unit_status(self.scanner, u_ptr, my_unit, my_data)
+                if not status: continue
+                
+                my_team, u_team, u_family = status
+
+                # 🚨 กรองรถถังที่พังแล้ว/ซาก: 
+                # ในเกมนี้รถถังที่ตายหรือ AI นอกเกม มักจะโดนถีบไปอยู่ทีม 0 (Neutral)
+                if u_team == 0: continue
+                
+                # 🚨 กรองเพื่อนร่วมทีม
+                if my_team != 0 and u_team == my_team: continue
+                
+                # 🚨 กรองเครื่องบิน/ขยะ: เอาเฉพาะยานเกราะ
+                if LinuxOffsets.info_offset != -1: # ถ้า AI หา Info เจอ ค่อยเปิดใช้งานกฏนี้
+                    if u_family not in [3, 4, 5, 6]: continue
+                
+                valid_targets.append(u_ptr)
+
+            painter.setPen(QColor(255, 255, 0, 255))
+            painter.drawText(20, 70, f"🎯 Enemy Tanks: {len(valid_targets)} Units")
             has_logged_this_frame = False
 
-            for u_ptr in all_units:
+            # วาด ESP
+            for u_ptr in valid_targets:
                 box_data = get_unit_3d_box_data(self.scanner, u_ptr)
                 if not box_data: continue
-                
+
                 pos, bmin, bmax, R = box_data
 
-                # -----------------------------------------------------
-                # 🔫 วาด เลเซอร์ป้อมปืน (สีเขียว)
-                # -----------------------------------------------------
+                # เลเซอร์ปืน!
                 is_logging_target = should_log and not has_logged_this_frame
                 barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, R, should_log=is_logging_target)
                 
                 if barrel_data:
                     if is_logging_target: has_logged_this_frame = True
                     p1, p2 = barrel_data
-                    
                     res_p1 = world_to_screen(view_matrix, p1[0], p1[1], p1[2], SCREEN_WIDTH, SCREEN_HEIGHT)
                     res_p2 = world_to_screen(view_matrix, p2[0], p2[1], p2[2], SCREEN_WIDTH, SCREEN_HEIGHT)
                     
@@ -82,9 +101,7 @@ class ESPOverlay(QWidget):
                         painter.setPen(QPen(QColor(0, 255, 0, 255), 3)) 
                         painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
 
-                # -----------------------------------------------------
-                # 📦 วาดกล่อง 3D Box (สีแดง)
-                # -----------------------------------------------------
+                # 3D Box
                 corners_3d = calculate_3d_box_corners(pos, bmin, bmax, R)
                 pts = []
                 for c in corners_3d:
@@ -102,17 +119,14 @@ class ESPOverlay(QWidget):
             pass
 
 if __name__ == '__main__':
-    print("[*] กำลังเตรียมระบบ WTM Bone Tracker...")
+    print("[*] กำลังเตรียมระบบ...")
     try:
         pid = get_game_pid()
         base_addr = get_game_base_address(pid)
         scanner = MemoryScanner(pid)
-        print(f"[+] เจอ War Thunder PID: {pid} | Base: {hex(base_addr)}")
     except Exception as e:
-        print(f"[-] Error: {e}")
         sys.exit(1)
 
-    print("[+] เปิด Overlay แล้ว! (ถ้าจอใส ให้ดูข้อความสีเขียวที่มุมซ้ายบนหน้าจอหลัก)")
     app = QApplication(sys.argv)
     overlay = ESPOverlay(scanner, base_addr)
     overlay.show()
