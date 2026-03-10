@@ -42,19 +42,25 @@ def get_unit_pos(scanner, u_ptr):
 
 def get_all_units(scanner, cgame_base):
     if cgame_base == 0: return []
-    raw_array_ptr = scanner.read_mem(cgame_base + 0x328, 8)
-    raw_count = scanner.read_mem(cgame_base + 0x338, 4)
-    if not raw_array_ptr or not raw_count: return []
-    array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
-    count = struct.unpack("<I", raw_count)[0]
-    if count <= 0 or count > 250 or array_ptr < 0x10000: return []
     units = []
-    for i in range(count):
-        raw_u_ptr = scanner.read_mem(array_ptr + (i * 8), 8)
-        if raw_u_ptr:
-            u_ptr = struct.unpack("<Q", raw_u_ptr)[0]
-            if u_ptr != 0: units.append(u_ptr)
-    return units
+    
+    # 🚨 กองบัญชาการรวม: กวาดทั้ง 0x310 (อากาศ) และ 0x328 (ภาคพื้น)
+    # อ้างอิงจากผลสแกนของท่าน: 0x310 คือเครื่องบิน F-86F, 0x328 คือรถถัง 2S38
+    for off in [0x310, 0x328]:
+        raw_array_ptr = scanner.read_mem(cgame_base + off, 8)
+        raw_count = scanner.read_mem(cgame_base + off + 16, 4) # ระยะ Count ห่างจาก Ptr 16 bytes เหมือนภาคพื้น
+        if raw_array_ptr and raw_count:
+            array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
+            count = struct.unpack("<I", raw_count)[0]
+            if 0 < count < 250 and is_valid_ptr(array_ptr):
+                for i in range(count):
+                    raw_u = scanner.read_mem(array_ptr + (i * 8), 8)
+                    if raw_u:
+                        u_ptr = struct.unpack("<Q", raw_u)[0]
+                        if is_valid_ptr(u_ptr):
+                            units.append(u_ptr)
+                            
+    return list(set(units)) # ลบตัวซ้ำออก (ถ้ามี)
 
 def get_unit_3d_box_data(scanner, u_ptr):
     if u_ptr == 0: return None
@@ -215,46 +221,30 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
     return None
 
 # -----------------------------------------------------
-# 🛡️ THE PERFECT LINUX FILTER (0xDE8 Team & 0xD68 State)
+# 🛡️ THE PERFECT LINUX FILTER (ฐานเดิมจากท่านนายพล 100%)
 # -----------------------------------------------------
 def get_local_team(scanner, base_addr):
     try:
-        control_addr = base_addr + (0x09394248 - 0x400000)
-        my_unit_raw = scanner.read_mem(control_addr, 8)
-        if not my_unit_raw: return 0, 0
-        my_unit = struct.unpack("<Q", my_unit_raw)[0]
-        if my_unit == 0: return 0, 0
-        
-        # 🎯 Team: ใช้ Offset 0xDE8 ที่แกะมาจาก Dump 
-        team_raw = scanner.read_mem(my_unit + 0xDE8, 1)
-        my_team = struct.unpack("<B", team_raw)[0] if team_raw else 0
-        
-        return my_unit, my_team
-    except Exception:
-        return 0, 0
+        control_ptr = struct.unpack("<Q", scanner.read_mem(base_addr + (0x09394248 - 0x400000), 8))[0]
+        team = struct.unpack("<B", scanner.read_mem(control_ptr + 0xDE8, 1))[0]
+        return control_ptr, team
+    except: return 0, 0
 
 def get_unit_status(scanner, u_ptr):
     if u_ptr == 0: return None
     try:
-        # 1. 🎯 Team (0xDE8)
-        team_raw = scanner.read_mem(u_ptr + 0xDE8, 1)
-        u_team = struct.unpack("<B", team_raw)[0] if team_raw else 0
+        # 1. 🎯 Team: Offset 0xDE8
+        team = struct.unpack("<B", scanner.read_mem(u_ptr + 0xDE8, 1))[0]
         
-        # 2. 🎯 State (0xD68)
-        u_state = 0
-        st_raw = scanner.read_mem(u_ptr + 0xD68, 2)
-        if st_raw:
-            val = struct.unpack("<H", st_raw)[0]
-            if val in [1, 2, 3]: # 1=ตาย, 2=ระเบิด/ซาก
-                u_state = val
-
-        # 3. 🎯 Name Parsing (แก้ไขให้กรองเฉพาะตัวอักษรที่อ่านได้)
+        # 2. 🎯 State: Offset 0xD68
+        state = struct.unpack("<H", scanner.read_mem(u_ptr + 0xD68, 2))[0]
+        
+        # 3. 🎯 Name Parsing: กลับไปใช้ระบบเดิมที่ท่านยืนยันว่าไม่มีบั๊ก
         unit_name = "UNKNOWN"
-        info_raw = scanner.read_mem(u_ptr + 0xDF8, 8) # Pointer ไป UnitInfo
+        info_raw = scanner.read_mem(u_ptr + 0xDF8, 8) 
         if info_raw:
             info_ptr = struct.unpack("<Q", info_raw)[0]
             if is_valid_ptr(info_ptr):
-                # ดึงชื่อรถจาก info_ptr + 0x28
                 name_ptr_raw = scanner.read_mem(info_ptr + 0x28, 8)
                 if name_ptr_raw:
                     name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
@@ -262,14 +252,10 @@ def get_unit_status(scanner, u_ptr):
                         str_data = scanner.read_mem(name_ptr, 32)
                         if str_data:
                             try:
-                                # ตัดข้อมูลที่ \x00 ก่อนเพื่อเอาขยะด้านหลังออก
                                 raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
-                                # กรองเอาเฉพาะตัวอักษรที่อ่านได้ A-Z, 0-9, ขีด, อันเดอร์สกอร์
-                                clean_str = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
-                                if len(clean_str) >= 2:
-                                    unit_name = clean_str
+                                unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
                             except: pass
                 
-        return u_team, u_state, unit_name
+        return team, state, unit_name
     except Exception:
         return None
