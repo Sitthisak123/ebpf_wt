@@ -1,17 +1,13 @@
 import sys
-import time
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
-
-# นำเข้าเครื่องมือสแกนเนอร์และสูตรคำนวณจากไฟล์ของคุณ
 from main import MemoryScanner, get_game_pid, get_game_base_address
 from src.untils.mul import (
-    get_cgame_base, get_view_matrix, world_to_screen, get_unit_pos, 
+    get_cgame_base, get_view_matrix, world_to_screen, 
     get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel
 )
 
-# 🎯 ตั้งค่าหน้าจอ (แก้ให้ตรงกับจอคุณ)
 SCREEN_WIDTH = 2560
 SCREEN_HEIGHT = 1440
 
@@ -20,9 +16,8 @@ class ESPOverlay(QWidget):
         super().__init__()
         self.scanner = scanner
         self.base_address = base_address
-        self.frame_count = 0  # ตัวนับเฟรมสำหรับทำ Smart Logger
+        self.frame_count = 0
         
-        # --- 🪄 เวทมนตร์สร้างหน้าต่างล่องหน ---
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
@@ -30,125 +25,95 @@ class ESPOverlay(QWidget):
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(16) # ~60 FPS
+        self.timer.start(16)
 
     def paintEvent(self, event):
-        self.frame_count += 1
-        # ให้มัน Print Log ลง Terminal แค่ 1 ครั้ง ทุกๆ 60 เฟรม (1 วินาที)
-        should_log = (self.frame_count % 60 == 0)
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        # ---------------------------------------------------------
-        # 1. ทดสอบวาดตัวหนังสือลงจอก่อนเลย (เช็คว่า PyQt5 ทำงานไหม)
-        # ---------------------------------------------------------
-        painter.setFont(QFont("Arial", 14, QFont.Bold))
-        painter.setPen(QColor(0, 255, 0, 255)) # สีเขียว
-        painter.drawText(20, 30, "🟢 ESP Overlay is Running!")
-
-        # ---------------------------------------------------------
-        # 2. ดึงข้อมูลหลัก (CGame & View Matrix)
-        # ---------------------------------------------------------
-        cgame_base = get_cgame_base(self.scanner, self.base_address)
-        if cgame_base == 0: 
-            if should_log: print("[-] Log: CGame Base เป็น 0 (หาไม่เจอ)")
-            return
+        try:
+            self.frame_count += 1
+            should_log = (self.frame_count % 60 == 0)
             
-        view_matrix = get_view_matrix(self.scanner, cgame_base)
-        if not view_matrix: 
-            if should_log: print("[-] Log: อ่าน View Matrix ไม่ได้")
-            return
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing)
 
-        # ---------------------------------------------------------
-        # 3. ดึงรายชื่อรถถัง
-        # ---------------------------------------------------------
-        all_units = get_all_units(self.scanner, cgame_base)
-        
-        valid_pos_count = 0
-        drawn_count = 0
-        
-        # ตั้งค่าปากกาสีแดงสำหรับวาดกรอบ
-        painter.setPen(QPen(QColor(255, 0, 0, 255), 2))
-        
-        all_units = get_all_units(self.scanner, cgame_base)
-        has_logged_this_frame = False # ตัวดักไม่ให้ Log สแปมรัวๆ
-        
-        for u_ptr in all_units:
-            box_data = get_unit_3d_box_data(self.scanner, u_ptr)
-            if not box_data: continue
+            # 🟢 วาดสถานะก่อนเลยเป็นอันดับแรก จะได้รู้ว่าโปรแกรมทำงานอยู่!
+            painter.setFont(QFont("Arial", 14, QFont.Bold))
+            painter.setPen(QColor(0, 255, 0, 255))
+            painter.drawText(20, 40, "🟢 DYNAMIC WTM BONE TRACKER: ACTIVE")
+
+            cgame_base = get_cgame_base(self.scanner, self.base_address)
             
-            pos, bmin, bmax, R = box_data
+            # ถ้าหาเกมไม่เจอ หรืออยู่หน้าล็อบบี้ ให้แจ้งเตือนแล้วข้ามไป
+            if cgame_base == 0: 
+                painter.setPen(QColor(255, 0, 0, 255))
+                painter.drawText(20, 70, "❌ Status: รอเข้าแมตช์ / ไม่พบเรดาร์...")
+                return
+                
+            view_matrix = get_view_matrix(self.scanner, cgame_base)
+            if not view_matrix: return
 
-            # อนุญาตให้ปริ้น Log ได้ ถ้าครบ 1 วินาที และเฟรมนี้ยังไม่ได้ปริ้นอะไรเลย
-            is_logging_target = should_log and not has_logged_this_frame
+            all_units = get_all_units(self.scanner, cgame_base)
+            
+            # แสดงจำนวนศัตรูบนจอ
+            painter.setPen(QColor(255, 255, 0, 255))
+            painter.drawText(20, 70, f"🎯 Targets in Match: {len(all_units)} Units")
 
-            # -----------------------------------------------------
-            # 🔫 วาด Laser ปืน (Barrel ESP) - สีเขียว (Green)
-            # -----------------------------------------------------
-            try:
+            has_logged_this_frame = False
+
+            for u_ptr in all_units:
+                box_data = get_unit_3d_box_data(self.scanner, u_ptr)
+                if not box_data: continue
+                
+                pos, bmin, bmax, R = box_data
+
+                # -----------------------------------------------------
+                # 🔫 วาด เลเซอร์ป้อมปืน (สีเขียว)
+                # -----------------------------------------------------
+                is_logging_target = should_log and not has_logged_this_frame
                 barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, R, should_log=is_logging_target)
                 
                 if barrel_data:
-                    if is_logging_target:
-                        # ถ้าคันนี้มีปืน ให้ล็อคไว้เลย คันต่อไปในวินาทีนี้จะได้ไม่แย่งปริ้น
-                        has_logged_this_frame = True 
-                        
-                    pivot_3d, tip_3d = barrel_data
-                    res_p = world_to_screen(view_matrix, pivot_3d[0], pivot_3d[1], pivot_3d[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                    res_t = world_to_screen(view_matrix, tip_3d[0], tip_3d[1], tip_3d[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                    if is_logging_target: has_logged_this_frame = True
+                    p1, p2 = barrel_data
                     
-                    if res_p and res_t and res_p[2] > 0 and res_t[2] > 0:
+                    res_p1 = world_to_screen(view_matrix, p1[0], p1[1], p1[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                    res_p2 = world_to_screen(view_matrix, p2[0], p2[1], p2[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                    
+                    if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0:
                         painter.setPen(QPen(QColor(0, 255, 0, 255), 3)) 
-                        painter.drawLine(int(res_p[0]), int(res_p[1]), int(res_t[0]), int(res_t[1]))
-            except Exception as e:
-                pass
+                        painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
 
-            corners_3d = calculate_3d_box_corners(pos, bmin, bmax, R)
-            pts = []
-            all_valid = True
-            
-            for c in corners_3d:
-                res = world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                if res and res[2] >= 0.001:
-                    pts.append((res[0], res[1]))
-                else:
-                    all_valid = False
-                    break
-                    
-            if not all_valid or len(pts) != 8:
-                continue
-                
-            painter.setPen(QPen(QColor(255, 0, 0, 255), 2))
-            edges = [
-                (0,1), (1,2), (2,3), (3,0), 
-                (4,5), (5,6), (6,7), (7,4), 
-                (0,4), (1,5), (2,6), (3,7)  
-            ]
-            for e1, e2 in edges:
-                painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
-                
-            # แถม: Snapline ลากไปที่จุดกึ่งกลางของฐาน (จุด 0 กับ 2 ครอสกัน)
-            base_center_x = (pts[0][0] + pts[2][0]) / 2
-            base_center_y = (pts[0][1] + pts[2][1]) / 2
-            painter.setPen(QPen(QColor(255, 0, 0, 150), 1))
-            painter.drawLine(SCREEN_WIDTH // 2, SCREEN_HEIGHT, int(base_center_x), int(base_center_y))
+                # -----------------------------------------------------
+                # 📦 วาดกล่อง 3D Box (สีแดง)
+                # -----------------------------------------------------
+                corners_3d = calculate_3d_box_corners(pos, bmin, bmax, R)
+                pts = []
+                for c in corners_3d:
+                    res = world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                    if res and res[2] >= 0.001:
+                        pts.append((res[0], res[1]))
+                        
+                if len(pts) == 8:
+                    painter.setPen(QPen(QColor(255, 0, 0, 200), 2))
+                    edges = [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]
+                    for e1, e2 in edges:
+                        painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
+
+        except Exception as e:
+            pass
 
 if __name__ == '__main__':
-    print("[*] กำลังเปิดระบบ ESP Overlay พร้อม Smart Logger...")
-    
-    pid = get_game_pid()
-    base_addr = get_game_base_address(pid)
-    
+    print("[*] กำลังเตรียมระบบ WTM Bone Tracker...")
     try:
+        pid = get_game_pid()
+        base_addr = get_game_base_address(pid)
         scanner = MemoryScanner(pid)
-    except PermissionError:
-        print("[-] สิทธิ์ไม่พอ! รันด้วย sudo นะครับ")
+        print(f"[+] เจอ War Thunder PID: {pid} | Base: {hex(base_addr)}")
+    except Exception as e:
+        print(f"[-] Error: {e}")
         sys.exit(1)
 
+    print("[+] เปิด Overlay แล้ว! (ถ้าจอใส ให้ดูข้อความสีเขียวที่มุมซ้ายบนหน้าจอหลัก)")
     app = QApplication(sys.argv)
     overlay = ESPOverlay(scanner, base_addr)
     overlay.show()
-    
-    print("[+] หน้าต่าง Overlay เปิดแล้ว! สังเกต Log ด้านล่างนี้:")
     sys.exit(app.exec_())
