@@ -30,16 +30,18 @@ class ESPOverlay(QWidget):
         self.timer.start(16)
 
     def paintEvent(self, event):
+        # 🚨 แก้บั๊ก RAM รั่ว! ต้องเปิด Painter อย่างปลอดภัย และใช้ finally ปิดเสมอ
+        painter = QPainter()
+        painter.begin(self) 
+        painter.setRenderHint(QPainter.Antialiasing)
+
         try:
             self.frame_count += 1
             should_log = (self.frame_count % 60 == 0)
-            
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
 
             painter.setFont(QFont("Arial", 14, QFont.Bold))
             painter.setPen(QColor(0, 255, 0, 255))
-            painter.drawText(20, 40, "🟢 LINUX NATIVE RADAR: ACTIVE")
+            painter.drawText(20, 40, "🟢 WTM RADAR: MASTER MERGE BUILD")
 
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             if cgame_base == 0: return
@@ -54,30 +56,34 @@ class ESPOverlay(QWidget):
 
             valid_targets = []
             
-            # ระบบกรองเป้าหมาย (Filter)
+            # ==================================================
+            # 🛡️ ระบบกรองเป้าหมายแบบคลายกฎ (ป้องกันศัตรูหาย 100%)
+            # ==================================================
             for u_ptr in all_units:
                 if u_ptr == my_unit: continue 
                 
                 status = get_unit_status(self.scanner, u_ptr, my_unit, my_data)
-                if not status: continue
+                if not status: 
+                    valid_targets.append(u_ptr) # กันศัตรูหาย
+                    continue
                 
-                my_team, u_team, u_family = status
+                my_team, u_team, u_family, u_state = status
 
-                # 🚨 กรองรถถังที่พังแล้ว/ซาก: 
-                # ในเกมนี้รถถังที่ตายหรือ AI นอกเกม มักจะโดนถีบไปอยู่ทีม 0 (Neutral)
-                if u_team == 0: continue
+                # 🚨 กฎข้อ 1: กรองซากรถถังที่พังแล้ว (ด้วย Offset 0xD68)
+                if u_state >= 1: continue
                 
-                # 🚨 กรองเพื่อนร่วมทีม
+                # 🚨 กฎข้อ 2: กรองเพื่อนร่วมทีม
+                # สังเกตว่าเราไม่ได้ใช้ u_team == 0 อีกต่อไป! เพราะรถเกิดใหม่อาจจะเป็นทีม 0 ชั่วคราว
                 if my_team != 0 and u_team == my_team: continue
                 
-                # 🚨 กรองเครื่องบิน/ขยะ: เอาเฉพาะยานเกราะ
-                if LinuxOffsets.info_offset != -1: # ถ้า AI หา Info เจอ ค่อยเปิดใช้งานกฏนี้
-                    if u_family not in [3, 4, 5, 6]: continue
+                # 🚨 กฎข้อ 3: เอาเฉพาะยานเกราะ (อนุญาต 99 ไว้กันบั๊กอ่าน Family ไม่ทัน)
+                if LinuxOffsets.info_offset != -1: 
+                    if u_family not in [3, 4, 5, 6, 99]: continue
                 
                 valid_targets.append(u_ptr)
 
             painter.setPen(QColor(255, 255, 0, 255))
-            painter.drawText(20, 70, f"🎯 Enemy Tanks: {len(valid_targets)} Units")
+            painter.drawText(20, 70, f"🎯 Detected Enemies: {len(valid_targets)} Units")
             has_logged_this_frame = False
 
             # วาด ESP
@@ -117,9 +123,11 @@ class ESPOverlay(QWidget):
 
         except Exception as e:
             pass
+        finally:
+            painter.end() # 🚨 ไม่ว่าเกิดอะไรขึ้น ต้องคืน RAM ให้ระบบ!
 
 if __name__ == '__main__':
-    print("[*] กำลังเตรียมระบบ...")
+    print("[*] กำลังเตรียมระบบ WTM RADAR...")
     try:
         pid = get_game_pid()
         base_addr = get_game_base_address(pid)

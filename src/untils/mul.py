@@ -32,6 +32,7 @@ def get_view_matrix(scanner, cgame_base):
     matrix_data = scanner.read_mem(camera_ptr + OFF_VIEW_MATRIX, 64)
     if not matrix_data or len(matrix_data) < 64: return None
     return struct.unpack("<16f", matrix_data)
+
 def get_unit_pos(scanner, u_ptr):
     if u_ptr == 0: return None
     data = scanner.read_mem(u_ptr + OFF_UNIT_X, 12)
@@ -111,9 +112,6 @@ def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
     screen_y = (screen_height / 2) * (1 - ndc_y)
     return (int(screen_x), int(screen_y), w)
 
-# -----------------------------------------------------
-# 🎯 THE SMART BONE TRACKER (ซ่อมบั๊ก เลเซอร์หายแล้ว!)
-# -----------------------------------------------------
 def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=False):
     if u_ptr == 0: return None
     if not hasattr(scanner, "bone_cache"): scanner.bone_cache = {}
@@ -122,7 +120,6 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
     wtm_ptr = 0
 
     try:
-        # 1. โหลดจาก Cache + ตรวจสอบความถูกต้อง (กันบั๊กรถเกิดใหม่)
         if u_ptr in scanner.bone_cache:
             cache = scanner.bone_cache[u_ptr]
             anim_char_raw = scanner.read_mem(u_ptr + cache['anim_off'], 8)
@@ -136,7 +133,6 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                             wtm_ptr = w_ptr
                             target_bone_index = cache['bone_idx']
 
-        # 2. ค้นหากระดูกใหม่ (ขยายวงค้นหาเพื่อความแม่นยำ)
         if wtm_ptr == 0 or target_bone_index == -1:
             best_score, best_idx = -1, -1
             tree_offsets = [0x1E8, 0x1E0, 0x1F0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8]
@@ -193,7 +189,6 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                     scanner.bone_cache[u_ptr] = {'anim_off': a_off, 'bone_idx': best_idx}
                                     break
 
-        # 3. คำนวณวาดเลเซอร์จาก WTM
         if wtm_ptr != 0 and target_bone_index != -1:
             matrix_data = scanner.read_mem(wtm_ptr + (target_bone_index * 64), 64)
             if matrix_data and len(matrix_data) == 64:
@@ -201,7 +196,6 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                 bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30) 
                 
                 if math.isfinite(bx) and math.isfinite(fx):
-                    # 🚨 ดักจับเป้าหมายที่พังแล้ว (กระดูกมักจะร่วงไปที่ 0,0,0)
                     if abs(bx) < 0.1 and abs(by) < 0.1 and abs(bz) < 0.1: return None
                         
                     length = 30.0 
@@ -222,11 +216,11 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
     return None
 
 # -----------------------------------------------------
-# 🛡️ THE PURE LINUX NATIVE FILTER (AI Memory Hunt)
+# 🛡️ THE PURE LINUX NATIVE FILTER (AI Memory Hunt + 0xD68 Death State)
 # -----------------------------------------------------
 class LinuxOffsets:
     team_offset = -1 
-    info_offset = -1 # เก็บจุดซ่อน UnitInfo
+    info_offset = -1 
 
 def get_local_team(scanner, base_addr):
     try:
@@ -236,7 +230,6 @@ def get_local_team(scanner, base_addr):
         my_unit = struct.unpack("<Q", my_unit_raw)[0]
         if my_unit == 0: return 0, None
         
-        # อ่านก้อนข้อมูลของเราไว้เทียบหาศัตรู
         my_data = scanner.read_mem(my_unit + 0xC00, 0x300)
         return my_unit, my_data
     except Exception:
@@ -262,7 +255,7 @@ def get_unit_status(scanner, u_ptr, my_unit, my_data):
                             my_team, u_team = m_val, u_val
                             break
 
-        # 2. 🎯 AI: ตามรอย String หา UnitInfo (สำหรับแยกประเภทรถถัง/เครื่องบิน)
+        # 2. 🎯 AI: หา UnitInfo (สำหรับแยกประเภทรถถัง)
         family = 99
         if LinuxOffsets.info_offset == -1 and u_ptr == my_unit:
             for off in range(0xC00, 0xF00, 8):
@@ -270,7 +263,6 @@ def get_unit_status(scanner, u_ptr, my_unit, my_data):
                 if ptr_raw:
                     ptr = struct.unpack("<Q", ptr_raw)[0]
                     if is_valid_ptr(ptr):
-                        # UnitInfo มักจะมี Pointer ไปหาชื่อตัวเอง (us_, germ_, ussr_)
                         name_ptr_raw = scanner.read_mem(ptr + 0x28, 8)
                         if name_ptr_raw:
                             name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
@@ -278,10 +270,8 @@ def get_unit_status(scanner, u_ptr, my_unit, my_data):
                                 name_data = scanner.read_mem(name_ptr, 16)
                                 if name_data and any(b in name_data for b in [b"us_", b"germ_", b"ussr_", b"uk_", b"jp_"]):
                                     LinuxOffsets.info_offset = off
-                                    print(f"[+] 🧬 AI ควานหา UnitInfo ของ Linux เจอแล้วที่: {hex(off)}")
                                     break
 
-        # ถ้ารู้ UnitInfo แล้ว ให้ดึงค่า Family ออกมา (เครื่องบิน=0,1,2 / รถถัง=3,4,5,6)
         if LinuxOffsets.info_offset != -1:
             info_raw = scanner.read_mem(u_ptr + LinuxOffsets.info_offset, 8)
             if info_raw:
@@ -294,7 +284,16 @@ def get_unit_status(scanner, u_ptr, my_unit, my_data):
                             if 0 <= val <= 6:
                                 family = val
                                 break
+
+        # 3. 🎯 State (Alive/Dead Filter) - ดึงค่าจาก 0xD68 
+        u_state = 0
+        st_raw = scanner.read_mem(u_ptr + 0xD68, 2)
+        if st_raw:
+            val = struct.unpack("<H", st_raw)[0]
+            if val in [1, 2, 3]: # 1=ตาย, 2=ระเบิด
+                u_state = val
                                 
-        return my_team, u_team, family
+        # คืนค่าสถานะทั้งหมดกลับไปที่เรดาร์
+        return my_team, u_team, family, u_state
     except Exception:
         return None
