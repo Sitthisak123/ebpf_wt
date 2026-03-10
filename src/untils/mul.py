@@ -9,8 +9,6 @@ OFF_CAMERA_PTR = 0x5F0
 OFF_VIEW_MATRIX = 0x1B8
 
 OFF_UNIT_X = 0xb38
-OFF_UNIT_Z = 0xb3c 
-OFF_UNIT_Y = 0xb40
 OFF_UNIT_ROTATION = 0xB14
 OFF_UNIT_BBMIN = 0x230 
 OFF_UNIT_BBMAX = 0x23C 
@@ -111,33 +109,54 @@ def calculate_3d_box_corners(pos, bmin, bmax, R):
     return corners
 
 # -----------------------------------------------------
-# 🦴 THE PERFECT BONE TRACKER (เจาะระบบทะลุ Offset 0x228 -> 0x0)
+# 🎯 THE SMART BONE TRACKER (Scoring System)
 # -----------------------------------------------------
 def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=False):
     if u_ptr == 0: return None
     def is_valid_ptr(p): return 0x10000000000 < p < 0x7FFFFFFFFFFF
 
-    # Cache ไว้เก็บ Index ปืน จะได้หาแค่ครั้งเดียวต่อรถ 1 คัน
     if not hasattr(scanner, "bone_cache"): scanner.bone_cache = {}
+    
     target_bone_index = -1
+    wtm_ptr = 0
 
-    # 1. โหลด Index ปืน หรือค้นหาจากโครงกระดูกจำลอง
-    if u_ptr in scanner.bone_cache:
-        target_bone_index = scanner.bone_cache[u_ptr]
-    else:
-        for offset in range(0x10, 0x1000, 8):
-            raw_ptr = scanner.read_mem(u_ptr + offset, 8)
-            if not raw_ptr: continue
-            tree_ptr = struct.unpack("<Q", raw_ptr)[0]
-            if not is_valid_ptr(tree_ptr): continue
+    try:
+        # 1. โหลดจาก Cache ถ้าเคยหารถคันนี้เจอแล้ว
+        if u_ptr in scanner.bone_cache:
+            cache = scanner.bone_cache[u_ptr]
+            anim_char_raw = scanner.read_mem(u_ptr + cache['anim_off'], 8)
+            if anim_char_raw:
+                anim_char = struct.unpack("<Q", anim_char_raw)[0]
+                if is_valid_ptr(anim_char):
+                    wtm_raw = scanner.read_mem(anim_char + 0x0, 8)
+                    if wtm_raw:
+                        wtm_ptr = struct.unpack("<Q", wtm_raw)[0]
+                        target_bone_index = cache['bone_idx']
+
+        # 2. ค้นหากระดูกใหม่ด้วยระบบ "Scoring" อัจฉริยะ!
+        if wtm_ptr == 0 or target_bone_index == -1:
+            best_score = -1
+            best_idx = -1
+            best_anim_off = 0
             
-            raw_name = scanner.read_mem(tree_ptr + 0x40, 8)
-            if not raw_name: continue
-            name_ptr = struct.unpack("<Q", raw_name)[0]
+            # ใช้ Offset 0x1e8 ที่ท่านหาเจอเป็น Priority แรก (GeomNodeTree)
+            tree_offsets = [0x1E8, 0x1E0, 0x1F0, 0x1D8, 0x200]
             
-            if is_valid_ptr(name_ptr):
-                names_block = scanner.read_mem(name_ptr, 0x4000)
-                if names_block and b"barrel" in names_block.lower():
+            for off in tree_offsets:
+                raw_ptr = scanner.read_mem(u_ptr + off, 8)
+                if not raw_ptr: continue
+                tree_ptr = struct.unpack("<Q", raw_ptr)[0]
+                if not is_valid_ptr(tree_ptr): continue
+                
+                raw_name = scanner.read_mem(tree_ptr + 0x40, 8)
+                if not raw_name: continue
+                name_ptr = struct.unpack("<Q", raw_name)[0]
+                
+                if is_valid_ptr(name_ptr):
+                    names_block = scanner.read_mem(name_ptr, 0x4000)
+                    if not names_block: continue
+                    
+                    # 💡 เริ่มการให้คะแนนกระดูก (Scoring System)
                     for i in range(400):
                         try:
                             str_offset = struct.unpack_from("<H", names_block, i * 2)[0]
@@ -145,60 +164,76 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                             end_idx = names_block.find(b'\x00', str_offset)
                             if end_idx != -1:
                                 bone_name = names_block[str_offset:end_idx].decode('utf-8', errors='ignore').lower().strip()
-                                bad = ["fuel", "water", "smoke", "mg", "machine", "camera", "optic", "antenna", "gunner", "track", "wheel", "suspension"]
-                                if "barrel" in bone_name and not any(x in bone_name for x in bad):
-                                    target_bone_index = i
-                                    scanner.bone_cache[u_ptr] = i # บันทึกลงสมองกล
-                                    if should_log: print(f"  [💀] ล็อกเป้า Index ปืน: {i} ({bone_name})")
-                                    break
+                                
+                                score = -1
+                                # ให้คะแนนตามความแม่นยำของชื่อ
+                                if "bone_gun_barrel" in bone_name: score = 100
+                                elif "gun_barrel" in bone_name: score = 80
+                                elif "bone_gun" in bone_name: score = 60
+                                elif "barrel" in bone_name: score = 40
+                                elif "turret" in bone_name: score = 20
+                                
+                                # 🚨 บทลงโทษ: ถ้ามีคำพวกนี้ แบนทิ้งทันที (-100)
+                                bad_words = ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root"]
+                                if any(bad in bone_name for bad in bad_words):
+                                    score = -100
+                                    
+                                if score > best_score:
+                                    best_score = score
+                                    best_idx = i
+                                    if should_log: print(f"  [+] อัปเดตเป้าปืนที่ดีที่สุด: '{bone_name}' (Score: {score})")
                         except: pass
-                if target_bone_index != -1: break
-            if target_bone_index != -1: break
+                    
+                    if best_idx != -1: break
 
-    if target_bone_index == -1: return None
+            # ถ้าหา Index ได้แล้ว ให้ดึง WTM จาก AnimChar (Offset 0x228 ที่ท่านหาเจอ!)
+            if best_idx != -1:
+                anim_offsets = [0x228, 0x220, 0x230, 0x218]
+                for a_off in anim_offsets:
+                    anim_raw = scanner.read_mem(u_ptr + a_off, 8)
+                    if anim_raw:
+                        anim_char = struct.unpack("<Q", anim_raw)[0]
+                        if is_valid_ptr(anim_char):
+                            wtm_raw = scanner.read_mem(anim_char + 0x0, 8)
+                            if wtm_raw:
+                                w_ptr = struct.unpack("<Q", wtm_raw)[0]
+                                if is_valid_ptr(w_ptr):
+                                    wtm_ptr = w_ptr
+                                    target_bone_index = best_idx
+                                    # บันทึกลง Cache
+                                    scanner.bone_cache[u_ptr] = {'anim_off': a_off, 'bone_idx': best_idx}
+                                    break
+                    if wtm_ptr != 0: break
 
-    # ========================================================
-    # 🌟 2. เข้าสู่ขุมทรัพย์ของคุณ: Offset 0x228 -> 0x0 (Animated WTM)
-    # ========================================================
-    try:
-        # อ่านชั้นที่ 1 (0x228)
-        anim_char_raw = scanner.read_mem(u_ptr + 0x228, 8)
-        if not anim_char_raw: return None
-        anim_char = struct.unpack("<Q", anim_char_raw)[0]
-        if not is_valid_ptr(anim_char): return None
-        
-        # อ่านชั้นที่ 2 (0x0)
-        wtm_raw = scanner.read_mem(anim_char + 0x0, 8)
-        if not wtm_raw: return None
-        wtm_ptr = struct.unpack("<Q", wtm_raw)[0]
-        if not is_valid_ptr(wtm_ptr): return None
-
-        # 3. ดึงพิกัดและทิศทางปืนที่ขยับแบบ Real-time
-        matrix_data = scanner.read_mem(wtm_ptr + (target_bone_index * 64), 64)
-        if matrix_data and len(matrix_data) == 64:
-            fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00) # เวกเตอร์หน้าปืน
-            bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30) # พิกัด 3D
-            
-            if math.isfinite(bx) and math.isfinite(fx):
-                length = 30.0 # เลเซอร์ยาว 30 เมตรไปเลย!
+        # 3. คำนวณวาดเลเซอร์จาก WTM
+        if wtm_ptr != 0 and target_bone_index != -1:
+            matrix_data = scanner.read_mem(wtm_ptr + (target_bone_index * 64), 64)
+            if matrix_data and len(matrix_data) == 64:
+                # 0x00 คือแกน X (เวกเตอร์ทิศทางหน้าปืน)
+                fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00) 
+                # 0x30 คือพิกัด Local ของปืน
+                bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30) 
                 
-                # เช็คว่าเป็น World Space หรือ Local Space
-                if abs(bx) > 50.0 or abs(by) > 50.0:
-                    base_w = (bx, by, bz)
-                    # ⚠️ หมายเหตุ: ถ้าเลเซอร์มันพุ่งออกท้ายรถถัง ให้คุณเปลี่ยนเป็นลบ (bx - (fx * length)) นะครับ
-                    tip_w = (bx + (fx * length), by + (fy * length), bz + (fz * length))
-                    return base_w, tip_w
-                else:
-                    # ถ้าเป็น Local Space ให้เอามาคูณกับแกนของตัวรถถัง
-                    def to_world(lx, ly, lz):
-                        wx = lx*unit_rot_matrix[0] + ly*unit_rot_matrix[3] + lz*unit_rot_matrix[6] + unit_pos[0]
-                        wy = lx*unit_rot_matrix[1] + ly*unit_rot_matrix[4] + lz*unit_rot_matrix[7] + unit_pos[1]
-                        wz = lx*unit_rot_matrix[2] + ly*unit_rot_matrix[5] + lz*unit_rot_matrix[8] + unit_pos[2]
-                        return (wx, wy, wz)
+                if math.isfinite(bx) and math.isfinite(fx):
+                    length = 30.0 # ความยาวเลเซอร์
                     
-                    # ⚠️ หมายเหตุเหมือนเดิม: ถ้าเลเซอร์ออกท้ายรถ ให้แก้เครื่องหมาย + หน้าวงเล็บ fx เป็น - 
-                    return to_world(bx, by, bz), to_world(bx + (fx * length), by + (fy * length), bz + (fz * length))
-                    
+                    if abs(bx) > 500.0 or abs(by) > 500.0:
+                        # World Space (หายากใน AnimChar แต่ดักไว้ก่อน)
+                        base_w = (bx, by, bz)
+                        tip_w = (bx + (fx * length), by + (fy * length), bz + (fz * length))
+                        return base_w, tip_w
+                    else:
+                        # Local Space (แปลงเข้าแกนโลกของรถถัง)
+                        def to_world(lx, ly, lz):
+                            wx = lx*unit_rot_matrix[0] + ly*unit_rot_matrix[3] + lz*unit_rot_matrix[6] + unit_pos[0]
+                            wy = lx*unit_rot_matrix[1] + ly*unit_rot_matrix[4] + lz*unit_rot_matrix[7] + unit_pos[1]
+                            wz = lx*unit_rot_matrix[2] + ly*unit_rot_matrix[5] + lz*unit_rot_matrix[8] + unit_pos[2]
+                            return (wx, wy, wz)
+                            
+                        # ⚠️ ถ้าเลเซอร์ของรถบางคันพุ่งออกข้างๆ ให้แก้ +fx เป็น +fy หรือ +fz นะครับ 
+                        # แต่ 99% ของ War Thunder ใช้แกน X (fx) เป็นด้านหน้าของปืน
+                        return to_world(bx, by, bz), to_world(bx + (fx * length), by + (fy * length), bz + (fz * length))
+
     except Exception:
         pass
         
