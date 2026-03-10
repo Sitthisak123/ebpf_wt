@@ -255,8 +255,10 @@ def get_unit_status(scanner, u_ptr, my_unit, my_data):
                             my_team, u_team = m_val, u_val
                             break
 
-        # 2. 🎯 AI: หา UnitInfo (สำหรับแยกประเภทรถถัง)
+        # 2. 🎯 AI: หา UnitInfo และดึงชื่อรถถัง
         family = 99
+        unit_name = "UNKNOWN" # กำหนดค่าเริ่มต้น
+        
         if LinuxOffsets.info_offset == -1 and u_ptr == my_unit:
             for off in range(0xC00, 0xF00, 8):
                 ptr_raw = scanner.read_mem(my_unit + off, 8)
@@ -268,7 +270,7 @@ def get_unit_status(scanner, u_ptr, my_unit, my_data):
                             name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
                             if is_valid_ptr(name_ptr):
                                 name_data = scanner.read_mem(name_ptr, 16)
-                                if name_data and any(b in name_data for b in [b"us_", b"germ_", b"ussr_", b"uk_", b"jp_"]):
+                                if name_data and any(b in name_data for b in [b"us_", b"germ_", b"ussr_", b"uk_", b"jp_", b"cn_", b"it_", b"fr_", b"sw_", b"il_"]):
                                     LinuxOffsets.info_offset = off
                                     break
 
@@ -277,6 +279,20 @@ def get_unit_status(scanner, u_ptr, my_unit, my_data):
             if info_raw:
                 info_ptr = struct.unpack("<Q", info_raw)[0]
                 if is_valid_ptr(info_ptr):
+                    # 🏷️ ดึงชื่อรถถัง (อ่าน 40 bytes)
+                    name_ptr_raw = scanner.read_mem(info_ptr + 0x28, 8)
+                    if name_ptr_raw:
+                        name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
+                        if is_valid_ptr(name_ptr):
+                            name_data = scanner.read_mem(name_ptr, 40)
+                            if name_data:
+                                end_idx = name_data.find(b'\x00')
+                                if end_idx != -1:
+                                    unit_name = name_data[:end_idx].decode('utf-8', errors='ignore')
+                                else:
+                                    unit_name = name_data.decode('utf-8', errors='ignore')
+
+                    # ดึงประเภทรถ (Family)
                     for fam_off in [0x12C0, 0x12C4, 0x12C8, 0x12CC, 0x12D0]:
                         fam_raw = scanner.read_mem(info_ptr + fam_off, 1)
                         if fam_raw:
@@ -293,7 +309,7 @@ def get_unit_status(scanner, u_ptr, my_unit, my_data):
             if val in [1, 2, 3]: # 1=ตาย, 2=ระเบิด
                 u_state = val
                                 
-        # คืนค่าสถานะทั้งหมดกลับไปที่เรดาร์
-        return my_team, u_team, family, u_state
+        # 🚨 ส่ง Unit Name พ่วงกลับไปเพิ่มด้วย
+        return my_team, u_team, family, u_state, unit_name
     except Exception:
         return None

@@ -1,4 +1,5 @@
 import sys
+import math
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
@@ -7,7 +8,7 @@ from main import MemoryScanner, get_game_pid, get_game_base_address
 from src.untils.mul import (
     get_cgame_base, get_view_matrix, world_to_screen, 
     get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel,
-    get_local_team, get_unit_status, LinuxOffsets
+    get_local_team, get_unit_status, LinuxOffsets, get_unit_pos
 )
 
 SCREEN_WIDTH = 2560
@@ -30,18 +31,17 @@ class ESPOverlay(QWidget):
         self.timer.start(16)
 
     def paintEvent(self, event):
-        # 🚨 แก้บั๊ก RAM รั่ว! ต้องเปิด Painter อย่างปลอดภัย และใช้ finally ปิดเสมอ
         painter = QPainter()
         painter.begin(self) 
         painter.setRenderHint(QPainter.Antialiasing)
-
+        
         try:
             self.frame_count += 1
             should_log = (self.frame_count % 60 == 0)
 
-            painter.setFont(QFont("Arial", 14, QFont.Bold))
+            painter.setFont(QFont("Arial", 12, QFont.Bold))
             painter.setPen(QColor(0, 255, 0, 255))
-            painter.drawText(20, 40, "🟢 WTM RADAR: MASTER MERGE BUILD")
+            painter.drawText(20, 40, "🟢 WTM RADAR: TACTICAL ESP (NAME & DISTANCE)")
 
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             if cgame_base == 0: return
@@ -50,50 +50,50 @@ class ESPOverlay(QWidget):
             if not view_matrix: return
 
             all_units = get_all_units(self.scanner, cgame_base)
-            
-            # ดึงข้อมูลตัวเราเอง
             my_unit, my_data = get_local_team(self.scanner, self.base_address)
+            
+            # 📍 หาพิกัดตำแหน่งของเราก่อน เพื่อเอาไว้คำนวณระยะทาง
+            my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
             valid_targets = []
             
-            # ==================================================
-            # 🛡️ ระบบกรองเป้าหมายแบบคลายกฎ (ป้องกันศัตรูหาย 100%)
-            # ==================================================
+            # 🛡️ ระบบคัดกรองเป้าหมาย
             for u_ptr in all_units:
                 if u_ptr == my_unit: continue 
                 
                 status = get_unit_status(self.scanner, u_ptr, my_unit, my_data)
                 if not status: 
-                    valid_targets.append(u_ptr) # กันศัตรูหาย
+                    valid_targets.append((u_ptr, "UNKNOWN")) # กันศัตรูหาย
                     continue
                 
-                my_team, u_team, u_family, u_state = status
+                my_team, u_team, u_family, u_state, unit_name = status
 
-                # 🚨 กฎข้อ 1: กรองซากรถถังที่พังแล้ว (ด้วย Offset 0xD68)
                 if u_state >= 1: continue
-                
-                # 🚨 กฎข้อ 2: กรองเพื่อนร่วมทีม
-                # สังเกตว่าเราไม่ได้ใช้ u_team == 0 อีกต่อไป! เพราะรถเกิดใหม่อาจจะเป็นทีม 0 ชั่วคราว
                 if my_team != 0 and u_team == my_team: continue
-                
-                # 🚨 กฎข้อ 3: เอาเฉพาะยานเกราะ (อนุญาต 99 ไว้กันบั๊กอ่าน Family ไม่ทัน)
                 if LinuxOffsets.info_offset != -1: 
                     if u_family not in [3, 4, 5, 6, 99]: continue
                 
-                valid_targets.append(u_ptr)
+                # เก็บ Ptr ของศัตรู และ ชื่อรถถัง
+                valid_targets.append((u_ptr, unit_name))
 
             painter.setPen(QColor(255, 255, 0, 255))
-            painter.drawText(20, 70, f"🎯 Detected Enemies: {len(valid_targets)} Units")
+            painter.drawText(20, 70, f"🎯 Targets: {len(valid_targets)} | Team: {my_team}")
             has_logged_this_frame = False
 
-            # วาด ESP
-            for u_ptr in valid_targets:
+            # 🖌️ วาด ESP แบบเต็มระบบ (กล่อง + ชื่อ + ระยะทาง + เลเซอร์)
+            for u_ptr, raw_name in valid_targets:
                 box_data = get_unit_3d_box_data(self.scanner, u_ptr)
                 if not box_data: continue
 
                 pos, bmin, bmax, R = box_data
 
-                # เลเซอร์ปืน!
+                # 📍 คำนวณระยะทาง (3D Distance)
+                dist_text = ""
+                if my_pos:
+                    dist = math.sqrt((pos[0]-my_pos[0])**2 + (pos[1]-my_pos[1])**2 + (pos[2]-my_pos[2])**2)
+                    dist_text = f" [{int(dist)}m]"
+
+                # เลเซอร์ปืน
                 is_logging_target = should_log and not has_logged_this_frame
                 barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, R, should_log=is_logging_target)
                 
@@ -104,7 +104,7 @@ class ESPOverlay(QWidget):
                     res_p2 = world_to_screen(view_matrix, p2[0], p2[1], p2[2], SCREEN_WIDTH, SCREEN_HEIGHT)
                     
                     if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0:
-                        painter.setPen(QPen(QColor(0, 255, 0, 255), 3)) 
+                        painter.setPen(QPen(QColor(0, 255, 0, 255), 2)) 
                         painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
 
                 # 3D Box
@@ -121,13 +121,35 @@ class ESPOverlay(QWidget):
                     for e1, e2 in edges:
                         painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
 
+                    # 🏷️ วาดข้อความ ชื่อรถถัง + ระยะทาง ไว้เหนือกล่อง 3D
+                    min_y = min([p[1] for p in pts]) # หาจุดที่สูงที่สุดของกล่อง
+                    avg_x = sum([p[0] for p in pts]) / 8.0 # หาจุดกึ่งกลางกล่องแนวนอน
+                    
+                    # ตัดคำขยะออกจากชื่อรถ (เช่น us_m4a3 -> M4A3)
+                    prefixes = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
+                    clean_name = raw_name
+                    for p in prefixes:
+                        if clean_name.startswith(p):
+                            clean_name = clean_name[len(p):]
+                            break
+                    
+                    display_text = f"{clean_name.upper()}{dist_text}" if clean_name != "UNKNOWN" else f"TARGET{dist_text}"
+                    
+                    # เซ็ตสีและวาดอักษร
+                    painter.setPen(QColor(0, 255, 255, 255)) # สีฟ้า Cyan ให้เด่นๆ
+                    fm = painter.fontMetrics()
+                    text_w = fm.boundingRect(display_text).width()
+                    
+                    # ขยับขึ้นไปเหนือกล่อง 8 พิกเซล
+                    painter.drawText(int(avg_x - text_w/2), int(min_y - 8), display_text)
+
         except Exception as e:
             pass
         finally:
-            painter.end() # 🚨 ไม่ว่าเกิดอะไรขึ้น ต้องคืน RAM ให้ระบบ!
+            painter.end() 
 
 if __name__ == '__main__':
-    print("[*] กำลังเตรียมระบบ WTM RADAR...")
+    print("[*] 🚀 กำลังเตรียมระบบ TACTICAL WTM RADAR...")
     try:
         pid = get_game_pid()
         base_addr = get_game_base_address(pid)
