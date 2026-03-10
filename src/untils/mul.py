@@ -45,10 +45,9 @@ def get_all_units(scanner, cgame_base):
     units = []
     
     # 🚨 กองบัญชาการรวม: กวาดทั้ง 0x310 (อากาศ) และ 0x328 (ภาคพื้น)
-    # อ้างอิงจากผลสแกนของท่าน: 0x310 คือเครื่องบิน F-86F, 0x328 คือรถถัง 2S38
     for off in [0x310, 0x328]:
         raw_array_ptr = scanner.read_mem(cgame_base + off, 8)
-        raw_count = scanner.read_mem(cgame_base + off + 16, 4) # ระยะ Count ห่างจาก Ptr 16 bytes เหมือนภาคพื้น
+        raw_count = scanner.read_mem(cgame_base + off + 16, 4) 
         if raw_array_ptr and raw_count:
             array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
             count = struct.unpack("<I", raw_count)[0]
@@ -60,7 +59,7 @@ def get_all_units(scanner, cgame_base):
                         if is_valid_ptr(u_ptr):
                             units.append(u_ptr)
                             
-    return list(set(units)) # ลบตัวซ้ำออก (ถ้ามี)
+    return list(set(units)) 
 
 def get_unit_3d_box_data(scanner, u_ptr):
     if u_ptr == 0: return None
@@ -121,23 +120,36 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
     if u_ptr == 0: return None
     if not hasattr(scanner, "bone_cache"): scanner.bone_cache = {}
     
+    # 🚨 ตัวการอยู่ตรงนี้! ใส่ตัวแปรคืนมาเพื่อให้มันคำนวณไม่ Error!
     target_bone_index = -1
     wtm_ptr = 0
 
     try:
+        # 1. ตรวจสอบ Cache เดิม
         if u_ptr in scanner.bone_cache:
             cache = scanner.bone_cache[u_ptr]
             anim_char_raw = scanner.read_mem(u_ptr + cache['anim_off'], 8)
-            if anim_char_raw:
+            if anim_char_raw: 
                 anim_char = struct.unpack("<Q", anim_char_raw)[0]
                 if is_valid_ptr(anim_char):
                     wtm_raw = scanner.read_mem(anim_char + 0x0, 8)
                     if wtm_raw:
                         w_ptr = struct.unpack("<Q", wtm_raw)[0]
                         if is_valid_ptr(w_ptr):
-                            wtm_ptr = w_ptr
-                            target_bone_index = cache['bone_idx']
+                            target_idx = cache['bone_idx']
+                            matrix_data = scanner.read_mem(w_ptr + (target_idx * 64), 64)
+                            if matrix_data:
+                                bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
+                                # เช็คว่าแคชยังใช้ได้ไหม ถ้าเพี้ยนให้โละทิ้งสแกนใหม่
+                                if abs(bx) < 5000 and abs(by) < 5000:
+                                    wtm_ptr = w_ptr
+                                    target_bone_index = target_idx
+                                else:
+                                    del scanner.bone_cache[u_ptr]
+                            else:
+                                del scanner.bone_cache[u_ptr]
 
+        # 2. ถ้าแคชไม่มี หรือแคชพัง ให้ควานหากระดูกใหม่
         if wtm_ptr == 0 or target_bone_index == -1:
             best_score, best_idx = -1, -1
             tree_offsets = [0x1E8, 0x1E0, 0x1F0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8]
@@ -194,6 +206,7 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                     scanner.bone_cache[u_ptr] = {'anim_off': a_off, 'bone_idx': best_idx}
                                     break
 
+        # 3. คำนวณเส้นเลเซอร์ และวาดออกจอ
         if wtm_ptr != 0 and target_bone_index != -1:
             matrix_data = scanner.read_mem(wtm_ptr + (target_bone_index * 64), 64)
             if matrix_data and len(matrix_data) == 64:
@@ -201,14 +214,17 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                 bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30) 
                 
                 if math.isfinite(bx) and math.isfinite(fx):
+                    # ถ้าค่าแปลกๆ หรือพังให้ยกเลิก
                     if abs(bx) < 0.1 and abs(by) < 0.1 and abs(bz) < 0.1: return None
                         
                     length = 30.0 
+                    # ถ้ารถอยู่ไกลเกิน (โมเดล Low-poly) จะใช้ Absolute Coord
                     if abs(bx) > 500.0 or abs(by) > 500.0:
                         base_w = (bx, by, bz)
                         tip_w = (bx + (fx * length), by + (fy * length), bz + (fz * length))
                         return base_w, tip_w
                     else:
+                        # รถอยู่ใกล้ ใช้ Local Transform เข้ากับจุดหมุนรถ
                         def to_world(lx, ly, lz):
                             wx = lx*unit_rot_matrix[0] + ly*unit_rot_matrix[3] + lz*unit_rot_matrix[6] + unit_pos[0]
                             wy = lx*unit_rot_matrix[1] + ly*unit_rot_matrix[4] + lz*unit_rot_matrix[7] + unit_pos[1]

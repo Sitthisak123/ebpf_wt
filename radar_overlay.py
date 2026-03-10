@@ -19,6 +19,7 @@ class ESPOverlay(QWidget):
         super().__init__()
         self.scanner = scanner
         self.base_address = base_address
+        self.last_my_unit = 0
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
@@ -44,6 +45,12 @@ class ESPOverlay(QWidget):
             all_units = get_all_units(self.scanner, cgame_base)
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
+
+            if my_unit != self.last_my_unit:
+                if hasattr(self.scanner, "bone_cache"):
+                    self.scanner.bone_cache = {} # ล้างสมองสคริปต์
+                self.last_my_unit = my_unit
+                print("[*] 🔄 ตรวจพบแมตช์ใหม่: ล้างแคชตำแหน่งปืนเรียบร้อยแล้ว")
 
             valid_targets = []
             for u_ptr in all_units:
