@@ -44,35 +44,41 @@ def get_all_units(scanner, cgame_base):
     if cgame_base == 0: return []
     units = []
     
-    # 🚨 กวาดทั้ง 0x310 (อากาศ) และ 0x328 (ภาคพื้น)
-    for off in [0x310, 0x328]:
+    # ⚡ [OPTIMIZED]: กวาด Array แบบ Bulk Read และแยก Air/Ground ทันที!
+    # 0x310 = Air (True), 0x328 = Ground (False)
+    for off, is_air in [(0x310, True), (0x328, False)]:
         raw_array_ptr = scanner.read_mem(cgame_base + off, 8)
         raw_count = scanner.read_mem(cgame_base + off + 16, 4) 
         if raw_array_ptr and raw_count:
             array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
             count = struct.unpack("<I", raw_count)[0]
             if 0 < count < 250 and is_valid_ptr(array_ptr):
-                for i in range(count):
-                    raw_u = scanner.read_mem(array_ptr + (i * 8), 8)
-                    if raw_u:
-                        u_ptr = struct.unpack("<Q", raw_u)[0]
+                # 🚀 Bulk Read: อ่าน Pointer ทั้งหมดในคำสั่งเดียว! ประหยัด CPU มหาศาล
+                ptr_data = scanner.read_mem(array_ptr, count * 8)
+                if ptr_data:
+                    for i in range(count):
+                        u_ptr = struct.unpack_from("<Q", ptr_data, i * 8)[0]
                         if is_valid_ptr(u_ptr):
-                            units.append(u_ptr)
+                            units.append((u_ptr, is_air)) # 👈 แปะป้าย is_air ทันที!
                             
-    return list(set(units))
+    # ลบตัวซ้ำ (โดยรักษาลำดับและข้อมูล is_air ไว้)
+    return list({u[0]: u for u in units}.values())
 
 def get_unit_3d_box_data(scanner, u_ptr):
     if u_ptr == 0: return None
     pos_data = scanner.read_mem(u_ptr + OFF_UNIT_X, 12)
     if not pos_data or len(pos_data) < 12: return None
     pos = struct.unpack("<fff", pos_data) 
-    bbmin_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 12)
-    bbmax_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMAX, 12)
-    if not bbmin_data or not bbmax_data: return None
-    bmin = list(struct.unpack("<fff", bbmin_data))
-    bmax = list(struct.unpack("<fff", bbmax_data))
+    
+    # ⚡ [OPTIMIZED]: อ่าน Box Min/Max แบบรวบยอด (24 Bytes) ลด Read Calls
+    box_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 24)
+    if not box_data or len(box_data) < 24: return None
+    bmin = list(struct.unpack_from("<fff", box_data, 0))
+    bmax = list(struct.unpack_from("<fff", box_data, 12))
+    
     for i in range(3):
         if bmin[i] > bmax[i]: bmin[i], bmax[i] = bmax[i], bmin[i]
+        
     rot_data = scanner.read_mem(u_ptr + OFF_UNIT_ROTATION, 36)
     if not rot_data or len(rot_data) < 36: return None
     R = struct.unpack("<9f", rot_data)
@@ -218,26 +224,18 @@ def get_local_team(scanner, base_addr):
 def get_unit_status(scanner, u_ptr):
     if u_ptr == 0: return None
     try:
-        team = struct.unpack("<B", scanner.read_mem(u_ptr + 0xDE8, 1))[0]
-        state = struct.unpack("<H", scanner.read_mem(u_ptr + 0xD68, 2))[0]
+        # ⚡ [OPTIMIZED]: อ่าน State และ Team พร้อมกันประหยัด 1 Call (ห่างกัน 128 bytes)
+        status_data = scanner.read_mem(u_ptr + 0xD68, 132) 
+        if not status_data: return None
+        state = struct.unpack_from("<H", status_data, 0)[0]
+        team = struct.unpack_from("<B", status_data, 0x80)[0]
         
         unit_name = "UNKNOWN"
-        u_family = 99 # 🚨 เพิ่มตัวแปร Family
-        
         info_raw = scanner.read_mem(u_ptr + 0xDF8, 8) 
         if info_raw:
             info_ptr = struct.unpack("<Q", info_raw)[0]
             if is_valid_ptr(info_ptr):
-                
-                # 🚨 ดึง Family ID เพื่อใช้แยกเครื่องบินกับรถถัง
-                for fam_off in [0x12C0, 0x12C4, 0x12C8]:
-                    fam_raw = scanner.read_mem(info_ptr + fam_off, 1)
-                    if fam_raw:
-                        val = struct.unpack("<B", fam_raw)[0]
-                        if 0 <= val <= 15:
-                            u_family = val
-                            break
-
+                # 🚀 ตัดระบบหา Family ID ทิ้ง! (เพราะเราแยกประเภทมาจาก Source Array เรียบร้อยแล้ว)
                 name_ptr_raw = scanner.read_mem(info_ptr + 0x28, 8)
                 if name_ptr_raw:
                     name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
@@ -249,16 +247,13 @@ def get_unit_status(scanner, u_ptr):
                                 unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
                             except: pass
                             
-        # 🚨 อ่านค่า Reload 0x8E8 แบบ Integer
         reload_val = -1
         reload_raw = scanner.read_mem(u_ptr + 0x8E8, 4)
         if reload_raw:
             try:
-                val = struct.unpack("<i", reload_raw)[0]
-                reload_val = val
+                reload_val = struct.unpack("<i", reload_raw)[0]
             except: pass
                 
-        # 🚨 ส่งค่า u_family คืนกลับไปให้เรดาร์ด้วย
-        return team, state, unit_name, reload_val, u_family
+        return team, state, unit_name, reload_val
     except Exception:
         return None
