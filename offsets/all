@@ -1,4 +1,7 @@
 # --- 🎯 2026 Verified Offsets from Ghidra ---
+RUN_CMD = "sudo -E XDG_RUNTIME_DIR=/run/user/1000 ./venv/bin/python3 radar_overlay.py"
+
+# --- 🎯 2026 Verified Offsets from Ghidra ---
 GHIDRA_BASE = 0x400000
 DAT_MANAGER = 0x093924e0      # CGame Manager (Checked at +0x671)
 DAT_LOCAL_PLAYER = 0x09394240 # Local Player Pointer
@@ -37,3 +40,7 @@ def get_unit_pos(scanner, u_ptr):
         
     return (x, y, z)
 
+
+# --- 🚀 2026 Velocity & Prediction Offsets ---
+OFF_UNIT_MOVEMENT = 0x1B30
+OFF_VELOCITY = 0x54
