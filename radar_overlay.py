@@ -15,8 +15,13 @@ from src.untils.mul import (
 SCREEN_WIDTH = 2560
 SCREEN_HEIGHT = 1440
 
-# ⚡ [OPTIMIZED]: ย้ายตัวแปรคงที่ออกมานอก Loop!
-BOT_KEYWORDS = ["dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa_", "artillery", "infantry", "ship", "boat", "freighter"]
+# ⚡ [OPTIMIZED & HANGAR FILTER]: เพิ่มคำกรองขยะหน้าเมนูหลักและช่างซ่อมบำรุง
+# ⚡ [OPTIMIZED & HANGAR FILTER]: เพิ่มคำกรองขยะหน้าเมนูหลัก, ช่างซ่อมบำรุง และวัตถุประกอบฉาก
+BOT_KEYWORDS = [
+    "dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", 
+    "aaa", "artillery", "infantry", "ship", "boat", "freighter",
+    "hangar", "technic", "vent", "railway", "freight"  # <--- เพิ่มตู้รถไฟและขยะประกอบฉากล่าสุด!
+]
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
 
 def is_aiming_at(barrel_base, barrel_tip, target_pos, threshold_degrees=6.0):
@@ -48,6 +53,8 @@ class ESPOverlay(QWidget):
         self.center_x = SCREEN_WIDTH / 2
         self.center_y = SCREEN_HEIGHT / 2
         
+        self.seen_names = set() # ไว้สอดแนมชื่อใหม่ๆ
+        
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
@@ -63,7 +70,7 @@ class ESPOverlay(QWidget):
         try:
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             painter.setPen(QColor(0, 255, 0, 255))
-            painter.drawText(20, 40, "🟢 WTM TACTICAL RADAR: THREAT SNAPLINE")
+            painter.drawText(20, 40, "🟢 WTM TACTICAL RADAR: PRO UI V3")
 
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             if cgame_base == 0: return
@@ -92,6 +99,10 @@ class ESPOverlay(QWidget):
                 if u_state >= 1: continue 
                 if my_team != 0 and u_team == my_team: continue
                 
+                if unit_name not in self.seen_names and unit_name != "UNKNOWN":
+                    print(f"[*] 🔍 พบโมเดลเป้าหมายในแมพ: '{unit_name}'")
+                    self.seen_names.add(unit_name)
+                
                 unit_name_lower = unit_name.lower()
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
                 
@@ -109,7 +120,6 @@ class ESPOverlay(QWidget):
                 if my_pos:
                     dist = math.sqrt((pos[0]-my_pos[0])**2 + (pos[1]-my_pos[1])**2 + (pos[2]-my_pos[2])**2)
 
-                # 🚨 เก็บตำแหน่ง 2D ของกระบอกปืนไว้เตรียมลากเส้น Snapline
                 barrel_base_2d = None
                 barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, R)
                 if barrel_data:
@@ -119,7 +129,7 @@ class ESPOverlay(QWidget):
                     if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0:
                         painter.setPen(QPen(QColor(0, 255, 0, 255), 2)) 
                         painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
-                        barrel_base_2d = res_p1 # บันทึกพิกัดโคนปืนบนหน้าจอ
+                        barrel_base_2d = res_p1 
 
                 corners_3d = calculate_3d_box_corners(pos, bmin, bmax, R)
                 pts = []
@@ -147,13 +157,18 @@ class ESPOverlay(QWidget):
                             
                     has_reload_bar = (not is_air_target and (0 <= reload_val < 500))
                     
+                    # -----------------------------------------------------
+                    # 🥷 ลอจิกซ่อนชื่อ Stealth Mode (อัปเดตตามคำสั่งนายพล!)
+                    # -----------------------------------------------------
                     hide_name = False
                     if not is_air_target:
-                        if dist > 500:
-                            hide_name = True
+                        dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
+                        if dist_to_crosshair < 350:
+                            # เล็งอยู่ -> โชว์ชื่อ
+                            hide_name = False
                         else:
-                            dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
-                            if dist_to_crosshair < 350:
+                            # ไม่ได้เล็ง และอยู่ไกลเกิน 550m -> ซ่อนชื่อ
+                            if dist > 550:
                                 hide_name = True
 
                     if hide_name:
@@ -178,41 +193,31 @@ class ESPOverlay(QWidget):
                         dot_x = int(avg_x - dot_w / 2) 
                         dot_y = text_y - 14 
                         
-                        # คำนวณคลื่นการกระพริบ (ซิงค์กันทั้งจุด Dot และเส้นลาก)
                         t = (math.sin(time.time() * 15.0) + 1.0) / 2.0
                         r = int(t * 255)
                         g = int(255 - (t * 90))
                         
-                        # 1. วาดแสงฟุ้ง (Bloom) ของจุด Dot
                         painter.setPen(QColor(r, g, 0, 50))
                         for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
                             painter.drawText(dot_x + ox, dot_y + oy, dot_text)
                             
-                        # 2. วาด Dot หลัก
                         painter.setPen(QColor(r, g, 0, 255))
                         painter.drawText(dot_x, dot_y, dot_text)
 
-                        # 3. ⚡ วาด Threat Snapline (กลางจอล่าง -> ปืนศัตรู)
-                        # ถ้าระบุปืนไม่ได้ ให้ชี้ไปที่กลางตัวรถถังแทน
                         line_dest_x = barrel_base_2d[0] if barrel_base_2d else avg_x
                         line_dest_y = barrel_base_2d[1] if barrel_base_2d else avg_y
-                        
-                        # วาดเส้นเรืองแสงรอบนอก (ความหนาจะพองเข้าพองออกตามจังหวะกระพริบ)
                         glow_thickness = max(3, int(t * 6))
                         painter.setPen(QPen(QColor(r, g, 0, 80), glow_thickness))
                         painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
                         
-                        # วาดเส้นแกนกลาง (คมชัดทะลุจอ)
                         painter.setPen(QPen(QColor(r, g, 0, 255), 2))
                         painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
 
                     # =====================================================
                     
-                    # วาดข้อความชื่อ
                     painter.setPen(QColor(0, 255, 255, 255))
                     painter.drawText(int(avg_x - text_w/2), text_y, display_text)
 
-                    # วาดหลอดกระสุน
                     if has_reload_bar:
                         if u_ptr not in self.max_reload_cache:
                             self.max_reload_cache[u_ptr] = reload_val
