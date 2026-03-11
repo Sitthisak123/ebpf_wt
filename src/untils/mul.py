@@ -43,8 +43,6 @@ def get_unit_pos(scanner, u_ptr):
 def get_all_units(scanner, cgame_base):
     if cgame_base == 0: return []
     units = []
-    
-    # 🚨 กองบัญชาการรวม: กวาดทั้ง 0x310 (อากาศ) และ 0x328 (ภาคพื้น)
     for off in [0x310, 0x328]:
         raw_array_ptr = scanner.read_mem(cgame_base + off, 8)
         raw_count = scanner.read_mem(cgame_base + off + 16, 4) 
@@ -58,8 +56,7 @@ def get_all_units(scanner, cgame_base):
                         u_ptr = struct.unpack("<Q", raw_u)[0]
                         if is_valid_ptr(u_ptr):
                             units.append(u_ptr)
-                            
-    return list(set(units)) 
+    return list(set(units))
 
 def get_unit_3d_box_data(scanner, u_ptr):
     if u_ptr == 0: return None
@@ -119,13 +116,10 @@ def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
 def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=False):
     if u_ptr == 0: return None
     if not hasattr(scanner, "bone_cache"): scanner.bone_cache = {}
-    
-    # 🚨 ตัวการอยู่ตรงนี้! ใส่ตัวแปรคืนมาเพื่อให้มันคำนวณไม่ Error!
     target_bone_index = -1
     wtm_ptr = 0
 
     try:
-        # 1. ตรวจสอบ Cache เดิม
         if u_ptr in scanner.bone_cache:
             cache = scanner.bone_cache[u_ptr]
             anim_char_raw = scanner.read_mem(u_ptr + cache['anim_off'], 8)
@@ -140,31 +134,23 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                             matrix_data = scanner.read_mem(w_ptr + (target_idx * 64), 64)
                             if matrix_data:
                                 bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
-                                # เช็คว่าแคชยังใช้ได้ไหม ถ้าเพี้ยนให้โละทิ้งสแกนใหม่
                                 if abs(bx) < 5000 and abs(by) < 5000:
                                     wtm_ptr = w_ptr
                                     target_bone_index = target_idx
-                                else:
-                                    del scanner.bone_cache[u_ptr]
-                            else:
-                                del scanner.bone_cache[u_ptr]
+                                else: del scanner.bone_cache[u_ptr]
+                            else: del scanner.bone_cache[u_ptr]
 
-        # 2. ถ้าแคชไม่มี หรือแคชพัง ให้ควานหากระดูกใหม่
         if wtm_ptr == 0 or target_bone_index == -1:
             best_score, best_idx = -1, -1
-            tree_offsets = [0x1E8, 0x1E0, 0x1F0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8]
-            
-            for off in tree_offsets:
+            for off in [0x1E8, 0x1E0, 0x1F0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8]:
                 raw_ptr = scanner.read_mem(u_ptr + off, 8)
                 if not raw_ptr: continue
                 tree_ptr = struct.unpack("<Q", raw_ptr)[0]
                 if not is_valid_ptr(tree_ptr): continue
-                
                 raw_name = scanner.read_mem(tree_ptr + 0x40, 8)
                 if not raw_name: continue
                 name_ptr = struct.unpack("<Q", raw_name)[0]
                 if not is_valid_ptr(name_ptr): continue
-                
                 names_block = scanner.read_mem(name_ptr, 0x4000)
                 if not names_block: continue
                     
@@ -175,24 +161,18 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                         end_idx = names_block.find(b'\x00', str_offset)
                         if end_idx != -1:
                             bone_name = names_block[str_offset:end_idx].decode('utf-8', errors='ignore').lower().strip()
-                            
                             score = -1
                             if "bone_gun_barrel" in bone_name: score = 100
                             elif "gun_barrel" in bone_name: score = 80
                             elif "bone_gun" in bone_name: score = 60
                             elif "barrel" in bone_name: score = 40
-                            
-                            bad = ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root"]
-                            if any(b in bone_name for b in bad): score = -100
-                                
-                            if score > best_score:
-                                best_score, best_idx = score, i
+                            if any(b in bone_name for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root"]): score = -100
+                            if score > best_score: best_score, best_idx = score, i
                     except: pass
                 if best_idx != -1: break
 
             if best_idx != -1:
-                anim_offsets = [0x228, 0x220, 0x230, 0x218, 0x240, 0x200, 0x250]
-                for a_off in anim_offsets:
+                for a_off in [0x228, 0x220, 0x230, 0x218, 0x240, 0x200, 0x250]:
                     anim_raw = scanner.read_mem(u_ptr + a_off, 8)
                     if anim_raw:
                         anim_char = struct.unpack("<Q", anim_raw)[0]
@@ -206,39 +186,25 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                     scanner.bone_cache[u_ptr] = {'anim_off': a_off, 'bone_idx': best_idx}
                                     break
 
-        # 3. คำนวณเส้นเลเซอร์ และวาดออกจอ
         if wtm_ptr != 0 and target_bone_index != -1:
             matrix_data = scanner.read_mem(wtm_ptr + (target_bone_index * 64), 64)
             if matrix_data and len(matrix_data) == 64:
                 fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00) 
                 bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30) 
-                
                 if math.isfinite(bx) and math.isfinite(fx):
-                    # ถ้าค่าแปลกๆ หรือพังให้ยกเลิก
                     if abs(bx) < 0.1 and abs(by) < 0.1 and abs(bz) < 0.1: return None
-                        
                     length = 30.0 
-                    # ถ้ารถอยู่ไกลเกิน (โมเดล Low-poly) จะใช้ Absolute Coord
                     if abs(bx) > 500.0 or abs(by) > 500.0:
-                        base_w = (bx, by, bz)
-                        tip_w = (bx + (fx * length), by + (fy * length), bz + (fz * length))
-                        return base_w, tip_w
+                        return (bx, by, bz), (bx + (fx * length), by + (fy * length), bz + (fz * length))
                     else:
-                        # รถอยู่ใกล้ ใช้ Local Transform เข้ากับจุดหมุนรถ
                         def to_world(lx, ly, lz):
-                            wx = lx*unit_rot_matrix[0] + ly*unit_rot_matrix[3] + lz*unit_rot_matrix[6] + unit_pos[0]
-                            wy = lx*unit_rot_matrix[1] + ly*unit_rot_matrix[4] + lz*unit_rot_matrix[7] + unit_pos[1]
-                            wz = lx*unit_rot_matrix[2] + ly*unit_rot_matrix[5] + lz*unit_rot_matrix[8] + unit_pos[2]
-                            return (wx, wy, wz)
+                            return (lx*unit_rot_matrix[0] + ly*unit_rot_matrix[3] + lz*unit_rot_matrix[6] + unit_pos[0],
+                                    lx*unit_rot_matrix[1] + ly*unit_rot_matrix[4] + lz*unit_rot_matrix[7] + unit_pos[1],
+                                    lx*unit_rot_matrix[2] + ly*unit_rot_matrix[5] + lz*unit_rot_matrix[8] + unit_pos[2])
                         return to_world(bx, by, bz), to_world(bx + (fx * length), by + (fy * length), bz + (fz * length))
-
-    except Exception:
-        pass
+    except Exception: pass
     return None
 
-# -----------------------------------------------------
-# 🛡️ THE PERFECT LINUX FILTER (ฐานเดิมจากท่านนายพล 100%)
-# -----------------------------------------------------
 def get_local_team(scanner, base_addr):
     try:
         control_ptr = struct.unpack("<Q", scanner.read_mem(base_addr + (0x09394248 - 0x400000), 8))[0]
@@ -249,13 +215,9 @@ def get_local_team(scanner, base_addr):
 def get_unit_status(scanner, u_ptr):
     if u_ptr == 0: return None
     try:
-        # 1. 🎯 Team: Offset 0xDE8
         team = struct.unpack("<B", scanner.read_mem(u_ptr + 0xDE8, 1))[0]
-        
-        # 2. 🎯 State: Offset 0xD68
         state = struct.unpack("<H", scanner.read_mem(u_ptr + 0xD68, 2))[0]
         
-        # 3. 🎯 Name Parsing: กลับไปใช้ระบบเดิมที่ท่านยืนยันว่าไม่มีบั๊ก
         unit_name = "UNKNOWN"
         info_raw = scanner.read_mem(u_ptr + 0xDF8, 8) 
         if info_raw:
@@ -271,7 +233,17 @@ def get_unit_status(scanner, u_ptr):
                                 raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
                                 unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
                             except: pass
+                            
+        # 🚨 อ่านค่า Reload 0x8E8 แบบ Integer
+        reload_val = -1 # ตั้งค่าเริ่มต้นไว้เพื่อกรองขยะ
+        reload_raw = scanner.read_mem(u_ptr + 0x8E8, 4)
+        if reload_raw:
+            try:
+                # ใช้ <i (Signed Integer) ในการอ่านค่า
+                val = struct.unpack("<i", reload_raw)[0]
+                reload_val = val
+            except: pass
                 
-        return team, state, unit_name
+        return team, state, unit_name, reload_val
     except Exception:
         return None
