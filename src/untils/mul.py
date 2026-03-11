@@ -43,6 +43,8 @@ def get_unit_pos(scanner, u_ptr):
 def get_all_units(scanner, cgame_base):
     if cgame_base == 0: return []
     units = []
+    
+    # 🚨 กวาดทั้ง 0x310 (อากาศ) และ 0x328 (ภาคพื้น)
     for off in [0x310, 0x328]:
         raw_array_ptr = scanner.read_mem(cgame_base + off, 8)
         raw_count = scanner.read_mem(cgame_base + off + 16, 4) 
@@ -56,6 +58,7 @@ def get_all_units(scanner, cgame_base):
                         u_ptr = struct.unpack("<Q", raw_u)[0]
                         if is_valid_ptr(u_ptr):
                             units.append(u_ptr)
+                            
     return list(set(units))
 
 def get_unit_3d_box_data(scanner, u_ptr):
@@ -219,10 +222,22 @@ def get_unit_status(scanner, u_ptr):
         state = struct.unpack("<H", scanner.read_mem(u_ptr + 0xD68, 2))[0]
         
         unit_name = "UNKNOWN"
+        u_family = 99 # 🚨 เพิ่มตัวแปร Family
+        
         info_raw = scanner.read_mem(u_ptr + 0xDF8, 8) 
         if info_raw:
             info_ptr = struct.unpack("<Q", info_raw)[0]
             if is_valid_ptr(info_ptr):
+                
+                # 🚨 ดึง Family ID เพื่อใช้แยกเครื่องบินกับรถถัง
+                for fam_off in [0x12C0, 0x12C4, 0x12C8]:
+                    fam_raw = scanner.read_mem(info_ptr + fam_off, 1)
+                    if fam_raw:
+                        val = struct.unpack("<B", fam_raw)[0]
+                        if 0 <= val <= 15:
+                            u_family = val
+                            break
+
                 name_ptr_raw = scanner.read_mem(info_ptr + 0x28, 8)
                 if name_ptr_raw:
                     name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
@@ -235,15 +250,15 @@ def get_unit_status(scanner, u_ptr):
                             except: pass
                             
         # 🚨 อ่านค่า Reload 0x8E8 แบบ Integer
-        reload_val = -1 # ตั้งค่าเริ่มต้นไว้เพื่อกรองขยะ
+        reload_val = -1
         reload_raw = scanner.read_mem(u_ptr + 0x8E8, 4)
         if reload_raw:
             try:
-                # ใช้ <i (Signed Integer) ในการอ่านค่า
                 val = struct.unpack("<i", reload_raw)[0]
                 reload_val = val
             except: pass
                 
-        return team, state, unit_name, reload_val
+        # 🚨 ส่งค่า u_family คืนกลับไปให้เรดาร์ด้วย
+        return team, state, unit_name, reload_val, u_family
     except Exception:
         return None

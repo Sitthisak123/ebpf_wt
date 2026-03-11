@@ -20,8 +20,7 @@ class ESPOverlay(QWidget):
         self.scanner = scanner
         self.base_address = base_address
         self.last_my_unit = 0
-        self.max_reload_cache = {} # 🚨 เพิ่มหน่วยความจำจดจำความจุกระสุนสูงสุดของศัตรูแต่ละคัน
-        
+        self.max_reload_cache = {}
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
@@ -37,7 +36,7 @@ class ESPOverlay(QWidget):
         try:
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             painter.setPen(QColor(0, 255, 0, 255))
-            painter.drawText(20, 40, "🟢 WTM TACTICAL RADAR: VISUAL PROGRESS BAR")
+            painter.drawText(20, 40, "🟢 WTM TACTICAL RADAR: ANTI-BOT EDITION")
 
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             if cgame_base == 0: return
@@ -48,7 +47,6 @@ class ESPOverlay(QWidget):
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
-            # 🚨 ถ้ารถถังเราเปลี่ยน (เริ่มแมตช์ใหม่) ให้ล้าง Cache ทั้งหมดทิ้ง!
             if my_unit != self.last_my_unit:
                 if hasattr(self.scanner, "bone_cache"):
                     self.scanner.bone_cache = {} 
@@ -60,18 +58,33 @@ class ESPOverlay(QWidget):
                 if u_ptr == my_unit: continue 
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
-                u_team, u_state, unit_name, reload_val = status 
+                
+                u_team, u_state, unit_name, reload_val, u_family = status 
 
+                # 🛡️ 1. กรองสถานะความตายและทีม
                 if u_state >= 1: continue 
                 if my_team != 0 and u_team == my_team: continue
-                if "dummy" in unit_name.lower(): continue
                 
-                valid_targets.append((u_ptr, unit_name, reload_val))
+                # 🚨 2. SMART BOT FILTER (กรองบอทอัจฉริยะ)
+                # รวมคำศัพท์ที่เป็น AI ทั้งหมด ถ้าชื่อมีคำเหล่านี้ สคริปต์จะเตะทิ้งทันที!
+                bot_keywords = [
+                    "dummy", "bot", "ai_", "_ai",     # เป้าซ้อม และเครื่องบิน AI
+                    "target", "truck", "cannon",      # รถบรรทุก ปืนใหญ่ตามแมพ
+                    "aaa_", "artillery", "infantry",  # ปืนปตอ. ทหารราบ
+                    "ship", "boat", "freighter",       # เรือสินค้า AI
+                    "unit_","_technic_"
+                ]
+                
+                # ถ้าชื่อ Unit ตรงกับคำใดคำหนึ่งในลิตส์ ให้ข้ามเป้าหมายนี้ไปเลย
+                if any(kw in unit_name.lower() for kw in bot_keywords): 
+                    continue
+                
+                valid_targets.append((u_ptr, unit_name, reload_val, u_family))
 
             painter.setPen(QColor(255, 255, 0, 255))
-            painter.drawText(20, 70, f"🎯 Targets: {len(valid_targets)} | Team: {my_team}")
+            painter.drawText(20, 70, f"🎯 Real Players: {len(valid_targets)} | Team: {my_team}")
 
-            for u_ptr, raw_name, reload_val in valid_targets:
+            for u_ptr, raw_name, reload_val, u_family in valid_targets:
                 box_data = get_unit_3d_box_data(self.scanner, u_ptr)
                 if not box_data: continue
                 pos, bmin, bmax, R = box_data
@@ -108,29 +121,28 @@ class ESPOverlay(QWidget):
                         if clean_name.lower().startswith(p):
                             clean_name = clean_name[len(p):]; break
                     
-                    # 🏷️ 1. วาดข้อความชื่อและระยะทาง (ดันขึ้นไปนิดนึงเพื่อเว้นที่ให้หลอดกระสุน)
                     display_text = f"{clean_name.upper()}{dist_text}"
                     painter.setPen(QColor(0, 255, 255, 255)) 
                     text_w = painter.fontMetrics().boundingRect(display_text).width()
-                    painter.drawText(int(avg_x - text_w/2), int(min_y - 12), display_text)
                     
-                    # 🔫 2. คำนวณและวาดหลอด Reload Progress (กว้าง 40px)
-                    if 0 <= reload_val < 500: # กรองค่าขยะ
-                        # อัปเดตค่า Max กระสุนของคันนี้
+                    # ตรวจสอบเครื่องบิน (Family 0, 1, 2)
+                    is_air_target = (u_family in [0, 1, 2])
+                    
+                    # ถ้าไม่ใช่เครื่องบิน และค่าโหลดกระสุนถูกต้อง ให้วาดหลอด
+                    if not is_air_target and (0 <= reload_val < 500):
+                        painter.drawText(int(avg_x - text_w/2), int(min_y - 12), display_text)
+                        
                         if u_ptr not in self.max_reload_cache:
                             self.max_reload_cache[u_ptr] = reload_val
                         if reload_val > self.max_reload_cache[u_ptr]:
                             self.max_reload_cache[u_ptr] = reload_val
                             
                         max_val = self.max_reload_cache[u_ptr]
-                        
-                        # คำนวณเปอร์เซ็นต์หลอด (0 = เต็ม, max_val = หมด)
                         if reload_val == 0 or max_val == 0:
-                            progress = 1.0 # 100%
+                            progress = 1.0 
                         else:
                             progress = 1.0 - (float(reload_val) / float(max_val))
                             
-                        # วาดกล่องพื้นหลังหลอด (สีดำโปร่งแสง)
                         bar_w = 40
                         bar_h = 4
                         bar_x = int(avg_x - bar_w / 2)
@@ -140,14 +152,16 @@ class ESPOverlay(QWidget):
                         painter.setBrush(QColor(0, 0, 0, 150))
                         painter.drawRect(bar_x, bar_y, bar_w, bar_h)
                         
-                        # วาดความคืบหน้าของหลอด
                         fill_w = int(bar_w * progress)
                         if progress >= 0.99:
-                            painter.setBrush(QColor(0, 255, 0, 200))   # สีเขียว: พร้อมยิง
+                            painter.setBrush(QColor(0, 255, 0, 200))   
                         else:
-                            painter.setBrush(QColor(255, 165, 0, 200)) # สีส้ม: กำลังรีโหลด
+                            painter.setBrush(QColor(255, 165, 0, 200)) 
                         
                         painter.drawRect(bar_x, bar_y, fill_w, bar_h)
+                    else:
+                        # ถ้าเป็นเครื่องบิน วาดแค่ชื่อ ไม่ต้องวาดหลอด
+                        painter.drawText(int(avg_x - text_w/2), int(min_y - 8), display_text)
 
         except Exception: pass
         finally: painter.end()
