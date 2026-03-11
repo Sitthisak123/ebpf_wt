@@ -1,5 +1,6 @@
 import sys
 import math
+import time # 🚨 นำเข้าเวลามาทำอนิเมชั่นกระพริบ
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
@@ -13,6 +14,33 @@ from src.untils.mul import (
 
 SCREEN_WIDTH = 2560
 SCREEN_HEIGHT = 1440
+
+# ==========================================
+# 🧮 ฟังก์ชันคำนวณหามุมเล็งปืน (คณิตศาสตร์ 3D Vector)
+# ==========================================
+def is_aiming_at(barrel_base, barrel_tip, target_pos, threshold_degrees=6.0):
+    # หาเวกเตอร์ทิศทางปืนศัตรู (จากโคนไปปลายกระบอก)
+    dx = barrel_tip[0] - barrel_base[0]
+    dy = barrel_tip[1] - barrel_base[1]
+    dz = barrel_tip[2] - barrel_base[2]
+    
+    # หาเวกเตอร์จากตัวศัตรูชี้มาหา "ตัวเรา"
+    tx = target_pos[0] - barrel_base[0]
+    ty = target_pos[1] - barrel_base[1]
+    tz = target_pos[2] - barrel_base[2]
+    
+    len_d = math.sqrt(dx*dx + dy*dy + dz*dz)
+    len_t = math.sqrt(tx*tx + ty*ty + tz*tz)
+    
+    if len_d < 0.001 or len_t < 0.001: return False
+    
+    # Dot Product เพื่อหามุมองศา
+    dot_prod = (dx*tx + dy*ty + dz*tz) / (len_d * len_t)
+    dot_prod = max(-1.0, min(1.0, dot_prod)) # ป้องกัน Error
+    angle = math.degrees(math.acos(dot_prod))
+    
+    # ถ้ายิงมาในรัศมีองศาที่ตั้งไว้ แปลว่ามันเล็งเราอยู่!
+    return angle <= threshold_degrees
 
 class ESPOverlay(QWidget):
     def __init__(self, scanner, base_address):
@@ -36,7 +64,7 @@ class ESPOverlay(QWidget):
         try:
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             painter.setPen(QColor(0, 255, 0, 255))
-            painter.drawText(20, 40, "🟢 WTM TACTICAL RADAR: ANTI-BOT EDITION")
+            painter.drawText(20, 40, "🟢 WTM RADAR: THREAT ALERT SYSTEM ACTIVE")
 
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             if cgame_base == 0: return
@@ -61,23 +89,14 @@ class ESPOverlay(QWidget):
                 
                 u_team, u_state, unit_name, reload_val, u_family = status 
 
-                # 🛡️ 1. กรองสถานะความตายและทีม
                 if u_state >= 1: continue 
                 if my_team != 0 and u_team == my_team: continue
                 
-                # 🚨 2. SMART BOT FILTER (กรองบอทอัจฉริยะ)
-                # รวมคำศัพท์ที่เป็น AI ทั้งหมด ถ้าชื่อมีคำเหล่านี้ สคริปต์จะเตะทิ้งทันที!
                 bot_keywords = [
-                    "dummy", "bot", "ai_", "_ai",     # เป้าซ้อม และเครื่องบิน AI
-                    "target", "truck", "cannon",      # รถบรรทุก ปืนใหญ่ตามแมพ
-                    "aaa_", "artillery", "infantry",  # ปืนปตอ. ทหารราบ
-                    "ship", "boat", "freighter",       # เรือสินค้า AI
-                    "unit_","_technic_"
+                    "dummy", "bot", "ai_", "_ai", "target", "truck", 
+                    "cannon", "aaa_", "artillery", "infantry", "ship", "boat", "freighter"
                 ]
-                
-                # ถ้าชื่อ Unit ตรงกับคำใดคำหนึ่งในลิตส์ ให้ข้ามเป้าหมายนี้ไปเลย
-                if any(kw in unit_name.lower() for kw in bot_keywords): 
-                    continue
+                if any(kw in unit_name.lower() for kw in bot_keywords): continue
                 
                 valid_targets.append((u_ptr, unit_name, reload_val, u_family))
 
@@ -120,18 +139,55 @@ class ESPOverlay(QWidget):
                     for p in ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]:
                         if clean_name.lower().startswith(p):
                             clean_name = clean_name[len(p):]; break
-                    
-                    display_text = f"{clean_name.upper()}{dist_text}"
-                    painter.setPen(QColor(0, 255, 255, 255)) 
-                    text_w = painter.fontMetrics().boundingRect(display_text).width()
-                    
-                    # ตรวจสอบเครื่องบิน (Family 0, 1, 2)
+                            
                     is_air_target = (u_family in [0, 1, 2])
+                    y_offset = -12 if (not is_air_target and (0 <= reload_val < 500)) else -8
                     
-                    # ถ้าไม่ใช่เครื่องบิน และค่าโหลดกระสุนถูกต้อง ให้วาดหลอด
-                    if not is_air_target and (0 <= reload_val < 500):
-                        painter.drawText(int(avg_x - text_w/2), int(min_y - 12), display_text)
+                    # -----------------------------------------------------
+                    # 🚨 การจัดวางข้อความแบบใหม่ & แจ้งเตือนการเล็งเป้า (Aim Alert)
+                    # -----------------------------------------------------
+                    display_text = f"{clean_name.upper()}{dist_text}"
+                    fm = painter.fontMetrics()
+                    text_w = fm.boundingRect(display_text).width()
+                    
+                    # ตรวจสอบว่าศัตรูกำลังหันปืนมาที่เราหรือไม่?
+                    aiming_me = False
+                    if my_pos and barrel_data:
+                        aiming_me = is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=6.0)
+
+                    if aiming_me:
+                        dot_text = "● "
+                        dot_w = fm.width(dot_text)
+                        total_w = dot_w + text_w
+                        start_x = int(avg_x - total_w / 2)
+                        start_y = int(min_y + y_offset)
                         
+                        # 🔮 อนิเมชั่นเปลี่ยนสีแบบคลื่น Sine (เขียว 0,255,0 <---> ส้ม 255,165,0)
+                        t = (math.sin(time.time() * 12.0) + 1.0) / 2.0 # กระพริบรัวๆ เพื่อเรียกความสนใจ
+                        r = int(t * 255)
+                        g = int(255 - (t * 90))
+                        
+                        # 💡 วาด Effect แสงฟุ้งกระจาย (Bloom / Glow)
+                        painter.setPen(QColor(r, g, 0, 50))
+                        for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
+                            painter.drawText(start_x + ox, start_y + oy, dot_text)
+                            
+                        # วาด Dot หลักที่สว่างชัดเจน
+                        painter.setPen(QColor(r, g, 0, 255))
+                        painter.drawText(start_x, start_y, dot_text)
+                        
+                        # วาดชื่อเป้าหมายต่อท้าย
+                        painter.setPen(QColor(0, 255, 255, 255))
+                        painter.drawText(start_x + dot_w, start_y, display_text)
+                    else:
+                        # ถ้าไม่ได้เล็งเรา ก็แสดงชื่อแบบปกติ
+                        painter.setPen(QColor(0, 255, 255, 255))
+                        painter.drawText(int(avg_x - text_w/2), int(min_y + y_offset), display_text)
+
+                    # -----------------------------------------------------
+                    # 🔫 วาดหลอดกระสุน
+                    # -----------------------------------------------------
+                    if not is_air_target and (0 <= reload_val < 500):
                         if u_ptr not in self.max_reload_cache:
                             self.max_reload_cache[u_ptr] = reload_val
                         if reload_val > self.max_reload_cache[u_ptr]:
@@ -159,9 +215,6 @@ class ESPOverlay(QWidget):
                             painter.setBrush(QColor(255, 165, 0, 200)) 
                         
                         painter.drawRect(bar_x, bar_y, fill_w, bar_h)
-                    else:
-                        # ถ้าเป็นเครื่องบิน วาดแค่ชื่อ ไม่ต้องวาดหลอด
-                        painter.drawText(int(avg_x - text_w/2), int(min_y - 8), display_text)
 
         except Exception: pass
         finally: painter.end()
