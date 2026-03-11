@@ -15,12 +15,25 @@ from src.untils.mul import (
 SCREEN_WIDTH = 2560
 SCREEN_HEIGHT = 1440
 
-# ⚡ [OPTIMIZED & HANGAR FILTER]: เพิ่มคำกรองขยะหน้าเมนูหลักและช่างซ่อมบำรุง
+# =========================================================================
+# 🎨 COLOR CONFIGURATIONS (ตั้งค่าสี)
+# รูปแบบ: (Red, Green, Blue, Alpha ความโปร่งใส) ค่าตั้งแต่ 0 - 255
+# ==========================================
+COLOR_INFO_TEXT      = (255, 228, 64, 255)   # สีข้อความสถานะเรดาร์ (มุมซ้ายบน)
+COLOR_BARREL_LINE    = (0, 255, 0, 255)      # สีเส้นทิศทางปืน (เขียว)
+COLOR_BOX_TARGET     = (255, 68, 0, 200)     # สีเส้นกรอบศัตรู 3D (ส้มแดง FF4400)
+COLOR_TEXT_GROUND    = (0, 255, 255, 255)    # สีชื่อรถถัง (ฟ้า Cyan)
+COLOR_TEXT_AIR       = (255, 222, 66, 255)   # สีชื่อเครื่องบิน (เหลืองทอง FFDE42)
+COLOR_RELOAD_BG      = (0, 0, 0, 150)        # สีพื้นหลังหลอดกระสุน (ดำโปร่งแสง)
+COLOR_RELOAD_READY   = (0, 255, 0, 200)      # สีหลอดกระสุนตอนพร้อมยิง (เขียว)
+COLOR_RELOAD_LOADING = (255, 165, 0, 200)    # สีหลอดกระสุนตอนกำลังโหลด (ส้ม)
+# =========================================================================
+
 # ⚡ [OPTIMIZED & HANGAR FILTER]: เพิ่มคำกรองขยะหน้าเมนูหลัก, ช่างซ่อมบำรุง และวัตถุประกอบฉาก
 BOT_KEYWORDS = [
     "dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", 
     "aaa", "artillery", "infantry", "ship", "boat", "freighter",
-    "hangar", "technic", "vent", "railway", "freight"  # <--- เพิ่มตู้รถไฟและขยะประกอบฉากล่าสุด!
+    "hangar", "technic", "vent", "railway", "freight"  
 ]
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
 
@@ -53,7 +66,7 @@ class ESPOverlay(QWidget):
         self.center_x = SCREEN_WIDTH / 2
         self.center_y = SCREEN_HEIGHT / 2
         
-        self.seen_names = set() # ไว้สอดแนมชื่อใหม่ๆ
+        self.seen_names = set() 
         
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -61,7 +74,7 @@ class ESPOverlay(QWidget):
         self.setGeometry(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(16) # ~60 FPS
+        self.timer.start(16) 
 
     def paintEvent(self, event):
         painter = QPainter()
@@ -69,8 +82,8 @@ class ESPOverlay(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         try:
             painter.setFont(QFont("Arial", 12, QFont.Bold))
-            painter.setPen(QColor(0, 255, 0, 255))
-            painter.drawText(20, 40, "🟢 WTM TACTICAL RADAR: PRO UI V3")
+            painter.setPen(QColor(*COLOR_INFO_TEXT))
+            # painter.drawText(20, 40, "🟢 WTM TACTICAL RADAR: PRO UI V3")
 
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             if cgame_base == 0: return
@@ -108,9 +121,6 @@ class ESPOverlay(QWidget):
                 
                 valid_targets.append((u_ptr, unit_name, reload_val, is_air))
 
-            painter.setPen(QColor(255, 255, 0, 255))
-            painter.drawText(20, 70, f"🎯 Real Players: {len(valid_targets)} | Team: {my_team}")
-
             for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
                 box_data = get_unit_3d_box_data(self.scanner, u_ptr)
                 if not box_data: continue
@@ -127,7 +137,7 @@ class ESPOverlay(QWidget):
                     res_p1 = world_to_screen(view_matrix, p1[0], p1[1], p1[2], SCREEN_WIDTH, SCREEN_HEIGHT)
                     res_p2 = world_to_screen(view_matrix, p2[0], p2[1], p2[2], SCREEN_WIDTH, SCREEN_HEIGHT)
                     if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0:
-                        painter.setPen(QPen(QColor(0, 255, 0, 255), 2)) 
+                        painter.setPen(QPen(QColor(*COLOR_BARREL_LINE), 2)) 
                         painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
                         barrel_base_2d = res_p1 
 
@@ -138,7 +148,7 @@ class ESPOverlay(QWidget):
                     if res and res[2] >= 0.001: pts.append((res[0], res[1]))
                 
                 if len(pts) == 8:
-                    painter.setPen(QPen(QColor(255, 0, 0, 200), 2))
+                    painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
                     edges = [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]
                     for e1, e2 in edges: painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
                     
@@ -158,16 +168,14 @@ class ESPOverlay(QWidget):
                     has_reload_bar = (not is_air_target and (0 <= reload_val < 500))
                     
                     # -----------------------------------------------------
-                    # 🥷 ลอจิกซ่อนชื่อ Stealth Mode (อัปเดตตามคำสั่งนายพล!)
+                    # 🥷 ลอจิกซ่อนชื่อ Stealth Mode 
                     # -----------------------------------------------------
                     hide_name = False
                     if not is_air_target:
                         dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
                         if dist_to_crosshair < 350:
-                            # เล็งอยู่ -> โชว์ชื่อ
                             hide_name = False
                         else:
-                            # ไม่ได้เล็ง และอยู่ไกลเกิน 550m -> ซ่อนชื่อ
                             if dist > 550:
                                 hide_name = True
 
@@ -193,6 +201,7 @@ class ESPOverlay(QWidget):
                         dot_x = int(avg_x - dot_w / 2) 
                         dot_y = text_y - 14 
                         
+                        # ค่า r, g สำหรับการกระพริบ (ไม่ได้ดึงจาก Config เพราะต้องคำนวณสด)
                         t = (math.sin(time.time() * 15.0) + 1.0) / 2.0
                         r = int(t * 255)
                         g = int(255 - (t * 90))
@@ -214,10 +223,15 @@ class ESPOverlay(QWidget):
                         painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
 
                     # =====================================================
-                    
-                    painter.setPen(QColor(0, 255, 255, 255))
+                    # 🎨 นำตัวแปรสีมาใช้กับข้อความ
+                    if is_air_target:
+                        painter.setPen(QColor(*COLOR_TEXT_AIR))
+                    else:
+                        painter.setPen(QColor(*COLOR_TEXT_GROUND))
+                        
                     painter.drawText(int(avg_x - text_w/2), text_y, display_text)
 
+                    # 🎨 นำตัวแปรสีมาใช้กับหลอดกระสุน
                     if has_reload_bar:
                         if u_ptr not in self.max_reload_cache:
                             self.max_reload_cache[u_ptr] = reload_val
@@ -236,14 +250,14 @@ class ESPOverlay(QWidget):
                         bar_y = int(min_y - 8)
                         
                         painter.setPen(Qt.NoPen)
-                        painter.setBrush(QColor(0, 0, 0, 150))
+                        painter.setBrush(QColor(*COLOR_RELOAD_BG))
                         painter.drawRect(bar_x, bar_y, bar_w, bar_h)
                         
                         fill_w = int(bar_w * progress)
                         if progress >= 0.99:
-                            painter.setBrush(QColor(0, 255, 0, 200))   
+                            painter.setBrush(QColor(*COLOR_RELOAD_READY))   
                         else:
-                            painter.setBrush(QColor(255, 165, 0, 200)) 
+                            painter.setBrush(QColor(*COLOR_RELOAD_LOADING)) 
                         
                         painter.drawRect(bar_x, bar_y, fill_w, bar_h)
 
