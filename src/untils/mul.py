@@ -13,6 +13,12 @@ OFF_UNIT_ROTATION = 0xB14
 OFF_UNIT_BBMIN = 0x230 
 OFF_UNIT_BBMAX = 0x23C 
 
+OFF_AIR_MOVEMENT = 0x18       # 🎯 2026 Verified: Pointer ฟิสิกส์เครื่องบิน
+OFF_AIR_VEL = 0x0318          # 🎯 2026 Verified: ความเร็วเครื่องบิน (แกน X, Y, Z)
+
+OFF_GROUND_MOVEMENT = 0x1b30  # 🎯 2026 Verified: Pointer รถถัง (ขยับจาก 1b38 เป็น 1b30)
+OFF_GROUND_VEL = 0x54         # 🎯 2026 Verified: ความเร็วรถถัง
+
 def is_valid_ptr(p): 
     return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
 
@@ -255,5 +261,50 @@ def get_unit_status(scanner, u_ptr):
             except: pass
                 
         return team, state, unit_name, reload_val
+    except Exception:
+        return None
+    
+
+# ===================================================
+# นำไปแทนที่ฟังก์ชัน get_unit_velocity เดิมด้านล่างสุดของ mul.py
+# ===================================================
+def get_unit_velocity(scanner, u_ptr, is_air):
+    if u_ptr == 0: return None
+    try:
+        # --- ✈️ สำหรับเครื่องบิน (Air Units) ---
+        if is_air:
+            # 1. เข้าไปที่ Pointer โครงสร้างการบิน
+            raw_move_ptr = scanner.read_mem(u_ptr + OFF_AIR_MOVEMENT, 8)
+            if not raw_move_ptr: return None
+            move_ptr = struct.unpack("<Q", raw_move_ptr)[0]
+            if not is_valid_ptr(move_ptr): return None
+            
+            # 2. ดึงค่า Velocity แกน X, Y, Z แบบ Float (32-bit) รวม 12 Bytes
+            vel_data = scanner.read_mem(move_ptr + OFF_AIR_VEL, 12)
+            if not vel_data or len(vel_data) < 12: return None
+            
+            vx, vy, vz = struct.unpack("<fff", vel_data)
+            
+            # 3. กรองค่าขยะเพื่อความปลอดภัย
+            if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return None
+            if abs(vx) > 5000 or abs(vy) > 5000 or abs(vz) > 5000: return None
+            return (vx, vy, vz)
+            
+        # --- 🚙 สำหรับรถถัง (Ground Units) ---
+        else:
+            raw_move_ptr = scanner.read_mem(u_ptr + OFF_GROUND_MOVEMENT, 8)
+            if not raw_move_ptr: return None
+            move_ptr = struct.unpack("<Q", raw_move_ptr)[0]
+            if not is_valid_ptr(move_ptr): return None
+            
+            vel_data = scanner.read_mem(move_ptr + OFF_GROUND_VEL, 12)
+            if not vel_data or len(vel_data) < 12: return None
+            
+            vx, vy, vz = struct.unpack("<fff", vel_data)
+            
+            if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return None
+            if abs(vx) > 5000 or abs(vy) > 5000 or abs(vz) > 5000: return None
+            return (vx, vy, vz)
+            
     except Exception:
         return None
