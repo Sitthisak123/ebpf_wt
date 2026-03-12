@@ -28,7 +28,7 @@ COLOR_TEXT_AIR       = (255, 222, 66, 255)
 COLOR_RELOAD_BG      = (0, 0, 0, 150)        
 COLOR_RELOAD_READY   = (0, 255, 0, 200)      
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (255, 0, 50, 255)     # 🔴 สีเป้าดักยิง (แดง)
+COLOR_PREDICTION     = (0, 255, 50, 255)     # 🔴 สีเป้าดักยิง (แดง)
 
 BULLET_GRAVITY       = 9.81   # แรงโน้มถ่วง
 # =========================================================================
@@ -177,13 +177,13 @@ class ESPOverlay(QWidget):
                     avg_y = sum([p[1] for p in pts]) / 8.0  
                     
                     # -----------------------------------------------------
-                    # 🚀 LETHAL INJECTION: THE ULTIMATE BALLISTICS ENGINE
+                    # 🚀 LETHAL INJECTION: ANTI-JITTER BALLISTICS ENGINE
                     # -----------------------------------------------------
                     vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
                     if vel and my_pos and dist > 10.0:
                         vx, vy, vz = vel
                         
-                        # 🌟 1. ACCELERATION TRACKING (คำนวณการเลี้ยว)
+                        # 🌟 1. ADVANCED ACCELERATION TRACKING (Anti-Jitter)
                         curr_t = time.time()
                         if u_ptr not in self.target_history:
                             self.target_history[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (0.0, 0.0, 0.0)}
@@ -191,32 +191,41 @@ class ESPOverlay(QWidget):
                         else:
                             hist = self.target_history[u_ptr]
                             dt = curr_t - hist['t']
-                            if dt > 0.005: # ป้องกันตัวหารเป็นศูนย์
+                            
+                            # อัปเดตเมื่อผ่านไปอย่างน้อย 0.015s เพื่อป้องกัน Memory Noise 
+                            if dt >= 0.015: 
                                 l_vx, l_vy, l_vz = hist['v']
                                 l_ax, l_ay, l_az = hist['a']
                                 
-                                # หักลบความเร็วเก่ากับใหม่เพื่อหาความเร่ง (m/s^2)
                                 raw_ax = (vx - l_vx) / dt
                                 raw_ay = (vy - l_vy) / dt
                                 raw_az = (vz - l_vz) / dt
                                 
-                                # EMA Smoothing กรองอาการเป้าสั่น (0.15s window)
-                                alpha = 1.0 - math.exp(-dt / 0.15)
+                                # EMA Smoothing กรองอาการเป้าสั่น (ใช้หน้าต่าง 0.25 วินาที ให้นิ่งขึ้น)
+                                smooth_time = 0.25
+                                alpha = dt / (smooth_time + dt)
+                                
                                 ax = l_ax + alpha * (raw_ax - l_ax)
                                 ay = l_ay + alpha * (raw_ay - l_ay)
                                 az = l_az + alpha * (raw_az - l_az)
                                 
-                                # ล็อกเพดานแรงจี ป้องกันเป้ากระโดดทะลุมิติ (15G Limit)
-                                max_g = 150.0
-                                ax = max(-max_g, min(max_g, ax))
-                                ay = max(-max_g, min(max_g, ay))
-                                az = max(-max_g, min(max_g, az))
+                                # 🛡️ 1. Vector Magnitude Limit (ล็อกแรงจี 12G ป้องกันเป้ากระตุกทะลุมิติ)
+                                a_mag = math.sqrt(ax*ax + ay*ay + az*az)
+                                if a_mag > 120.0:
+                                    scale = 120.0 / a_mag
+                                    ax *= scale
+                                    ay *= scale
+                                    az *= scale
+                                    
+                                # 🛡️ 2. Deadzone: ถ้าความเร่งน้อยกว่า 2.0 m/s^2 ถือว่ากำลังบินตรง ตัดค่ารบกวนทิ้ง
+                                if a_mag < 2.0:
+                                    ax, ay, az = 0.0, 0.0, 0.0
                                 
                                 self.target_history[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (ax, ay, az)}
                             else:
                                 ax, ay, az = hist['a']
                         # -----------------------------------------------------
-
+                        
                         wc_x = sum([c[0] for c in corners_3d]) / 8.0
                         wc_y = sum([c[1] for c in corners_3d]) / 8.0
                         wc_z = sum([c[2] for c in corners_3d]) / 8.0
@@ -225,7 +234,7 @@ class ESPOverlay(QWidget):
                         if current_zeroing > 0 and current_bullet_speed > 0:
                             t_z = current_zeroing / current_bullet_speed
                             drop_z = 0.5 * BULLET_GRAVITY * (t_z * t_z)
-                            zero_angle_tan = drop_z / current_zeroing # องศาเชิดปืนที่ถูกต้อง
+                            zero_angle_tan = drop_z / current_zeroing
                         else:
                             zero_angle_tan = 0.0
                             
@@ -233,14 +242,13 @@ class ESPOverlay(QWidget):
                             base_cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
                             mach = current_bullet_speed / 343.0 
                             
-                            # Mach Drag Modification (ลดแรงต้านปืนกลเวลาเร็วกว่าเสียง)
                             drag_mult = 1.0
                             if mach > 1.2: drag_mult = 1.0 - (mach - 1.2) * 0.15
                             elif mach < 0.8: drag_mult = 0.85 
                             drag_mult = max(0.35, min(1.2, drag_mult))
                             
                             Cd = base_cd * drag_mult
-                            rho = 1.225 # ความหนาแน่นระดับน้ำทะเล
+                            rho = 1.225 
                             area = math.pi * ((current_bullet_caliber / 2.0) ** 2)
                             k = (0.5 * rho * Cd * area) / current_bullet_mass
                         else:
@@ -249,7 +257,7 @@ class ESPOverlay(QWidget):
                         pred_x, pred_y, pred_z = wc_x, wc_y, wc_z
                         t = 0.0
                         
-                        # 🧠 3. ITERATIVE SOLVER (คำนวณล่วงหน้า 5 รอบ)
+                        # 🧠 3. ITERATIVE SOLVER
                         for _ in range(5):
                             dx = pred_x - my_pos[0]
                             dy = pred_y - (my_pos[1] + 1.5) 
@@ -259,22 +267,24 @@ class ESPOverlay(QWidget):
                             if current_bullet_speed > 0:
                                 if k > 0.000001:
                                     kx = k * current_dist
-                                    if kx > 4.0: kx = 4.0 # กันสมการพัง
+                                    if kx > 4.0: kx = 4.0 
                                     t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
                                 else:
                                     t = current_dist / current_bullet_speed
                             else:
                                 t = 0
                                 
-                            # คำนวณระยะตก และหักล้างศูนย์เล็ง (แบบ Angular)
                             drop = 0.5 * BULLET_GRAVITY * (t * t)
                             sight_drop_comp = current_dist * zero_angle_tan 
                             net_drop = drop - sight_drop_comp
                             
-                            # 🎯 [สมการสุดท้าย] เพิ่ม 0.5 * a * t^2 เพื่อกะจังหวะเลี้ยว!!
-                            pred_x = wc_x + ((vx - my_vx) * t) + (0.5 * ax * t * t)
-                            pred_y = wc_y + ((vy - my_vy) * t) + (0.5 * ay * t * t) + net_drop 
-                            pred_z = wc_z + ((vz - my_vz) * t) + (0.5 * az * t * t)
+                            # 🛡️ 3. Circular Turn Dampening (ล็อกเวลาการคำนวณความเร่ง)
+                            # ป้องกันสมการ 0.5 * a * t^2 ระเบิดเมื่อเวลายิงไกลเกิน 1.2 วินาที
+                            accel_t = min(t, 1.2) 
+                            
+                            pred_x = wc_x + ((vx - my_vx) * t) + (0.5 * ax * accel_t * accel_t)
+                            pred_y = wc_y + ((vy - my_vy) * t) + (0.5 * ay * accel_t * accel_t) + net_drop 
+                            pred_z = wc_z + ((vz - my_vz) * t) + (0.5 * az * accel_t * accel_t)
                         
                         # วาดลงบนหน้าจอ
                         pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -288,7 +298,6 @@ class ESPOverlay(QWidget):
                             painter.drawEllipse(int(pred_screen[0]) - 1, int(pred_screen[1]) - 1, 2, 2)
                             painter.setBrush(Qt.NoBrush)
                     # -----------------------------------------------------
-                    
                     clean_name = raw_name
                     for p in NAME_PREFIXES:
                         if clean_name.lower().startswith(p): clean_name = clean_name[len(p):]; break
