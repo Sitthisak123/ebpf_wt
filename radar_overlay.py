@@ -6,11 +6,12 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
 from main import MemoryScanner, get_game_pid, get_game_base_address
 
-# 🚨 อย่าลืม! เราต้อง Import get_unit_velocity เข้ามาด้วย
+# 🚨 นำเข้า Offset และ ฟังก์ชันดึงระยะศูนย์เล็ง (Sight Compensation)
 from src.untils.mul import (
     get_cgame_base, get_view_matrix, world_to_screen, 
     get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel,
-    get_local_team, get_unit_status, get_unit_pos, get_unit_velocity, get_bullet_speed
+    get_local_team, get_unit_status, get_unit_pos, get_unit_velocity, get_bullet_speed,
+    get_sight_compensation_factor, get_bullet_caliber, get_bullet_mass
 )
 
 SCREEN_WIDTH = 2560
@@ -29,9 +30,7 @@ COLOR_RELOAD_READY   = (0, 255, 0, 200)
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
 COLOR_PREDICTION     = (255, 0, 50, 255)     # 🔴 สีเป้าดักยิง (แดง)
 
-# 🚀 ตั้งค่าอาวุธของคุณ (TWEAK HERE)
-MY_BULLET_SPEED      = 1000.0 # ความเร็วกระสุนของรถถัง/เครื่องบินคุณ (m/s) (แก้ให้ตรงกับกระสุนที่ใช้)
-BULLET_GRAVITY       = 9.81   # แรงโน้มถ่วง (ใช้เผื่อกระสุนย้อยตก)
+BULLET_GRAVITY       = 9.81   # แรงโน้มถ่วง
 # =========================================================================
 
 BOT_KEYWORDS = [
@@ -86,18 +85,27 @@ class ESPOverlay(QWidget):
             if not view_matrix: return
 
             # =========================================================
-            # 🌟 [อัปเดต] โชว์ความเร็วกระสุนปัจจุบันที่มุมซ้ายบนของจอ!
+            # 🌟 ดึงข้อมูลกระสุนทั้งหมดแบบ Real-time
             # =========================================================
             current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
+            current_zeroing = get_sight_compensation_factor(self.scanner, self.base_address)
+            current_bullet_mass = get_bullet_mass(self.scanner, cgame_base)
+            current_bullet_caliber = get_bullet_caliber(self.scanner, cgame_base)
+            
             painter.setPen(QColor(*COLOR_INFO_TEXT))
             painter.drawText(20, 30, f"🔫 WTM TACTICAL RADAR ACTIVE")
-            painter.drawText(20, 50, f"⚡ MUZZLE VELOCITY : {current_bullet_speed:.0f} m/s")
+            painter.drawText(20, 50, f"⚡ VELOCITY : {current_bullet_speed:.0f} m/s")
+            painter.drawText(20, 70, f"🔭 ZEROING  : {current_zeroing:.0f} m")
+            
+            if current_bullet_mass > 0:
+                painter.drawText(20, 90, f"⚖️ SHELL    : {current_bullet_mass:.1f}kg | {current_bullet_caliber*1000:.0f}mm")
             # =========================================================
 
             all_units_data = get_all_units(self.scanner, cgame_base) 
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
+            my_is_air = False
             for u_ptr, is_air in all_units_data:
                 if u_ptr == my_unit:
                     my_is_air = is_air
@@ -160,70 +168,73 @@ class ESPOverlay(QWidget):
                     avg_y = sum([p[1] for p in pts]) / 8.0  
                     
                     # -----------------------------------------------------
-                    # 🚀 LETHAL INJECTION: PREDICTION LEAD MARKER (เป้าดักยิง)
+                    # 🚀 LETHAL INJECTION: PREDICTION LEAD MARKER
                     # -----------------------------------------------------
                     vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
-                    if vel and dist > 20.0:
+                    if vel and my_pos and dist > 10.0:
                         vx, vy, vz = vel
-                        speed_sq = vx*vx + vy*vy + vz*vz
+                        wc_x = sum([c[0] for c in corners_3d]) / 8.0
+                        wc_y = sum([c[1] for c in corners_3d]) / 8.0
+                        wc_z = sum([c[2] for c in corners_3d]) / 8.0
                         
-                        if speed_sq > 1.0:
-                            current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
+                        # 🧠 DYNAMIC DRAG COEF (สมการแอโรไดนามิกส์ 100%)
+                        if current_bullet_mass > 0 and current_bullet_caliber > 0:
+                            # 1.0 คือค่าคงที่ฐาน (ปรับลดได้ถ้าเป้าตกช้าไป แนะนำ 0.8 - 1.2)
+                            DRAG_COEF = 1.0 * (current_bullet_caliber * current_bullet_caliber) / current_bullet_mass
                             
-                            # หาจุดกึ่งกลาง 3D ของศัตรู (จุดเริ่มต้นการดักยิง)
-                            wc_x = sum([c[0] for c in corners_3d]) / 8.0
-                            wc_y = sum([c[1] for c in corners_3d]) / 8.0
-                            wc_z = sum([c[2] for c in corners_3d]) / 8.0
+                            # ปรับแต่งแรงต้านพิเศษตามชนิดกระสุน (Shape Factor)
+                            if current_bullet_speed > 1400.0:  # APFSDS ลู่ลมทะลวงอากาศ
+                                DRAG_COEF = DRAG_COEF * 0.8
+                            elif current_bullet_mass < 15.0 and current_bullet_caliber > 0.1: # HEATFS มีครีบต้านลม
+                                DRAG_COEF = DRAG_COEF * 1.2
+                        else:
+                            DRAG_COEF = 0.0005 # ค่าสำรอง
                             
-                            # 🌟 [อัปเดตระดับบอส] ตัวแปรแรงต้านอากาศ (Drag Coefficient)
-                            # ค่าประมาณสำหรับ War Thunder: 0.0005 (ทำให้กระสุนช้าลงตามระยะทาง)
-                            DRAG_COEF = 0.0005 
+                        # 🎯 คำนวณชดเชยระยะศูนย์เล็ง
+                        t_sight = current_zeroing / current_bullet_speed if current_bullet_speed > 0 else 0
+                        sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
+
+                        pred_x, pred_y, pred_z = wc_x, wc_y, wc_z
+                        t = 0.0
+                        
+                        # 🧠 ระบบ Iterative Solver 5 รอบ
+                        for _ in range(5):
+                            dx = pred_x - my_pos[0]
+                            dy = pred_y - (my_pos[1] + 1.5)
+                            dz = pred_z - my_pos[2]         
+                            current_dist = math.sqrt(dx*dx + dy*dy + dz*dz)
                             
-                            pred_x, pred_y, pred_z = wc_x, wc_y, wc_z
-                            t = 0.0
-                            
-                            # 🧠 ระบบคำนวณแบบวนลูป (Iterative Solver): จำลองอนาคตซ้ำ 5 รอบเพื่อความแม่นยำ 99.9%
-                            for _ in range(5):
-                                # หาระยะห่างใหม่ จากปืนเรา ไปยัง "เป้าหมายในอนาคต"
-                                dx = pred_x - my_pos[0]
-                                dy = pred_y - my_pos[1]
-                                dz = pred_z - my_pos[2]
-                                current_dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                                
-                                # คำนวณเวลาบินของกระสุน พร้อมหักล้างแรงต้านอากาศ
-                                if current_bullet_speed > 0:
-                                    if DRAG_COEF > 0:
-                                        # สมการหาเวลาแบบมีแรงต้านอากาศ t = -ln(1 - (drag * dist / velocity)) / drag
-                                        val = 1.0 - (DRAG_COEF * current_dist / current_bullet_speed)
-                                        if val > 0.01:
-                                            t = -math.log(val) / DRAG_COEF
-                                        else:
-                                            t = current_dist / current_bullet_speed
-                                    else:
-                                        t = current_dist / current_bullet_speed
+                            # คำนวณเวลาบิน (Drag)
+                            if current_bullet_speed > 0:
+                                val = 1.0 - (DRAG_COEF * current_dist / current_bullet_speed)
+                                if val > 0.01:
+                                    t = -math.log(val) / DRAG_COEF
                                 else:
-                                    t = 0
-                                    
-                                # คำนวณกระสุนย้อย (Gravity Drop) ที่เวลา t ใหม่
-                                drop = 0.5 * BULLET_GRAVITY * (t * t)
+                                    t = current_dist / current_bullet_speed
+                            else:
+                                t = 0
                                 
-                                # อัปเดตพิกัดอนาคตใหม่ (เอาความเร็วสัมพัทธ์ * เวลาบินที่อัปเดตแล้ว + กระสุนย้อย)
-                                pred_x = wc_x + ((vx - my_vx) * t)
-                                pred_y = wc_y + ((vy - my_vy) * t)
-                                pred_z = wc_z + ((vz - my_vz) * t) + drop 
+                            # คำนวณกระสุนย้อยจริง และ หักล้างศูนย์เล็ง
+                            drop = 0.5 * BULLET_GRAVITY * (t * t)
+                            net_drop = drop - sight_drop_comp
                             
-                            # 4. แปลงพิกัดอนาคตที่แม่นยำที่สุด เป็นจุดบนหน้าจอ
-                            pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
-                            
-                            if pred_screen and pred_screen[2] > 0:
-                                painter.setPen(QPen(QColor(255, 0, 50, 100), 1, Qt.DashLine))
-                                painter.drawLine(int(avg_x), int(avg_y), int(pred_screen[0]), int(pred_screen[1]))
-                                painter.setPen(QPen(QColor(*COLOR_PREDICTION), 2))
-                                painter.drawEllipse(int(pred_screen[0]) - 5, int(pred_screen[1]) - 5, 10, 10)
-                                painter.setBrush(QColor(*COLOR_PREDICTION))
-                                painter.drawEllipse(int(pred_screen[0]) - 1, int(pred_screen[1]) - 1, 2, 2)
-                                painter.setBrush(Qt.NoBrush)
-                    # -----------------------------------------------------
+                            # อัปเดตพิกัด (แกน Y คือความสูง)
+                            pred_x = wc_x + ((vx - my_vx) * t)
+                            pred_y = wc_y + ((vy - my_vy) * t) + net_drop 
+                            pred_z = wc_z + ((vz - my_vz) * t)
+                        
+                        # แปลงเป็นจุดบนหน้าจอ
+                        pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
+                        
+                        if pred_screen and pred_screen[2] > 0:
+                            painter.setPen(QPen(QColor(255, 0, 50, 100), 1, Qt.DashLine))
+                            painter.drawLine(int(avg_x), int(avg_y), int(pred_screen[0]), int(pred_screen[1]))
+                            painter.setPen(QPen(QColor(*COLOR_PREDICTION), 2))
+                            painter.drawEllipse(int(pred_screen[0]) - 5, int(pred_screen[1]) - 5, 10, 10)
+                            painter.setBrush(QColor(*COLOR_PREDICTION))
+                            painter.drawEllipse(int(pred_screen[0]) - 1, int(pred_screen[1]) - 1, 2, 2)
+                            painter.setBrush(Qt.NoBrush)
+                    
                     clean_name = raw_name
                     for p in NAME_PREFIXES:
                         if clean_name.lower().startswith(p): clean_name = clean_name[len(p):]; break
@@ -255,8 +266,8 @@ class ESPOverlay(QWidget):
                         dot_w = fm.boundingRect(dot_text).width()
                         dot_x = int(avg_x - dot_w / 2) 
                         dot_y = text_y - 14 
-                        t = (math.sin(time.time() * 15.0) + 1.0) / 2.0
-                        r, g = int(t * 255), int(255 - (t * 90))
+                        t_anim = (math.sin(time.time() * 15.0) + 1.0) / 2.0
+                        r, g = int(t_anim * 255), int(255 - (t_anim * 90))
                         
                         painter.setPen(QColor(r, g, 0, 50))
                         for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
@@ -266,7 +277,7 @@ class ESPOverlay(QWidget):
 
                         line_dest_x = barrel_base_2d[0] if barrel_base_2d else avg_x
                         line_dest_y = barrel_base_2d[1] if barrel_base_2d else avg_y
-                        glow_thickness = max(3, int(t * 6))
+                        glow_thickness = max(3, int(t_anim * 6))
                         painter.setPen(QPen(QColor(r, g, 0, 80), glow_thickness))
                         painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
                         painter.setPen(QPen(QColor(r, g, 0, 255), 2))
@@ -295,7 +306,9 @@ class ESPOverlay(QWidget):
                         else: painter.setBrush(QColor(*COLOR_RELOAD_LOADING)) 
                         painter.drawRect(bar_x, bar_y, fill_w, bar_h)
 
-        except Exception: pass
+        except Exception as e: 
+            print(e)
+            pass
         finally: painter.end()
 
 if __name__ == '__main__':

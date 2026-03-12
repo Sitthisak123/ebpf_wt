@@ -1,7 +1,9 @@
 import struct
 import math
 
-# --- 🎯 2026 Verified Offsets ---
+# ===================================================
+# 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
+# ===================================================
 GHIDRA_BASE = 0x400000
 DAT_MANAGER = 0x093924e0
 MANAGER_OFFSET = DAT_MANAGER - GHIDRA_BASE
@@ -13,14 +15,38 @@ OFF_UNIT_ROTATION = 0xB14
 OFF_UNIT_BBMIN = 0x230 
 OFF_UNIT_BBMAX = 0x23C 
 
-OFF_AIR_MOVEMENT = 0x18       # 🎯 2026 Verified: Pointer ฟิสิกส์เครื่องบิน
-OFF_AIR_VEL = 0x0318          # 🎯 2026 Verified: ความเร็วเครื่องบิน (แกน X, Y, Z)
+OFF_AIR_MOVEMENT = 0x18       # ✈️ Pointer ฟิสิกส์เครื่องบิน
+OFF_AIR_VEL = 0x0318          # ✈️ ความเร็วเครื่องบิน (แกน X, Y, Z)
 
-OFF_GROUND_MOVEMENT = 0x1b30  # 🎯 2026 Verified: Pointer รถถัง (ขยับจาก 1b38 เป็น 1b30)
-OFF_GROUND_VEL = 0x54         # 🎯 2026 Verified: ความเร็วรถถัง
+OFF_GROUND_MOVEMENT = 0x1b30  # 🚙 Pointer รถถัง
+OFF_GROUND_VEL = 0x54         # 🚙 ความเร็วรถถัง
 
-OFF_WEAPON_PTR = 0x0408       # 🎯 2026 Verified: Pointer อาวุธ (Ballistics)
-OFF_BULLET_SPEED = 0x1f20     # 🎯 2026 Verified: ความเร็วกระสุน (Muzzle Velocity)
+OFF_WEAPON_PTR = 0x0408       # 🔫 Pointer อาวุธ (Ballistics)
+OFF_BULLET_SPEED = 0x1f20     # 🔫 ความเร็วกระสุน (Muzzle Velocity)
+
+OFF_SIGHT_RAW = 0x1FA4        # 🔭 ค่าดิบของการตั้งศูนย์เล็ง (Sight Distance Compensation)
+
+OFF_WEAPON_PTR = 0x0408       # 🔫 Pointer อาวุธ (Ballistics)
+OFF_BULLET_SPEED = 0x1f20     # 🔫 ความเร็วกระสุน (Muzzle Velocity)
+OFF_BULLET_MASS = 0x1F2C      # ⚖️ มวลกระสุน (Projectile Mass) [Confirmed!]
+
+# (ถ้าท่านอยากจะเก็บตัวอื่นไว้ด้วย เผื่อทำระบบคำนวณขั้นสูงในอนาคต)
+OFF_BULLET_CALIBER = 0x1F30   # 📏 ขนาดกระสุน (มิลลิเมตร/1000)
+
+SIGHT_POINTER_CHAINS = [
+    [0x76638, 0x2C20, 0x20F8, 0x1C28],
+    [0x3830,  0xD50,  0x1848, 0x1C28],
+    [0xC538,  0x2C18, 0x1058, 0x1C28],
+    [0x76640, 0x2C20, 0x20D8, 0x1C28],
+    [0x76608, 0x2BC0, 0x2138, 0x1C28]
+]
+
+OFF_WEAPON_PTR = 0x0408       
+OFF_BULLET_SPEED = 0x1f20     
+OFF_BULLET_MASS = 0x1F2C      # ⚖️ มวลกระสุน (kg)
+OFF_BULLET_CALIBER = 0x1F30   # 📏 หน้าตัดกระสุน (m)
+
+# ===================================================
 
 def is_valid_ptr(p): 
     return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
@@ -244,7 +270,6 @@ def get_unit_status(scanner, u_ptr):
         if info_raw:
             info_ptr = struct.unpack("<Q", info_raw)[0]
             if is_valid_ptr(info_ptr):
-                # 🚀 ตัดระบบหา Family ID ทิ้ง! (เพราะเราแยกประเภทมาจาก Source Array เรียบร้อยแล้ว)
                 name_ptr_raw = scanner.read_mem(info_ptr + 0x28, 8)
                 if name_ptr_raw:
                     name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
@@ -266,29 +291,22 @@ def get_unit_status(scanner, u_ptr):
         return team, state, unit_name, reload_val
     except Exception:
         return None
-    
 
-# ===================================================
-# นำไปแทนที่ฟังก์ชัน get_unit_velocity เดิมด้านล่างสุดของ mul.py
-# ===================================================
 def get_unit_velocity(scanner, u_ptr, is_air):
     if u_ptr == 0: return None
     try:
         # --- ✈️ สำหรับเครื่องบิน (Air Units) ---
         if is_air:
-            # 1. เข้าไปที่ Pointer โครงสร้างการบิน
             raw_move_ptr = scanner.read_mem(u_ptr + OFF_AIR_MOVEMENT, 8)
             if not raw_move_ptr: return None
             move_ptr = struct.unpack("<Q", raw_move_ptr)[0]
             if not is_valid_ptr(move_ptr): return None
             
-            # 2. ดึงค่า Velocity แกน X, Y, Z แบบ Float (32-bit) รวม 12 Bytes
             vel_data = scanner.read_mem(move_ptr + OFF_AIR_VEL, 12)
             if not vel_data or len(vel_data) < 12: return None
             
             vx, vy, vz = struct.unpack("<fff", vel_data)
             
-            # 3. กรองค่าขยะเพื่อความปลอดภัย
             if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return None
             if abs(vx) > 5000 or abs(vy) > 5000 or abs(vz) > 5000: return None
             return (vx, vy, vz)
@@ -312,7 +330,7 @@ def get_unit_velocity(scanner, u_ptr, is_air):
     except Exception:
         return None
     
-    # ===================================================
+# ===================================================
 # 🚀 ฟังก์ชันดึงความเร็วกระสุนของปืนปัจจุบัน (Dynamic Bullet Speed)
 # ===================================================
 def get_bullet_speed(scanner, cgame_base):
@@ -321,24 +339,121 @@ def get_bullet_speed(scanner, cgame_base):
         if not raw_weapon_ptr: return 1000.0
         
         weapon_ptr = struct.unpack("<Q", raw_weapon_ptr)[0]
-        if not is_valid_ptr(weapon_ptr): 
-            print("get_bullet_speed: weapon_ptr")    
-            return 1000.0
+        if not is_valid_ptr(weapon_ptr): return 1000.0
         
-        # ดึงความเร็วแบบ Float
         speed_data = scanner.read_mem(weapon_ptr + OFF_BULLET_SPEED, 4)
-        if not speed_data:
-            print("get_bullet_speed: speed_data")    
-            return 1000.0
+        if not speed_data: return 1000.0
         
         speed = struct.unpack("<f", speed_data)[0]
         
-        # กรองความเร็วเฉพาะที่เป็นไปได้ของกระสุน (50 m/s ถึง 3000 m/s)
         if math.isfinite(speed) and 50.0 < speed < 3000.0:
             return speed
 
-        print("get_bullet_speed: fail")    
-        return 1000
+        return 1000.0
     except Exception:
-        print("get_bullet_speed: Exception")    
-        return 1000
+        return 1000.0
+
+# ===================================================
+# 🔭 ฟังก์ชันดึงระยะศูนย์เล็งตรงๆ (100% Accurate via Pointer Chain)
+# ===================================================
+# ใช้เส้นทาง Golden Paths จาก aces[4]
+
+def get_pince_segment(pid, segment_idx=4):
+    """ ดึง Base Address ของ aces[4] แบบเดียวกับที่ PINCE ทำ """
+    segments = []
+    try:
+        with open(f"/proc/{pid}/maps", "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 6 and 'aces' in parts[-1] and not '.so' in parts[-1]:
+                    start_addr = int(parts[0].split('-')[0], 16)
+                    if start_addr not in segments:
+                        segments.append(start_addr)
+        
+        if len(segments) > segment_idx:
+            return segments[segment_idx]
+        elif segments:
+            return segments[-1]
+    except Exception:
+        pass
+    return 0
+
+def get_sight_compensation_factor(scanner, base_addr): # base_addr ตรงนี้จะไม่ใช้ตรงๆ แล้ว
+    # ดึง PID จาก scanner เพื่อไปหา aces[4]
+    pid = scanner.pid if hasattr(scanner, 'pid') else None
+    if not pid: return 0.0
+    
+    aces_4_base = get_pince_segment(pid, 4)
+    if aces_4_base == 0: return 0.0
+    
+    for chain in SIGHT_POINTER_CHAINS:
+        try:
+            # 1. เริ่มจาก aces[4] Base Address
+            raw_base_ptr = scanner.read_mem(aces_4_base + chain[0], 8)
+            if not raw_base_ptr: continue
+            ptr = struct.unpack("<Q", raw_base_ptr)[0]
+            if not is_valid_ptr(ptr): continue
+            
+            # 2. ไต่ตาม Offset
+            valid_chain = True
+            for offset in chain[1:-1]:
+                raw_ptr = scanner.read_mem(ptr + offset, 8)
+                if not raw_ptr:
+                    valid_chain = False; break
+                ptr = struct.unpack("<Q", raw_ptr)[0]
+                if not is_valid_ptr(ptr):
+                    valid_chain = False; break
+            
+            if not valid_chain: continue
+            
+            # 3. อ่านค่า Float จาก Offset สุดท้าย (0x1C28)
+            data = scanner.read_mem(ptr + chain[-1], 4)
+            if data:
+                val = struct.unpack("<f", data)[0]
+                
+                # 🎯 ถ้าระยะเป็น -1.0 (Unset) ให้คืนค่า 0.0 เมตร
+                if val < 0.0:
+                    return 0.0
+                # 🎯 ถ้าระยะปกติ คืนค่าเมตรตามจริง
+                elif math.isfinite(val) and 0.0 <= val <= 10000.0:
+                    return val
+        except Exception:
+            continue
+            
+    return 0.0
+
+# ===================================================
+# ⚖️ ฟังก์ชันดึงมวลกระสุน (Projectile Mass)
+# ===================================================
+def get_bullet_mass(scanner, cgame_base):
+    try:
+        w_ptr_raw = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
+        if not w_ptr_raw: return 0.0
+        w_ptr = struct.unpack("<Q", w_ptr_raw)[0]
+        if not is_valid_ptr(w_ptr): return 0.0
+        
+        data = scanner.read_mem(w_ptr + OFF_BULLET_MASS, 4)
+        if data:
+            mass = struct.unpack("<f", data)[0]
+            if math.isfinite(mass) and 0.1 < mass < 200.0:
+                return mass
+        return 0.0
+    except: return 0.0
+
+# ===================================================
+# 📏 ฟังก์ชันดึงหน้าตัดกระสุน (Projectile Caliber)
+# ===================================================
+def get_bullet_caliber(scanner, cgame_base):
+    try:
+        w_ptr_raw = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
+        if not w_ptr_raw: return 0.0
+        w_ptr = struct.unpack("<Q", w_ptr_raw)[0]
+        if not is_valid_ptr(w_ptr): return 0.0
+        
+        data = scanner.read_mem(w_ptr + OFF_BULLET_CALIBER, 4)
+        if data:
+            caliber = struct.unpack("<f", data)[0]
+            if math.isfinite(caliber) and 0.01 < caliber < 0.5:
+                return caliber
+        return 0.0
+    except: return 0.0
