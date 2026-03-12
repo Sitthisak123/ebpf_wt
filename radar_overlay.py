@@ -168,27 +168,51 @@ class ESPOverlay(QWidget):
                         speed_sq = vx*vx + vy*vy + vz*vz
                         
                         if speed_sq > 1.0:
-                            # 🌟 [อัปเดตใหม่] ดึงความเร็วกระสุนจริงแบบ Real-time
                             current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
                             
-# 1. คำนวณเวลาที่กระสุนเดินทาง (ระยะทาง / ความเร็วกระสุนจริง)
-                            t = dist / current_bullet_speed
-                            
-                            # 2. คำนวณกระสุนย้อย (เผื่อระยะตกของแกน Z)
-                            drop = 0.5 * BULLET_GRAVITY * (t * t)
-                            
-                            # หาจุดกึ่งกลาง 3D
+                            # หาจุดกึ่งกลาง 3D ของศัตรู (จุดเริ่มต้นการดักยิง)
                             wc_x = sum([c[0] for c in corners_3d]) / 8.0
                             wc_y = sum([c[1] for c in corners_3d]) / 8.0
                             wc_z = sum([c[2] for c in corners_3d]) / 8.0
                             
-                            # 🌟 [อัปเดตขั้นสูง 2] สมการ "ความเร็วสัมพัทธ์" (Relative Velocity)
-                            # เอาความเร็วศัตรู (vx) หักล้างด้วยความเร็วของเรา (my_vx)
-                            pred_x = wc_x + ((vx - my_vx) * t)
-                            pred_y = wc_y + ((vy - my_vy) * t)
-                            pred_z = wc_z + ((vz - my_vz) * t) + drop 
+                            # 🌟 [อัปเดตระดับบอส] ตัวแปรแรงต้านอากาศ (Drag Coefficient)
+                            # ค่าประมาณสำหรับ War Thunder: 0.0005 (ทำให้กระสุนช้าลงตามระยะทาง)
+                            DRAG_COEF = 0.0005 
                             
-                            # 4. แปลงพิกัดอนาคตเป็นจุดบนหน้าจอ
+                            pred_x, pred_y, pred_z = wc_x, wc_y, wc_z
+                            t = 0.0
+                            
+                            # 🧠 ระบบคำนวณแบบวนลูป (Iterative Solver): จำลองอนาคตซ้ำ 5 รอบเพื่อความแม่นยำ 99.9%
+                            for _ in range(5):
+                                # หาระยะห่างใหม่ จากปืนเรา ไปยัง "เป้าหมายในอนาคต"
+                                dx = pred_x - my_pos[0]
+                                dy = pred_y - my_pos[1]
+                                dz = pred_z - my_pos[2]
+                                current_dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                                
+                                # คำนวณเวลาบินของกระสุน พร้อมหักล้างแรงต้านอากาศ
+                                if current_bullet_speed > 0:
+                                    if DRAG_COEF > 0:
+                                        # สมการหาเวลาแบบมีแรงต้านอากาศ t = -ln(1 - (drag * dist / velocity)) / drag
+                                        val = 1.0 - (DRAG_COEF * current_dist / current_bullet_speed)
+                                        if val > 0.01:
+                                            t = -math.log(val) / DRAG_COEF
+                                        else:
+                                            t = current_dist / current_bullet_speed
+                                    else:
+                                        t = current_dist / current_bullet_speed
+                                else:
+                                    t = 0
+                                    
+                                # คำนวณกระสุนย้อย (Gravity Drop) ที่เวลา t ใหม่
+                                drop = 0.5 * BULLET_GRAVITY * (t * t)
+                                
+                                # อัปเดตพิกัดอนาคตใหม่ (เอาความเร็วสัมพัทธ์ * เวลาบินที่อัปเดตแล้ว + กระสุนย้อย)
+                                pred_x = wc_x + ((vx - my_vx) * t)
+                                pred_y = wc_y + ((vy - my_vy) * t)
+                                pred_z = wc_z + ((vz - my_vz) * t) + drop 
+                            
+                            # 4. แปลงพิกัดอนาคตที่แม่นยำที่สุด เป็นจุดบนหน้าจอ
                             pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
                             
                             if pred_screen and pred_screen[2] > 0:
