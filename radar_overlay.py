@@ -10,7 +10,7 @@ from main import MemoryScanner, get_game_pid, get_game_base_address
 from src.untils.mul import (
     get_cgame_base, get_view_matrix, world_to_screen, 
     get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel,
-    get_local_team, get_unit_status, get_unit_pos, get_unit_velocity
+    get_local_team, get_unit_status, get_unit_pos, get_unit_velocity, get_bullet_speed
 )
 
 SCREEN_WIDTH = 2560
@@ -85,6 +85,15 @@ class ESPOverlay(QWidget):
             view_matrix = get_view_matrix(self.scanner, cgame_base)
             if not view_matrix: return
 
+            # =========================================================
+            # 🌟 [อัปเดต] โชว์ความเร็วกระสุนปัจจุบันที่มุมซ้ายบนของจอ!
+            # =========================================================
+            current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
+            painter.setPen(QColor(*COLOR_INFO_TEXT))
+            painter.drawText(20, 30, f"🔫 WTM TACTICAL RADAR ACTIVE")
+            painter.drawText(20, 50, f"⚡ MUZZLE VELOCITY : {current_bullet_speed:.0f} m/s")
+            # =========================================================
+
             all_units_data = get_all_units(self.scanner, cgame_base) 
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
@@ -149,20 +158,22 @@ class ESPOverlay(QWidget):
                         vx, vy, vz = vel
                         speed_sq = vx*vx + vy*vy + vz*vz
                         
-                        # ถ้ารถ/เครื่องบินเคลื่อนที่เร็วกว่า 1 m/s ถึงจะวาดเป้าดักยิง
                         if speed_sq > 1.0:
-                            # 1. คำนวณเวลาที่กระสุนเดินทาง
-                            t = dist / MY_BULLET_SPEED
+                            # 🌟 [อัปเดตใหม่] ดึงความเร็วกระสุนจริงแบบ Real-time
+                            current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
+                            
+                            # 1. คำนวณเวลาที่กระสุนเดินทาง (ระยะทาง / ความเร็วกระสุนจริง)
+                            t = dist / current_bullet_speed
                             
                             # 2. คำนวณกระสุนย้อย (เผื่อระยะตกของแกน Z)
                             drop = 0.5 * BULLET_GRAVITY * (t * t)
                             
-                            # 🌟 [อัปเดต] หาจุดกึ่งกลาง 3D ของตัวรถ/เครื่องบิน (World Center)
+                            # หาจุดกึ่งกลาง 3D
                             wc_x = sum([c[0] for c in corners_3d]) / 8.0
                             wc_y = sum([c[1] for c in corners_3d]) / 8.0
                             wc_z = sum([c[2] for c in corners_3d]) / 8.0
                             
-                            # 3. สร้างพิกัดเป้าดักยิงในอนาคต (จุดกึ่งกลาง 3D + ระยะทาง + กระสุนย้อย)
+                            # 3. สร้างพิกัดเป้าดักยิงในอนาคต 
                             pred_x = wc_x + (vx * t)
                             pred_y = wc_y + (vy * t)
                             pred_z = wc_z + (vz * t) + drop 
@@ -171,15 +182,10 @@ class ESPOverlay(QWidget):
                             pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
                             
                             if pred_screen and pred_screen[2] > 0:
-                                # วาดเส้นโยงจากตัวรถไปหาเป้าดักยิง (Snapline)
                                 painter.setPen(QPen(QColor(255, 0, 50, 100), 1, Qt.DashLine))
                                 painter.drawLine(int(avg_x), int(avg_y), int(pred_screen[0]), int(pred_screen[1]))
-                                
-                                # วาดวงกลมเป้าดัก (สีแดงเด่นๆ)
                                 painter.setPen(QPen(QColor(*COLOR_PREDICTION), 2))
                                 painter.drawEllipse(int(pred_screen[0]) - 5, int(pred_screen[1]) - 5, 10, 10)
-                                
-                                # วาดจุดตรงกลาง
                                 painter.setBrush(QColor(*COLOR_PREDICTION))
                                 painter.drawEllipse(int(pred_screen[0]) - 1, int(pred_screen[1]) - 1, 2, 2)
                                 painter.setBrush(Qt.NoBrush)
