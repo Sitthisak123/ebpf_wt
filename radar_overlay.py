@@ -98,6 +98,15 @@ class ESPOverlay(QWidget):
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
+            for u_ptr, is_air in all_units_data:
+                if u_ptr == my_unit:
+                    my_is_air = is_air
+                    break
+            
+            my_vel = get_unit_velocity(self.scanner, my_unit, my_is_air) if my_unit else (0.0, 0.0, 0.0)
+            if not my_vel: my_vel = (0.0, 0.0, 0.0)
+            my_vx, my_vy, my_vz = my_vel
+
             if my_unit != self.last_my_unit:
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
                 self.max_reload_cache = {} 
@@ -162,7 +171,7 @@ class ESPOverlay(QWidget):
                             # 🌟 [อัปเดตใหม่] ดึงความเร็วกระสุนจริงแบบ Real-time
                             current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
                             
-                            # 1. คำนวณเวลาที่กระสุนเดินทาง (ระยะทาง / ความเร็วกระสุนจริง)
+# 1. คำนวณเวลาที่กระสุนเดินทาง (ระยะทาง / ความเร็วกระสุนจริง)
                             t = dist / current_bullet_speed
                             
                             # 2. คำนวณกระสุนย้อย (เผื่อระยะตกของแกน Z)
@@ -173,10 +182,11 @@ class ESPOverlay(QWidget):
                             wc_y = sum([c[1] for c in corners_3d]) / 8.0
                             wc_z = sum([c[2] for c in corners_3d]) / 8.0
                             
-                            # 3. สร้างพิกัดเป้าดักยิงในอนาคต 
-                            pred_x = wc_x + (vx * t)
-                            pred_y = wc_y + (vy * t)
-                            pred_z = wc_z + (vz * t) + drop 
+                            # 🌟 [อัปเดตขั้นสูง 2] สมการ "ความเร็วสัมพัทธ์" (Relative Velocity)
+                            # เอาความเร็วศัตรู (vx) หักล้างด้วยความเร็วของเรา (my_vx)
+                            pred_x = wc_x + ((vx - my_vx) * t)
+                            pred_y = wc_y + ((vy - my_vy) * t)
+                            pred_z = wc_z + ((vz - my_vz) * t) + drop 
                             
                             # 4. แปลงพิกัดอนาคตเป็นจุดบนหน้าจอ
                             pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
