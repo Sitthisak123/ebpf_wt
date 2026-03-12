@@ -6,20 +6,17 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
 from main import MemoryScanner, get_game_pid, get_game_base_address
 
-# 🚨 นำเข้าฟังก์ชันดึงข้อมูลกระสุนทั้งหมด
+# 🚨 นำเข้าฟังก์ชันจาก mul.py
 from src.untils.mul import (
     get_cgame_base, get_view_matrix, world_to_screen, 
     get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel,
     get_local_team, get_unit_status, get_unit_pos, get_unit_velocity, get_bullet_speed,
-    get_sight_compensation_factor, get_bullet_mass, get_bullet_caliber, get_bullet_cd
+    get_bullet_mass, get_bullet_caliber, get_bullet_cd
 )
 
 SCREEN_WIDTH = 2560
 SCREEN_HEIGHT = 1440
 
-# =========================================================================
-# 🎨 COLOR CONFIGURATIONS (ตั้งค่าสี)
-# =========================================================================
 COLOR_INFO_TEXT      = (255, 228, 64, 255)   
 COLOR_BARREL_LINE    = (0, 255, 0, 255)      
 COLOR_BOX_TARGET     = (255, 68, 0, 200)     
@@ -28,10 +25,9 @@ COLOR_TEXT_AIR       = (255, 222, 66, 255)
 COLOR_RELOAD_BG      = (0, 0, 0, 150)        
 COLOR_RELOAD_READY   = (0, 255, 0, 200)      
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (0, 255, 50, 255)     # 🔴 สีเป้าดักยิง (แดง)
+COLOR_PREDICTION     = (255, 0, 50, 255)     
 
-BULLET_GRAVITY       = 9.81   # แรงโน้มถ่วง
-# =========================================================================
+BULLET_GRAVITY       = 9.81   
 
 BOT_KEYWORDS = [
     "dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", 
@@ -63,12 +59,11 @@ class ESPOverlay(QWidget):
         self.last_my_unit = 0
         self.max_reload_cache = {}
         
-        # 🌟 เพิ่มระบบ Tracking ความเร็วในอดีต เพื่อคำนวณอัตราเร่ง (Acceleration)
-        self.target_history = {} 
+        # 🌟 THE PHYSICS SYNCHRONIZER: ระบบจำลองความเร่งแบบสมบูรณ์
+        self.physics_tracker = {} 
         
         self.center_x = SCREEN_WIDTH / 2
         self.center_y = SCREEN_HEIGHT / 2
-        self.seen_names = set() 
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
@@ -82,7 +77,7 @@ class ESPOverlay(QWidget):
         painter.begin(self) 
         painter.setRenderHint(QPainter.Antialiasing)
         
-        seen_targets_this_frame = set() # เก็บประวัติเป้าหมายที่มีชีวิตอยู่
+        seen_targets_this_frame = set()
         
         try:
             painter.setFont(QFont("Arial", 12, QFont.Bold))
@@ -91,9 +86,7 @@ class ESPOverlay(QWidget):
             view_matrix = get_view_matrix(self.scanner, cgame_base)
             if not view_matrix: return
 
-            # =========================================================
             current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
-            current_zeroing = get_sight_compensation_factor(self.scanner, self.base_address)
             current_bullet_mass = get_bullet_mass(self.scanner, cgame_base)
             current_bullet_caliber = get_bullet_caliber(self.scanner, cgame_base)
             current_bullet_cd = get_bullet_cd(self.scanner, cgame_base)
@@ -101,11 +94,9 @@ class ESPOverlay(QWidget):
             painter.setPen(QColor(*COLOR_INFO_TEXT))
             painter.drawText(20, 30, f"🔫 WTM TACTICAL RADAR ACTIVE")
             painter.drawText(20, 50, f"⚡ VELOCITY : {current_bullet_speed:.0f} m/s")
-            painter.drawText(20, 70, f"🔭 ZEROING  : {current_zeroing:.0f} m")
             
             if current_bullet_mass > 0:
-                painter.drawText(20, 90, f"⚖️ SHELL    : {current_bullet_mass:.2f}kg | Cd: {current_bullet_cd:.3f}")
-            # =========================================================
+                painter.drawText(20, 70, f"⚖️ SHELL    : {current_bullet_mass:.2f}kg | Cd: {current_bullet_cd:.3f}")
 
             all_units_data = get_all_units(self.scanner, cgame_base) 
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
@@ -124,7 +115,7 @@ class ESPOverlay(QWidget):
             if my_unit != self.last_my_unit:
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
                 self.max_reload_cache = {} 
-                self.target_history = {} # ล้างประวัติตอนเกิดใหม่
+                self.physics_tracker = {} 
                 self.last_my_unit = my_unit
 
             valid_targets = []
@@ -140,242 +131,228 @@ class ESPOverlay(QWidget):
                 valid_targets.append((u_ptr, unit_name, reload_val, is_air))
 
             for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
-                seen_targets_this_frame.add(u_ptr) # เป้าหมายนี้ยังมีชีวิต
-                
-                box_data = get_unit_3d_box_data(self.scanner, u_ptr)
-                if not box_data: continue
-                pos, bmin, bmax, R = box_data
-                
-                dist = 0
-                if my_pos:
-                    dist = math.sqrt((pos[0]-my_pos[0])**2 + (pos[1]-my_pos[1])**2 + (pos[2]-my_pos[2])**2)
-
-                barrel_base_2d = None
-                barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, R)
-                if barrel_data:
-                    p1, p2 = barrel_data
-                    res_p1 = world_to_screen(view_matrix, p1[0], p1[1], p1[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                    res_p2 = world_to_screen(view_matrix, p2[0], p2[1], p2[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                    if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0:
-                        painter.setPen(QPen(QColor(*COLOR_BARREL_LINE), 2)) 
-                        painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
-                        barrel_base_2d = res_p1 
-
-                corners_3d = calculate_3d_box_corners(pos, bmin, bmax, R)
-                pts = []
-                for c in corners_3d:
-                    res = world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                    if res and res[2] >= 0.001: pts.append((res[0], res[1]))
-                
-                if len(pts) == 8:
-                    painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
-                    edges = [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]
-                    for e1, e2 in edges: painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
+                seen_targets_this_frame.add(u_ptr)
+                try:
+                    box_data = get_unit_3d_box_data(self.scanner, u_ptr)
+                    if not box_data: continue
+                    pos, bmin, bmax, R = box_data
                     
-                    min_y = min([p[1] for p in pts])
-                    avg_x = sum([p[0] for p in pts]) / 8.0 
-                    avg_y = sum([p[1] for p in pts]) / 8.0  
+                    dist = 0
+                    if my_pos:
+                        dist = math.sqrt((pos[0]-my_pos[0])**2 + (pos[1]-my_pos[1])**2 + (pos[2]-my_pos[2])**2)
+
+                    barrel_base_2d = None
+                    barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, R)
+                    if barrel_data:
+                        p1, p2 = barrel_data
+                        res_p1 = world_to_screen(view_matrix, p1[0], p1[1], p1[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                        res_p2 = world_to_screen(view_matrix, p2[0], p2[1], p2[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                        if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0:
+                            painter.setPen(QPen(QColor(*COLOR_BARREL_LINE), 2)) 
+                            painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
+                            barrel_base_2d = res_p1 
+
+                    corners_3d = calculate_3d_box_corners(pos, bmin, bmax, R)
+                    pts = []
+                    for c in corners_3d:
+                        res = world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                        if res and res[2] >= 0.001: pts.append((res[0], res[1]))
                     
-                    # -----------------------------------------------------
-                    # 🚀 LETHAL INJECTION: ANTI-JITTER BALLISTICS ENGINE
-                    # -----------------------------------------------------
-                    vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
-                    if vel and my_pos and dist > 10.0:
-                        vx, vy, vz = vel
+                    if len(pts) == 8:
+                        painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
+                        edges = [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]
+                        for e1, e2 in edges: painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
                         
-                        # 🌟 1. ADVANCED ACCELERATION TRACKING (Anti-Jitter)
-                        curr_t = time.time()
-                        if u_ptr not in self.target_history:
-                            self.target_history[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (0.0, 0.0, 0.0)}
+                        min_y = min([p[1] for p in pts])
+                        avg_x = sum([p[0] for p in pts]) / 8.0 
+                        avg_y = sum([p[1] for p in pts]) / 8.0  
+                        
+                        # -----------------------------------------------------
+                        # 🚀 THE SILVER BULLET: BALLISTIC ENGINE
+                        # -----------------------------------------------------
+                        vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
+                        if vel and my_pos and dist > 10.0:
+                            vx, vy, vz = vel
                             ax, ay, az = 0.0, 0.0, 0.0
-                        else:
-                            hist = self.target_history[u_ptr]
-                            dt = curr_t - hist['t']
                             
-                            # อัปเดตเมื่อผ่านไปอย่างน้อย 0.015s เพื่อป้องกัน Memory Noise 
-                            if dt >= 0.015: 
-                                l_vx, l_vy, l_vz = hist['v']
-                                l_ax, l_ay, l_az = hist['a']
+                            # 🎯 1. การดักเลี้ยวเครื่องบินด้วย Physics Sync Algorithm
+                            if is_air_target:
+                                t_x, t_y, t_z = pos[0], pos[1], pos[2] # ใช้จุดศูนย์ถ่วงเครื่องบิน
                                 
-                                raw_ax = (vx - l_vx) / dt
-                                raw_ay = (vy - l_vy) / dt
-                                raw_az = (vz - l_vz) / dt
-                                
-                                # EMA Smoothing กรองอาการเป้าสั่น (ใช้หน้าต่าง 0.25 วินาที ให้นิ่งขึ้น)
-                                smooth_time = 0.25
-                                alpha = dt / (smooth_time + dt)
-                                
-                                ax = l_ax + alpha * (raw_ax - l_ax)
-                                ay = l_ay + alpha * (raw_ay - l_ay)
-                                az = l_az + alpha * (raw_az - l_az)
-                                
-                                # 🛡️ 1. Vector Magnitude Limit (ล็อกแรงจี 12G ป้องกันเป้ากระตุกทะลุมิติ)
-                                a_mag = math.sqrt(ax*ax + ay*ay + az*az)
-                                if a_mag > 120.0:
-                                    scale = 120.0 / a_mag
-                                    ax *= scale
-                                    ay *= scale
-                                    az *= scale
+                                curr_t = time.time()
+                                if u_ptr not in self.physics_tracker:
+                                    self.physics_tracker[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (0.0, 0.0, 0.0)}
+                                else:
+                                    hist = self.physics_tracker[u_ptr]
+                                    old_vx, old_vy, old_vz = hist['v']
                                     
-                                # 🛡️ 2. Deadzone: ถ้าความเร่งน้อยกว่า 2.0 m/s^2 ถือว่ากำลังบินตรง ตัดค่ารบกวนทิ้ง
-                                if a_mag < 2.0:
-                                    ax, ay, az = 0.0, 0.0, 0.0
-                                
-                                self.target_history[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (ax, ay, az)}
+                                    # เช็คว่าเกมอัปเดตฟิสิกส์แล้วหรือยัง? (ความเร็วเปลี่ยน)
+                                    dvx, dvy, dvz = vx - old_vx, vy - old_vy, vz - old_vz
+                                    if abs(dvx) > 0.05 or abs(dvy) > 0.05 or abs(dvz) > 0.05:
+                                        dt = curr_t - hist['t']
+                                        if 0.001 < dt < 1.0:
+                                            # คำนวณความเร่งที่แท้จริง
+                                            raw_ax = dvx / dt
+                                            raw_ay = dvy / dt
+                                            raw_az = dvz / dt
+                                            
+                                            a_mag = math.sqrt(raw_ax**2 + raw_ay**2 + raw_az**2)
+                                            if a_mag < 150.0: # ล็อกแรงจีสูงสุด ~15G
+                                                ax, ay, az = raw_ax, raw_ay, raw_az
+                                            else:
+                                                ax, ay, az = hist['a'] # ถ้าพุ่งเกินเหตุ ให้ใช้ค่าเดิมไปก่อน
+                                                
+                                        # อัปเดตข้อมูลชุดใหม่ลงระบบ
+                                        self.physics_tracker[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (ax, ay, az)}
+                                    else:
+                                        # ถ้าฟิสิกส์ยังไม่อัปเดต ให้ดึงความเร่งเดิมมาคำนวณต่อ (ไร้อาการสั่น 100%)
+                                        ax, ay, az = hist['a']
                             else:
-                                ax, ay, az = hist['a']
+                                # รถถัง: ใช้ pos (ระดับตีนตะขาบ) แล้วบวกขึ้นไป 1.5m ให้อยู่กลางป้อมปืน!
+                                t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
+
+                            # 💨 2. ระบบแรงต้านอากาศ
+                            if current_bullet_mass > 0.001 and current_bullet_caliber > 0.001:
+                                Cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
+                                rho = 1.225
+                                area = math.pi * ((current_bullet_caliber / 2.0) ** 2)
+                                k = (0.5 * rho * Cd * area) / current_bullet_mass
+                            else:
+                                k = 0.0001
+                                
+                            pred_x, pred_y, pred_z = t_x, t_y, t_z
+                            t = 0.0
+                            
+                            # 🧠 3. Iterative Solver
+                            for _ in range(5):
+                                dx = pred_x - my_pos[0]
+                                dy = pred_y - (my_pos[1] + 1.5)  
+                                dz = pred_z - my_pos[2]         
+                                current_dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                                
+                                if current_bullet_speed > 0:
+                                    if k > 0.000001:
+                                        kx = min(k * current_dist, 5.0)
+                                        t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
+                                    else:
+                                        t = current_dist / current_bullet_speed
+                                else:
+                                    t = 0
+                                    
+                                drop = 0.5 * BULLET_GRAVITY * (t * t)
+                                
+                                # 🎯 4. สมการจุดตัดในอวกาศ (Dampened Turning Physics)
+                                # ลดอิทธิพลของความเร่งเมื่อเวลายิงไกลขึ้น เพื่อไม่ให้เป้าเหวี่ยงออกนอกวงเลี้ยว
+                                accel_damp = 1.0 / (1.0 + (t * 0.7)) 
+                                eff_ax = ax * accel_damp
+                                eff_ay = ay * accel_damp
+                                eff_az = az * accel_damp
+                                
+                                pred_x = t_x + ((vx - my_vx) * t) + (0.5 * eff_ax * t * t)
+                                pred_y = t_y + ((vy - my_vy) * t) + (0.5 * eff_ay * t * t) + drop 
+                                pred_z = t_z + ((vz - my_vz) * t) + (0.5 * eff_az * t * t)             
+                            
+                            # แปลงพิกัด 3D ลงหน้าจอ (ปิดการลบ Zeroing ทิ้ง ให้เป้า Absolute เสมอ)
+                            pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
+                            
+                            if pred_screen and pred_screen[2] > 0:
+                                draw_start_x, draw_start_y = avg_x, avg_y
+                                if is_air_target:
+                                    pos_screen = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                                    if pos_screen and pos_screen[2] > 0:
+                                        draw_start_x, draw_start_y = pos_screen[0], pos_screen[1]
+                                        
+                                painter.setPen(QPen(QColor(255, 0, 50, 100), 1, Qt.DashLine))
+                                painter.drawLine(int(draw_start_x), int(draw_start_y), int(pred_screen[0]), int(pred_screen[1]))
+                                painter.setPen(QPen(QColor(*COLOR_PREDICTION), 2))
+                                painter.drawEllipse(int(pred_screen[0]) - 5, int(pred_screen[1]) - 5, 10, 10)
+                                painter.setBrush(QColor(*COLOR_PREDICTION))
+                                painter.drawEllipse(int(pred_screen[0]) - 1, int(pred_screen[1]) - 1, 2, 2)
+                                painter.setBrush(Qt.NoBrush)
                         # -----------------------------------------------------
                         
-                        wc_x = sum([c[0] for c in corners_3d]) / 8.0
-                        wc_y = sum([c[1] for c in corners_3d]) / 8.0
-                        wc_z = sum([c[2] for c in corners_3d]) / 8.0
+                        clean_name = raw_name
+                        for p in NAME_PREFIXES:
+                            if clean_name.lower().startswith(p): clean_name = clean_name[len(p):]; break
                         
-                        # 🌟 2. ANGULAR ZEROING & DYNAMIC DRAG
-                        if current_zeroing > 0 and current_bullet_speed > 0:
-                            t_z = current_zeroing / current_bullet_speed
-                            drop_z = 0.5 * BULLET_GRAVITY * (t_z * t_z)
-                            zero_angle_tan = drop_z / current_zeroing
-                        else:
-                            zero_angle_tan = 0.0
-                            
-                        if current_bullet_mass > 0.001 and current_bullet_caliber > 0.001:
-                            base_cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
-                            mach = current_bullet_speed / 343.0 
-                            
-                            drag_mult = 1.0
-                            if mach > 1.2: drag_mult = 1.0 - (mach - 1.2) * 0.15
-                            elif mach < 0.8: drag_mult = 0.85 
-                            drag_mult = max(0.35, min(1.2, drag_mult))
-                            
-                            Cd = base_cd * drag_mult
-                            rho = 1.225 
-                            area = math.pi * ((current_bullet_caliber / 2.0) ** 2)
-                            k = (0.5 * rho * Cd * area) / current_bullet_mass
-                        else:
-                            k = 0.0001
-                            
-                        pred_x, pred_y, pred_z = wc_x, wc_y, wc_z
-                        t = 0.0
-                        
-                        # 🧠 3. ITERATIVE SOLVER
-                        for _ in range(5):
-                            dx = pred_x - my_pos[0]
-                            dy = pred_y - (my_pos[1] + 1.5) 
-                            dz = pred_z - my_pos[2]         
-                            current_dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                            
-                            if current_bullet_speed > 0:
-                                if k > 0.000001:
-                                    kx = k * current_dist
-                                    if kx > 4.0: kx = 4.0 
-                                    t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
-                                else:
-                                    t = current_dist / current_bullet_speed
-                            else:
-                                t = 0
+                        if is_air_target and my_pos:
+                            if abs(pos[1] - my_pos[1]) < 50: is_air_target = False
                                 
-                            drop = 0.5 * BULLET_GRAVITY * (t * t)
-                            sight_drop_comp = current_dist * zero_angle_tan 
-                            net_drop = drop - sight_drop_comp
+                        has_reload_bar = (not is_air_target and (0 <= reload_val < 500))
+                        hide_name = False
+                        if not is_air_target:
+                            dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
+                            if dist_to_crosshair < 350: hide_name = False
+                            else:
+                                if dist > 550: hide_name = True
+
+                        if hide_name: display_text = f"-{int(dist)}m-"
+                        else: display_text = f"{clean_name.upper()} [{int(dist)}m]"
                             
-                            # 🛡️ 3. Circular Turn Dampening (ล็อกเวลาการคำนวณความเร่ง)
-                            # ป้องกันสมการ 0.5 * a * t^2 ระเบิดเมื่อเวลายิงไกลเกิน 1.2 วินาที
-                            accel_t = min(t, 1.2) 
+                        fm = painter.fontMetrics()
+                        text_w = fm.boundingRect(display_text).width()
+                        text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
+
+                        aiming_me = False
+                        if my_pos and barrel_data:
+                            aiming_me = is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=6.0)
+
+                        if aiming_me:
+                            dot_text = "●"
+                            dot_w = fm.boundingRect(dot_text).width()
+                            dot_x = int(avg_x - dot_w / 2) 
+                            dot_y = text_y - 14 
+                            t_anim = (math.sin(time.time() * 15.0) + 1.0) / 2.0
+                            r, g = int(t_anim * 255), int(255 - (t_anim * 90))
                             
-                            pred_x = wc_x + ((vx - my_vx) * t) + (0.5 * ax * accel_t * accel_t)
-                            pred_y = wc_y + ((vy - my_vy) * t) + (0.5 * ay * accel_t * accel_t) + net_drop 
-                            pred_z = wc_z + ((vz - my_vz) * t) + (0.5 * az * accel_t * accel_t)
-                        
-                        # วาดลงบนหน้าจอ
-                        pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
-                        
-                        if pred_screen and pred_screen[2] > 0:
-                            painter.setPen(QPen(QColor(255, 0, 50, 100), 1, Qt.DashLine))
-                            painter.drawLine(int(avg_x), int(avg_y), int(pred_screen[0]), int(pred_screen[1]))
-                            painter.setPen(QPen(QColor(*COLOR_PREDICTION), 2))
-                            painter.drawEllipse(int(pred_screen[0]) - 5, int(pred_screen[1]) - 5, 10, 10)
-                            painter.setBrush(QColor(*COLOR_PREDICTION))
-                            painter.drawEllipse(int(pred_screen[0]) - 1, int(pred_screen[1]) - 1, 2, 2)
-                            painter.setBrush(Qt.NoBrush)
-                    # -----------------------------------------------------
-                    clean_name = raw_name
-                    for p in NAME_PREFIXES:
-                        if clean_name.lower().startswith(p): clean_name = clean_name[len(p):]; break
-                    
-                    if is_air_target and my_pos:
-                        if abs(pos[2] - my_pos[2]) < 50: is_air_target = False
+                            painter.setPen(QColor(r, g, 0, 50))
+                            for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
+                                painter.drawText(dot_x + ox, dot_y + oy, dot_text)
+                            painter.setPen(QColor(r, g, 0, 255))
+                            painter.drawText(dot_x, dot_y, dot_text)
+
+                            line_dest_x = barrel_base_2d[0] if barrel_base_2d else avg_x
+                            line_dest_y = barrel_base_2d[1] if barrel_base_2d else avg_y
+                            glow_thickness = max(3, int(t_anim * 6))
+                            painter.setPen(QPen(QColor(r, g, 0, 80), glow_thickness))
+                            painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
+                            painter.setPen(QPen(QColor(r, g, 0, 255), 2))
+                            painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
+
+                        if is_air_target: painter.setPen(QColor(*COLOR_TEXT_AIR))
+                        else: painter.setPen(QColor(*COLOR_TEXT_GROUND))
                             
-                    has_reload_bar = (not is_air_target and (0 <= reload_val < 500))
-                    hide_name = False
-                    if not is_air_target:
-                        dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
-                        if dist_to_crosshair < 350: hide_name = False
-                        else:
-                            if dist > 550: hide_name = True
+                        painter.drawText(int(avg_x - text_w/2), text_y, display_text)
 
-                    if hide_name: display_text = f"-{int(dist)}m-"
-                    else: display_text = f"{clean_name.upper()} [{int(dist)}m]"
-                        
-                    fm = painter.fontMetrics()
-                    text_w = fm.boundingRect(display_text).width()
-                    text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
-
-                    aiming_me = False
-                    if my_pos and barrel_data:
-                        aiming_me = is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=6.0)
-
-                    if aiming_me:
-                        dot_text = "●"
-                        dot_w = fm.boundingRect(dot_text).width()
-                        dot_x = int(avg_x - dot_w / 2) 
-                        dot_y = text_y - 14 
-                        t_anim = (math.sin(time.time() * 15.0) + 1.0) / 2.0
-                        r, g = int(t_anim * 255), int(255 - (t_anim * 90))
-                        
-                        painter.setPen(QColor(r, g, 0, 50))
-                        for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
-                            painter.drawText(dot_x + ox, dot_y + oy, dot_text)
-                        painter.setPen(QColor(r, g, 0, 255))
-                        painter.drawText(dot_x, dot_y, dot_text)
-
-                        line_dest_x = barrel_base_2d[0] if barrel_base_2d else avg_x
-                        line_dest_y = barrel_base_2d[1] if barrel_base_2d else avg_y
-                        glow_thickness = max(3, int(t_anim * 6))
-                        painter.setPen(QPen(QColor(r, g, 0, 80), glow_thickness))
-                        painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
-                        painter.setPen(QPen(QColor(r, g, 0, 255), 2))
-                        painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
-
-                    if is_air_target: painter.setPen(QColor(*COLOR_TEXT_AIR))
-                    else: painter.setPen(QColor(*COLOR_TEXT_GROUND))
-                        
-                    painter.drawText(int(avg_x - text_w/2), text_y, display_text)
-
-                    if has_reload_bar:
-                        if u_ptr not in self.max_reload_cache: self.max_reload_cache[u_ptr] = reload_val
-                        if reload_val > self.max_reload_cache[u_ptr]: self.max_reload_cache[u_ptr] = reload_val
-                        max_val = self.max_reload_cache[u_ptr]
-                        progress = 1.0 if (reload_val == 0 or max_val == 0) else 1.0 - (float(reload_val) / float(max_val))
+                        if has_reload_bar:
+                            if u_ptr not in self.max_reload_cache: self.max_reload_cache[u_ptr] = reload_val
+                            if reload_val > self.max_reload_cache[u_ptr]: self.max_reload_cache[u_ptr] = reload_val
+                            max_val = self.max_reload_cache[u_ptr]
+                            progress = 1.0 if (reload_val == 0 or max_val == 0) else 1.0 - (float(reload_val) / float(max_val))
+                                
+                            bar_w, bar_h = 40, 4
+                            bar_x, bar_y = int(avg_x - bar_w / 2), int(min_y - 8)
                             
-                        bar_w, bar_h = 40, 4
-                        bar_x, bar_y = int(avg_x - bar_w / 2), int(min_y - 8)
-                        
-                        painter.setPen(Qt.NoPen)
-                        painter.setBrush(QColor(*COLOR_RELOAD_BG))
-                        painter.drawRect(bar_x, bar_y, bar_w, bar_h)
-                        
-                        fill_w = int(bar_w * progress)
-                        if progress >= 0.99: painter.setBrush(QColor(*COLOR_RELOAD_READY))   
-                        else: painter.setBrush(QColor(*COLOR_RELOAD_LOADING)) 
-                        painter.drawRect(bar_x, bar_y, fill_w, bar_h)
+                            painter.setPen(Qt.NoPen)
+                            painter.setBrush(QColor(*COLOR_RELOAD_BG))
+                            painter.drawRect(bar_x, bar_y, bar_w, bar_h)
+                            
+                            fill_w = int(bar_w * progress)
+                            if progress >= 0.99: painter.setBrush(QColor(*COLOR_RELOAD_READY))   
+                            else: painter.setBrush(QColor(*COLOR_RELOAD_LOADING)) 
+                            painter.drawRect(bar_x, bar_y, fill_w, bar_h)
 
-            # ล้างประวัติเป้าหมายที่ตายหรือหายไปจากจอ ป้องกัน Memory รั่วไหล
-            dead_targets = [ptr for ptr in self.target_history if ptr not in seen_targets_this_frame]
+                except Exception:
+                    pass
+
+            dead_targets = [ptr for ptr in self.physics_tracker if ptr not in seen_targets_this_frame]
             for ptr in dead_targets:
-                del self.target_history[ptr]
+                del self.physics_tracker[ptr]
 
-        except Exception: pass
-        finally: painter.end()
+        except Exception: 
+            pass
+        finally: 
+            painter.end()
 
 if __name__ == '__main__':
     try:

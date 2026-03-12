@@ -1,5 +1,6 @@
 import struct
 import math
+import os
 
 # ===================================================
 # 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
@@ -17,6 +18,7 @@ OFF_UNIT_BBMAX = 0x23C
 
 OFF_AIR_MOVEMENT = 0x18       # ✈️ Pointer ฟิสิกส์เครื่องบิน
 OFF_AIR_VEL = 0x0318          # ✈️ ความเร็วเครื่องบิน (แกน X, Y, Z)
+OFF_AIR_OMEGA = 0x0324        # 🌪️ ความเร็วเชิงมุม / อัตราการหมุนเลี้ยว
 
 OFF_GROUND_MOVEMENT = 0x1b30  # 🚙 Pointer รถถัง
 OFF_GROUND_VEL = 0x54         # 🚙 ความเร็วรถถัง
@@ -34,13 +36,6 @@ SIGHT_POINTER_CHAINS = [
     [0x76640, 0x2C20, 0x20D8, 0x1C28],
     [0x76608, 0x2BC0, 0x2138, 0x1C28]
 ]
-
-OFF_WEAPON_PTR = 0x0408       
-OFF_BULLET_SPEED = 0x1f20     
-OFF_BULLET_MASS = 0x1F2C      # ⚖️ มวลกระสุน (kg)
-OFF_BULLET_CALIBER = 0x1F30   # 📏 หน้าตัดกระสุน (m)
-
-# ===================================================
 
 def is_valid_ptr(p): 
     return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
@@ -72,9 +67,6 @@ def get_unit_pos(scanner, u_ptr):
 def get_all_units(scanner, cgame_base):
     if cgame_base == 0: return []
     units = []
-    
-    # ⚡ [OPTIMIZED]: กวาด Array แบบ Bulk Read และแยก Air/Ground ทันที!
-    # 0x310 = Air (True), 0x328 = Ground (False)
     for off, is_air in [(0x310, True), (0x328, False)]:
         raw_array_ptr = scanner.read_mem(cgame_base + off, 8)
         raw_count = scanner.read_mem(cgame_base + off + 16, 4) 
@@ -82,15 +74,12 @@ def get_all_units(scanner, cgame_base):
             array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
             count = struct.unpack("<I", raw_count)[0]
             if 0 < count < 250 and is_valid_ptr(array_ptr):
-                # 🚀 Bulk Read: อ่าน Pointer ทั้งหมดในคำสั่งเดียว! ประหยัด CPU มหาศาล
                 ptr_data = scanner.read_mem(array_ptr, count * 8)
                 if ptr_data:
                     for i in range(count):
                         u_ptr = struct.unpack_from("<Q", ptr_data, i * 8)[0]
                         if is_valid_ptr(u_ptr):
-                            units.append((u_ptr, is_air)) # 👈 แปะป้าย is_air ทันที!
-                            
-    # ลบตัวซ้ำ (โดยรักษาลำดับและข้อมูล is_air ไว้)
+                            units.append((u_ptr, is_air))
     return list({u[0]: u for u in units}.values())
 
 def get_unit_3d_box_data(scanner, u_ptr):
@@ -99,7 +88,6 @@ def get_unit_3d_box_data(scanner, u_ptr):
     if not pos_data or len(pos_data) < 12: return None
     pos = struct.unpack("<fff", pos_data) 
     
-    # ⚡ [OPTIMIZED]: อ่าน Box Min/Max แบบรวบยอด (24 Bytes) ลด Read Calls
     box_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 24)
     if not box_data or len(box_data) < 24: return None
     bmin = list(struct.unpack_from("<fff", box_data, 0))
@@ -253,7 +241,6 @@ def get_local_team(scanner, base_addr):
 def get_unit_status(scanner, u_ptr):
     if u_ptr == 0: return None
     try:
-        # ⚡ [OPTIMIZED]: อ่าน State และ Team พร้อมกันประหยัด 1 Call (ห่างกัน 128 bytes)
         status_data = scanner.read_mem(u_ptr + 0xD68, 132) 
         if not status_data: return None
         state = struct.unpack_from("<H", status_data, 0)[0]
@@ -289,7 +276,6 @@ def get_unit_status(scanner, u_ptr):
 def get_unit_velocity(scanner, u_ptr, is_air):
     if u_ptr == 0: return None
     try:
-        # --- ✈️ สำหรับเครื่องบิน (Air Units) ---
         if is_air:
             raw_move_ptr = scanner.read_mem(u_ptr + OFF_AIR_MOVEMENT, 8)
             if not raw_move_ptr: return None
@@ -300,12 +286,8 @@ def get_unit_velocity(scanner, u_ptr, is_air):
             if not vel_data or len(vel_data) < 12: return None
             
             vx, vy, vz = struct.unpack("<fff", vel_data)
-            
             if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return None
-            if abs(vx) > 5000 or abs(vy) > 5000 or abs(vz) > 5000: return None
             return (vx, vy, vz)
-            
-        # --- 🚙 สำหรับรถถัง (Ground Units) ---
         else:
             raw_move_ptr = scanner.read_mem(u_ptr + OFF_GROUND_MOVEMENT, 8)
             if not raw_move_ptr: return None
@@ -316,44 +298,45 @@ def get_unit_velocity(scanner, u_ptr, is_air):
             if not vel_data or len(vel_data) < 12: return None
             
             vx, vy, vz = struct.unpack("<fff", vel_data)
-            
             if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return None
-            if abs(vx) > 5000 or abs(vy) > 5000 or abs(vz) > 5000: return None
             return (vx, vy, vz)
-            
     except Exception:
         return None
-    
-# ===================================================
-# 🚀 ฟังก์ชันดึงความเร็วกระสุนของปืนปัจจุบัน (Dynamic Bullet Speed)
-# ===================================================
+
+# 🌪️ THE SECRET SAUCE: ฟังก์ชันดึงความเร็วเชิงมุม (ดักเลี้ยว)
+def get_unit_omega(scanner, unit_ptr, is_air):
+    if not is_air:
+        return (0.0, 0.0, 0.0) 
+    try:
+        mov_ptr_raw = scanner.read_mem(unit_ptr + OFF_AIR_MOVEMENT, 8)
+        if not mov_ptr_raw: return (0.0, 0.0, 0.0)
+        mov_ptr = struct.unpack("<Q", mov_ptr_raw)[0]
+        if not is_valid_ptr(mov_ptr): return (0.0, 0.0, 0.0)
+        
+        omega_data = scanner.read_mem(mov_ptr + OFF_AIR_OMEGA, 12)
+        if omega_data and len(omega_data) == 12:
+            wx, wy, wz = struct.unpack("<fff", omega_data)
+            if math.isfinite(wx) and math.isfinite(wy) and math.isfinite(wz):
+                return (wx, wy, wz)
+    except:
+        pass
+    return (0.0, 0.0, 0.0)
+
 def get_bullet_speed(scanner, cgame_base):
     try:
         raw_weapon_ptr = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
         if not raw_weapon_ptr: return 1000.0
-        
         weapon_ptr = struct.unpack("<Q", raw_weapon_ptr)[0]
         if not is_valid_ptr(weapon_ptr): return 1000.0
         
         speed_data = scanner.read_mem(weapon_ptr + OFF_BULLET_SPEED, 4)
         if not speed_data: return 1000.0
-        
         speed = struct.unpack("<f", speed_data)[0]
-        
-        if math.isfinite(speed) and 50.0 < speed < 3000.0:
-            return speed
-
+        if math.isfinite(speed) and 50.0 < speed < 3000.0: return speed
         return 1000.0
-    except Exception:
-        return 1000.0
-
-# ===================================================
-# 🔭 ฟังก์ชันดึงระยะศูนย์เล็งตรงๆ (100% Accurate via Pointer Chain)
-# ===================================================
-# ใช้เส้นทาง Golden Paths จาก aces[4]
+    except Exception: return 1000.0
 
 def get_pince_segment(pid, segment_idx=4):
-    """ ดึง Base Address ของ aces[4] แบบเดียวกับที่ PINCE ทำ """
     segments = []
     try:
         with open(f"/proc/{pid}/maps", "r") as f:
@@ -361,64 +344,41 @@ def get_pince_segment(pid, segment_idx=4):
                 parts = line.strip().split()
                 if len(parts) >= 6 and 'aces' in parts[-1] and not '.so' in parts[-1]:
                     start_addr = int(parts[0].split('-')[0], 16)
-                    if start_addr not in segments:
-                        segments.append(start_addr)
-        
-        if len(segments) > segment_idx:
-            return segments[segment_idx]
-        elif segments:
-            return segments[-1]
-    except Exception:
-        pass
+                    if start_addr not in segments: segments.append(start_addr)
+        if len(segments) > segment_idx: return segments[segment_idx]
+        elif segments: return segments[-1]
+    except Exception: pass
     return 0
 
-def get_sight_compensation_factor(scanner, base_addr): # base_addr ตรงนี้จะไม่ใช้ตรงๆ แล้ว
-    # ดึง PID จาก scanner เพื่อไปหา aces[4]
+def get_sight_compensation_factor(scanner, base_addr):
     pid = scanner.pid if hasattr(scanner, 'pid') else None
     if not pid: return 0.0
-    
     aces_4_base = get_pince_segment(pid, 4)
     if aces_4_base == 0: return 0.0
     
     for chain in SIGHT_POINTER_CHAINS:
         try:
-            # 1. เริ่มจาก aces[4] Base Address
             raw_base_ptr = scanner.read_mem(aces_4_base + chain[0], 8)
             if not raw_base_ptr: continue
             ptr = struct.unpack("<Q", raw_base_ptr)[0]
             if not is_valid_ptr(ptr): continue
             
-            # 2. ไต่ตาม Offset
             valid_chain = True
             for offset in chain[1:-1]:
                 raw_ptr = scanner.read_mem(ptr + offset, 8)
-                if not raw_ptr:
-                    valid_chain = False; break
+                if not raw_ptr: valid_chain = False; break
                 ptr = struct.unpack("<Q", raw_ptr)[0]
-                if not is_valid_ptr(ptr):
-                    valid_chain = False; break
-            
+                if not is_valid_ptr(ptr): valid_chain = False; break
             if not valid_chain: continue
             
-            # 3. อ่านค่า Float จาก Offset สุดท้าย (0x1C28)
             data = scanner.read_mem(ptr + chain[-1], 4)
             if data:
                 val = struct.unpack("<f", data)[0]
-                
-                # 🎯 ถ้าระยะเป็น -1.0 (Unset) ให้คืนค่า 0.0 เมตร
-                if val < 0.0:
-                    return 0.0
-                # 🎯 ถ้าระยะปกติ คืนค่าเมตรตามจริง
-                elif math.isfinite(val) and 0.0 <= val <= 10000.0:
-                    return val
-        except Exception:
-            continue
-            
+                if val < 0.0: return 0.0
+                elif math.isfinite(val) and 0.0 <= val <= 10000.0: return val
+        except Exception: continue
     return 0.0
 
-# ===================================================
-# ⚖️ ฟังก์ชันดึงมวลกระสุน (Projectile Mass)
-# ===================================================
 def get_bullet_mass(scanner, cgame_base):
     try:
         w_ptr_raw = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
@@ -429,15 +389,10 @@ def get_bullet_mass(scanner, cgame_base):
         data = scanner.read_mem(w_ptr + OFF_BULLET_MASS, 4)
         if data:
             mass = struct.unpack("<f", data)[0]
-            # 🌟 รับได้ตั้งแต่ 5 กรัม (0.005 kg) ยัน 200 kg 
-            if math.isfinite(mass) and 0.005 <= mass <= 200.0:
-                return mass
+            if math.isfinite(mass) and 0.005 <= mass <= 200.0: return mass
         return 0.0
     except: return 0.0
 
-# ===================================================
-# 📏 ฟังก์ชันดึงหน้าตัดกระสุน (Projectile Caliber)
-# ===================================================
 def get_bullet_caliber(scanner, cgame_base):
     try:
         w_ptr_raw = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
@@ -448,15 +403,10 @@ def get_bullet_caliber(scanner, cgame_base):
         data = scanner.read_mem(w_ptr + OFF_BULLET_CALIBER, 4)
         if data:
             caliber = struct.unpack("<f", data)[0]
-            # 🌟 ปืนกล 7.62mm (0.007m) ก็รับได้แล้ว
-            if math.isfinite(caliber) and 0.005 <= caliber <= 0.5:
-                return caliber
+            if math.isfinite(caliber) and 0.005 <= caliber <= 0.5: return caliber
         return 0.0
     except: return 0.0
 
-# ===================================================
-# 💨 ฟังก์ชันดึงค่าสัมประสิทธิ์แรงต้าน (Drag Coefficient / Cx)
-# ===================================================
 def get_bullet_cd(scanner, cgame_base):
     try:
         w_ptr_raw = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
@@ -467,8 +417,6 @@ def get_bullet_cd(scanner, cgame_base):
         data = scanner.read_mem(w_ptr + OFF_BULLET_CD, 4)
         if data:
             cd = struct.unpack("<f", data)[0]
-            # ค่า Cd ปกติจะอยู่ระหว่าง 0.1 ถึง 1.5
-            if math.isfinite(cd) and 0.05 <= cd <= 2.0:
-                return cd
+            if math.isfinite(cd) and 0.05 <= cd <= 2.0: return cd
         return 0.0
     except: return 0.0
