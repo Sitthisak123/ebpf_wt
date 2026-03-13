@@ -26,7 +26,8 @@ COLOR_TEXT_AIR       = (255, 222, 66, 255)
 COLOR_RELOAD_BG      = (0, 0, 0, 150)        
 COLOR_RELOAD_READY   = (0, 255, 0, 200)      
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (255, 0, 50, 255)     
+COLOR_PREDICTION     = (255, 150, 50, 255)     
+COLOR_FPS_GOOD       = (0, 255, 0, 255)      # สีเขียวถ้า FPS ดี
 
 BULLET_GRAVITY       = 9.81   
 
@@ -58,6 +59,10 @@ class ESPOverlay(QWidget):
         # ระบบประวัติความเร็ว (Sliding Window)
         self.vel_window = {} 
         
+        # 🌟 ระบบคำนวณ FPS
+        self.last_frame_time = time.time()
+        self.current_fps = 0.0
+        
         self.center_x = SCREEN_WIDTH / 2
         self.center_y = SCREEN_HEIGHT / 2
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -70,6 +75,15 @@ class ESPOverlay(QWidget):
         self.timer.start(0) 
 
     def paintEvent(self, event):
+        # ⏱️ คำนวณความเร็วเฟรมเรต (FPS)
+        now = time.time()
+        dt = now - self.last_frame_time
+        self.last_frame_time = now
+        if dt > 0:
+            fps = 1.0 / dt
+            # ใช้ EMA (Exponential Moving Average) ให้อ่านตัวเลขได้ง่าย ไม่กะพริบเร็วไป
+            self.current_fps = (self.current_fps * 0.9) + (fps * 0.1) 
+            
         painter = QPainter()
         painter.begin(self) 
         painter.setRenderHint(QPainter.Antialiasing)
@@ -89,12 +103,19 @@ class ESPOverlay(QWidget):
             current_bullet_caliber = get_bullet_caliber(self.scanner, cgame_base)
             current_bullet_cd = get_bullet_cd(self.scanner, cgame_base)
             
+            # วาด UI ข้อมูลที่มุมซ้ายบน
             painter.setPen(QColor(*COLOR_INFO_TEXT))
             painter.drawText(20, 30, f"🔫 WTM RAYMARCHING ENGINE (1:1 SYNC)")
             painter.drawText(20, 50, f"⚡ VELOCITY : {current_bullet_speed:.0f} m/s")
             
+
+            painter.setPen(QColor(*COLOR_INFO_TEXT))
+            painter.drawText(20, 70, f"📈 ESP FPS : {int(self.current_fps)}")
+            
+            # ดึงสีกลับมาเป็นปกติ
+            painter.setPen(QColor(*COLOR_INFO_TEXT))
             if current_bullet_mass > 0:
-                painter.drawText(20, 70, f"⚖️ SHELL    : {current_bullet_mass:.2f}kg | Cd: {current_bullet_cd:.3f}")
+                painter.drawText(20, 90, f"⚖️ SHELL    : {current_bullet_mass:.2f}kg | Cd: {current_bullet_cd:.3f}")
 
             all_units_data = get_all_units(self.scanner, cgame_base) 
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
@@ -208,11 +229,10 @@ class ESPOverlay(QWidget):
                             # 🧠===================================================
                             # THE RAYMARCHING LOOP (จำลองก้าวเดินของฟิสิกส์ 1:1 กับ C++)
                             # =====================================================
-                            sim_t = 0.0       # เวลาจำลอง (เริ่มต้นที่ 0 วินาที)
-                            sim_dt = 0.05     # จำลองก้าวละ 50ms (ความละเอียดพอดีๆ ไม่กิน CPU เกินไป)
-                            max_sim_time = 3.0 # หยุดจำลองถ้ายิงไกลเกิน 3 วินาที (ป้องกันลูปค้าง)
+                            sim_t = 0.0       
+                            sim_dt = 0.025     
+                            max_sim_time = 5.0 
                             
-                            # ตำแหน่งและความเร็วเริ่มต้นของเป้าหมายในโลกจำลอง
                             sim_x, sim_y, sim_z = t_x, t_y, t_z
                             sim_vx, sim_vy, sim_vz = vx, vy, vz
                             
@@ -220,8 +240,6 @@ class ESPOverlay(QWidget):
                             final_x, final_y, final_z = sim_x, sim_y, sim_z
                             
                             while sim_t < max_sim_time:
-                                # 1. ขยับเป้าหมายไปข้างหน้า 1 ก้าว ตามกฎฟิสิกส์ (เลี้ยวโค้งได้อิสระ)
-                                # (ถ้าเป็นเกมจริงจะมีล็อกว่า เลี้ยวได้ไม่เกิน 1.5 วินาที เราก็ทำตาม)
                                 if sim_t < 1.5:
                                     sim_vx += ax * sim_dt
                                     sim_vy += ay * sim_dt
@@ -233,7 +251,6 @@ class ESPOverlay(QWidget):
                                 
                                 sim_t += sim_dt
                                 
-                                # 2. เช็คว่ากระสุนบินมาถึงจุดนี้ ใช้เวลาเท่าไหร่?
                                 dx = sim_x - my_pos[0]
                                 dy = sim_y - (my_pos[1] + 1.5)
                                 dz = sim_z - my_pos[2]
@@ -248,23 +265,17 @@ class ESPOverlay(QWidget):
                                 else:
                                     bullet_t = 999.0
                                     
-                                # 3. จุดตัดแห่งความตาย (Intersection)!
-                                # ถ้ากระสุนใช้เวลาเดินทาง "น้อยกว่าหรือเท่ากับ" เวลาที่เป้าหมายเดินทางมาถึง
-                                # แปลว่ามันจะชนกันตรงนี้! ให้หยุดลูปทันที
                                 if bullet_t <= sim_t:
                                     best_t = bullet_t
                                     final_x, final_y, final_z = sim_x, sim_y, sim_z
                                     break
                             
-                            # เมื่อออกจากลูป เราได้เวลาตกกระทบที่แม่นยำที่สุด (best_t)
-                            # จัดการบวก "วิถีโค้งของกระสุนปืนเรา (Bullet Drop)" และ "ลบความเร็วพาหนะของเรา" เข้าไป
                             drop = 0.5 * BULLET_GRAVITY * (best_t * best_t)
                             
                             final_x -= (my_vx * best_t)
                             final_y = final_y - (my_vy * best_t) + drop 
                             final_z -= (my_vz * best_t)
                             
-                            # แปลงลงจอ
                             pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, SCREEN_WIDTH, SCREEN_HEIGHT)
                             
                             if pred_screen and pred_screen[2] > 0:
