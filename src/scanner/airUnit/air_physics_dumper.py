@@ -48,28 +48,23 @@ def main():
                 mov_ptr = struct.unpack("<Q", mov_raw)[0]
                 if not is_valid_ptr(mov_ptr): continue
                 
-                # 🎯 อ่านก้อนข้อมูล 64 bytes (ตั้งแต่ 0x300 ถึง 0x33C)
-                data = scanner.read_mem(mov_ptr + 0x300, 64)
+                # 🎯 อ่านก้อนข้อมูลใหญ่ขึ้น 160 Bytes (ครอบคลุมตั้งแต่ 0x2A0 ถึง 0x340)
+                data = scanner.read_mem(mov_ptr + 0x2A0, 160)
                 if data:
                     print(f"🎯 TARGET: {unit_name} | MOVEMENT PTR: {hex(mov_ptr)}")
-                    # อ่านค่า Float ทีละ 3 ตัว (X, Y, Z = 12 Bytes)
-                    for i in range(0, 60, 12): 
-                        if i + 12 <= 64:
-                            fx, fy, fz = struct.unpack_from("<fff", data, i)
-                            offset = 0x300 + i
-                            
-                            marker = ""
-                            if offset == 0x318: 
-                                marker = "<-- ✈️ VELOCITY (ความเร็วเส้นตรง เรารู้แล้ว)"
-                            elif offset == 0x324: 
-                                marker = "<-- 🌪️ OMEGA (สมมติฐานปัจจุบัน)"
-                            
-                            # กรองค่าขยะทิ้งเพื่อให้อ่านง่าย
-                            if abs(fx) < 1e-10: fx = 0.0
-                            if abs(fy) < 1e-10: fy = 0.0
-                            if abs(fz) < 1e-10: fz = 0.0
-                            
-                            print(f"   [0x{offset:03X}] : X={fx:10.2f} | Y={fy:10.2f} | Z={fz:10.2f} {marker}")
+                    for i in range(0, 156, 12): 
+                        fx, fy, fz = struct.unpack_from("<fff", data, i)
+                        offset = 0x2A0 + i
+                        
+                        # กรองค่าใกล้ 0 ให้เป็น 0 เพื่อให้อ่านง่าย
+                        if abs(fx) < 0.01: fx = 0.0
+                        if abs(fy) < 0.01: fy = 0.0
+                        if abs(fz) < 0.01: fz = 0.0
+                        
+                        marker = ""
+                        if offset == 0x318: marker = "<-- ✈️ VELOCITY"
+                        
+                        print(f"   [0x{offset:03X}] : X={fx:8.2f} | Y={fy:8.2f} | Z={fz:8.2f} {marker}")
                     print("-" * 63)
             
             print("\n💡 ยุทธวิธีทดสอบ:")

@@ -59,7 +59,7 @@ class ESPOverlay(QWidget):
         self.last_my_unit = 0
         self.max_reload_cache = {}
         
-        # 🌟 THE PHYSICS SYNCHRONIZER: ระบบจำลองความเร่งแบบสมบูรณ์
+        # 🌟 THE INSTANT ACCELERATION TRACKER: ไร้การหน่วงเวลา!
         self.physics_tracker = {} 
         
         self.center_x = SCREEN_WIDTH / 2
@@ -115,17 +115,19 @@ class ESPOverlay(QWidget):
             if my_unit != self.last_my_unit:
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
                 self.max_reload_cache = {} 
-                self.physics_tracker = {} 
+                self.physics_tracker = {}
                 self.last_my_unit = my_unit
 
             valid_targets = []
             for u_ptr, is_air in all_units_data:
-                if u_ptr == my_unit: continue 
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
                 u_team, u_state, unit_name, reload_val = status 
                 if u_state >= 1: continue 
-                if my_team != 0 and u_team == my_team: continue
+                
+                # ทดสอบเป้าหมายทีมเดียวกัน รวมถึงตัวเราเองด้วย เพื่อการเทส
+                if my_team != 0 and u_team == my_team and u_ptr != my_unit: continue
+                
                 unit_name_lower = unit_name.lower()
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
                 valid_targets.append((u_ptr, unit_name, reload_val, is_air))
@@ -168,50 +170,62 @@ class ESPOverlay(QWidget):
                         avg_y = sum([p[1] for p in pts]) / 8.0  
                         
                         # -----------------------------------------------------
-                        # 🚀 THE SILVER BULLET: BALLISTIC ENGINE
+                        # 🚀 ZERO-DELAY KINEMATIC ENGINE (เลี้ยวตามเรดาร์ 100%)
                         # -----------------------------------------------------
                         vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
+                        
                         if vel and my_pos and dist > 10.0:
                             vx, vy, vz = vel
                             ax, ay, az = 0.0, 0.0, 0.0
                             
-                            # 🎯 1. การดักเลี้ยวเครื่องบินด้วย Physics Sync Algorithm
+                            # 🎯 1. ระบบดึงความเร่งสด (Instantaneous Acceleration)
                             if is_air_target:
-                                t_x, t_y, t_z = pos[0], pos[1], pos[2] # ใช้จุดศูนย์ถ่วงเครื่องบิน
+                                t_x, t_y, t_z = pos[0], pos[1], pos[2] # เครื่องบินใช้จุดศูนย์ถ่วง
                                 
                                 curr_t = time.time()
                                 if u_ptr not in self.physics_tracker:
                                     self.physics_tracker[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (0.0, 0.0, 0.0)}
                                 else:
                                     hist = self.physics_tracker[u_ptr]
+                                    dt = curr_t - hist['t']
                                     old_vx, old_vy, old_vz = hist['v']
                                     
-                                    # เช็คว่าเกมอัปเดตฟิสิกส์แล้วหรือยัง? (ความเร็วเปลี่ยน)
-                                    dvx, dvy, dvz = vx - old_vx, vy - old_vy, vz - old_vz
-                                    if abs(dvx) > 0.05 or abs(dvy) > 0.05 or abs(dvz) > 0.05:
-                                        dt = curr_t - hist['t']
-                                        if 0.001 < dt < 1.0:
-                                            # คำนวณความเร่งที่แท้จริง
-                                            raw_ax = dvx / dt
-                                            raw_ay = dvy / dt
-                                            raw_az = dvz / dt
+                                    dvx = vx - old_vx
+                                    dvy = vy - old_vy
+                                    dvz = vz - old_vz
+                                    
+                                    # เช็คว่าฟิสิกส์เกมขยับหรือยัง?
+                                    if abs(dvx) > 0.01 or abs(dvy) > 0.01 or abs(dvz) > 0.01:
+                                        if 0.001 < dt < 0.5:
+                                            # ⚡ ดึงความเร่งแบบดิบๆ ลบการหน่วงเวลา (EMA) ทิ้งทั้งหมด!
+                                            ax = dvx / dt
+                                            ay = dvy / dt
+                                            az = dvz / dt
                                             
-                                            a_mag = math.sqrt(raw_ax**2 + raw_ay**2 + raw_az**2)
-                                            if a_mag < 150.0: # ล็อกแรงจีสูงสุด ~15G
-                                                ax, ay, az = raw_ax, raw_ay, raw_az
-                                            else:
-                                                ax, ay, az = hist['a'] # ถ้าพุ่งเกินเหตุ ให้ใช้ค่าเดิมไปก่อน
+                                            # ล็อกแรง G ปกป้องสมการระเบิด (~15G)
+                                            mag = math.sqrt(ax**2 + ay**2 + az**2)
+                                            if mag > 150.0:
+                                                ax = (ax / mag) * 150.0
+                                                ay = (ay / mag) * 150.0
+                                                az = (az / mag) * 150.0
                                                 
-                                        # อัปเดตข้อมูลชุดใหม่ลงระบบ
-                                        self.physics_tracker[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (ax, ay, az)}
+                                            self.physics_tracker[u_ptr] = {'t': curr_t, 'v': (vx, vy, vz), 'a': (ax, ay, az)}
+                                        else:
+                                            # ถ้า dt พัง ให้จำค่าเดิมไปก่อน
+                                            ax, ay, az = hist['a']
+                                            self.physics_tracker[u_ptr]['t'] = curr_t
+                                            self.physics_tracker[u_ptr]['v'] = (vx, vy, vz)
                                     else:
-                                        # ถ้าฟิสิกส์ยังไม่อัปเดต ให้ดึงความเร่งเดิมมาคำนวณต่อ (ไร้อาการสั่น 100%)
+                                        # ถ้าเกมยังไม่อัปเดตเฟรม ใช้ความเร่งล่าสุดไปพรางๆ
                                         ax, ay, az = hist['a']
+                                        # ถ้าบินตรงนานกว่า 0.1 วิ ล้างความเร่งทิ้ง (หยุดเลี้ยว)
+                                        if dt > 0.1:
+                                            ax, ay, az = 0.0, 0.0, 0.0
                             else:
-                                # รถถัง: ใช้ pos (ระดับตีนตะขาบ) แล้วบวกขึ้นไป 1.5m ให้อยู่กลางป้อมปืน!
+                                # รถถัง: ใช้ระดับพื้น แล้วบวก Y ขึ้น 1.5m
                                 t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
 
-                            # 💨 2. ระบบแรงต้านอากาศ
+                            # 💨 2. ฟิสิกส์แรงต้านอากาศ (Drag)
                             if current_bullet_mass > 0.001 and current_bullet_caliber > 0.001:
                                 Cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
                                 rho = 1.225
@@ -223,7 +237,7 @@ class ESPOverlay(QWidget):
                             pred_x, pred_y, pred_z = t_x, t_y, t_z
                             t = 0.0
                             
-                            # 🧠 3. Iterative Solver
+                            # 🧠 3. Iterative Solver: รวมร่าง Linear + Instant Kinematic
                             for _ in range(5):
                                 dx = pred_x - my_pos[0]
                                 dy = pred_y - (my_pos[1] + 1.5)  
@@ -241,18 +255,14 @@ class ESPOverlay(QWidget):
                                     
                                 drop = 0.5 * BULLET_GRAVITY * (t * t)
                                 
-                                # 🎯 4. สมการจุดตัดในอวกาศ (Dampened Turning Physics)
-                                # ลดอิทธิพลของความเร่งเมื่อเวลายิงไกลขึ้น เพื่อไม่ให้เป้าเหวี่ยงออกนอกวงเลี้ยว
-                                accel_damp = 1.0 / (1.0 + (t * 0.7)) 
-                                eff_ax = ax * accel_damp
-                                eff_ay = ay * accel_damp
-                                eff_az = az * accel_damp
+                                # 🎯 ล็อกระยะเวลาที่ความเร่งมีผล เพื่อไม่ให้เป้าเลยไปไกลมากเวลาศัตรูอยู่ไกล (เลียนแบบเรดาร์เกม)
+                                accel_t = min(t, 1.25)
                                 
-                                pred_x = t_x + ((vx - my_vx) * t) + (0.5 * eff_ax * t * t)
-                                pred_y = t_y + ((vy - my_vy) * t) + (0.5 * eff_ay * t * t) + drop 
-                                pred_z = t_z + ((vz - my_vz) * t) + (0.5 * eff_az * t * t)             
+                                # สมการจุดตกสมบูรณ์แบบ: S = V*t + 1/2*a*t^2 
+                                pred_x = t_x + ((vx - my_vx) * t) + (0.5 * ax * (accel_t ** 2))
+                                pred_y = t_y + ((vy - my_vy) * t) + (0.5 * ay * (accel_t ** 2)) + drop 
+                                pred_z = t_z + ((vz - my_vz) * t) + (0.5 * az * (accel_t ** 2))             
                             
-                            # แปลงพิกัด 3D ลงหน้าจอ (ปิดการลบ Zeroing ทิ้ง ให้เป้า Absolute เสมอ)
                             pred_screen = world_to_screen(view_matrix, pred_x, pred_y, pred_z, SCREEN_WIDTH, SCREEN_HEIGHT)
                             
                             if pred_screen and pred_screen[2] > 0:
@@ -294,7 +304,7 @@ class ESPOverlay(QWidget):
                         text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
 
                         aiming_me = False
-                        if my_pos and barrel_data:
+                        if my_pos and barrel_data and dist > 10.0:
                             aiming_me = is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=6.0)
 
                         if aiming_me:

@@ -18,7 +18,7 @@ OFF_UNIT_BBMAX = 0x23C
 
 OFF_AIR_MOVEMENT = 0x18       # ✈️ Pointer ฟิสิกส์เครื่องบิน
 OFF_AIR_VEL = 0x0318          # ✈️ ความเร็วเครื่องบิน (แกน X, Y, Z)
-OFF_AIR_OMEGA = 0x0324        # 🌪️ ความเร็วเชิงมุม / อัตราการหมุนเลี้ยว
+OFF_AIR_OMEGA = 0x03F8        # 🌪️ THE HOLY GRAIL: ความเร็วเชิงมุมของจริง!!
 
 OFF_GROUND_MOVEMENT = 0x1b30  # 🚙 Pointer รถถัง
 OFF_GROUND_VEL = 0x54         # 🚙 ความเร็วรถถัง
@@ -303,7 +303,7 @@ def get_unit_velocity(scanner, u_ptr, is_air):
     except Exception:
         return None
 
-# 🌪️ THE SECRET SAUCE: ฟังก์ชันดึงความเร็วเชิงมุม (ดักเลี้ยว)
+# 🌪️ THE REAL OMEGA PULLER (0x3F8)
 def get_unit_omega(scanner, unit_ptr, is_air):
     if not is_air:
         return (0.0, 0.0, 0.0) 
