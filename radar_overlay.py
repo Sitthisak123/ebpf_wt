@@ -7,12 +7,13 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
 from main import MemoryScanner, get_game_pid, get_game_base_address
 
-# 🚨 นำเข้าฟังก์ชันจาก mul.py
+# 🚨 นำเข้าฟังก์ชันทั้งหมด รวมถึง Dynamic Zeroing
 from src.untils.mul import (
     get_cgame_base, get_view_matrix, world_to_screen, 
     get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel,
     get_local_team, get_unit_status, get_unit_pos, get_unit_velocity,
-    get_bullet_speed, get_bullet_mass, get_bullet_caliber, get_bullet_cd
+    get_bullet_speed, get_bullet_mass, get_bullet_caliber, get_bullet_cd,
+    get_sight_compensation_factor
 )
 
 SCREEN_WIDTH = 2560
@@ -26,8 +27,8 @@ COLOR_TEXT_AIR       = (255, 222, 66, 255)
 COLOR_RELOAD_BG      = (0, 0, 0, 150)        
 COLOR_RELOAD_READY   = (0, 255, 0, 200)      
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (255, 150, 50, 255)     
-COLOR_FPS_GOOD       = (0, 255, 0, 255)      # สีเขียวถ้า FPS ดี
+COLOR_PREDICTION     = (255, 40, 40, 255)    # 🔴 สีเป้าดักหน้า (แดงสดสุดๆ)
+COLOR_FPS_GOOD       = (0, 255, 0, 255)      
 
 BULLET_GRAVITY       = 9.81   
 
@@ -56,10 +57,9 @@ class ESPOverlay(QWidget):
         self.base_address = base_address
         self.max_reload_cache = {}
         
-        # ระบบประวัติความเร็ว (Sliding Window)
+        self.last_my_unit = 0 
         self.vel_window = {} 
         
-        # 🌟 ระบบคำนวณ FPS
         self.last_frame_time = time.time()
         self.current_fps = 0.0
         
@@ -72,16 +72,14 @@ class ESPOverlay(QWidget):
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(0) 
+        self.timer.start(12) 
 
     def paintEvent(self, event):
-        # ⏱️ คำนวณความเร็วเฟรมเรต (FPS)
         now = time.time()
         dt = now - self.last_frame_time
         self.last_frame_time = now
         if dt > 0:
             fps = 1.0 / dt
-            # ใช้ EMA (Exponential Moving Average) ให้อ่านตัวเลขได้ง่าย ไม่กะพริบเร็วไป
             self.current_fps = (self.current_fps * 0.9) + (fps * 0.1) 
             
         painter = QPainter()
@@ -99,23 +97,25 @@ class ESPOverlay(QWidget):
             if not view_matrix: return
 
             current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
+            current_zeroing = get_sight_compensation_factor(self.scanner, self.base_address)
             current_bullet_mass = get_bullet_mass(self.scanner, cgame_base)
             current_bullet_caliber = get_bullet_caliber(self.scanner, cgame_base)
             current_bullet_cd = get_bullet_cd(self.scanner, cgame_base)
             
-            # วาด UI ข้อมูลที่มุมซ้ายบน
             painter.setPen(QColor(*COLOR_INFO_TEXT))
-            painter.drawText(20, 30, f"🔫 WTM RAYMARCHING ENGINE (1:1 SYNC)")
+            painter.drawText(20, 30, f"🔫 WTM ABSOLUTE RAYMARCHING")
             painter.drawText(20, 50, f"⚡ VELOCITY : {current_bullet_speed:.0f} m/s")
-            
+            painter.drawText(20, 70, f"🔭 ZEROING  : {current_zeroing:.0f} m")
 
-            painter.setPen(QColor(*COLOR_INFO_TEXT))
-            painter.drawText(20, 70, f"📈 ESP FPS : {int(self.current_fps)}")
+            if self.current_fps > 45:
+                painter.setPen(QColor(*COLOR_FPS_GOOD))
+            else:
+                painter.setPen(QColor(255, 50, 50))
+            painter.drawText(20, 90, f"📈 ESP FPS : {int(self.current_fps)}")
             
-            # ดึงสีกลับมาเป็นปกติ
             painter.setPen(QColor(*COLOR_INFO_TEXT))
             if current_bullet_mass > 0:
-                painter.drawText(20, 90, f"⚖️ SHELL    : {current_bullet_mass:.2f}kg | Cd: {current_bullet_cd:.3f}")
+                painter.drawText(20, 110, f"⚖️ SHELL    : {current_bullet_mass:.2f}kg | Cd: {current_bullet_cd:.3f}")
 
             all_units_data = get_all_units(self.scanner, cgame_base) 
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
@@ -131,13 +131,25 @@ class ESPOverlay(QWidget):
             if not my_vel: my_vel = (0.0, 0.0, 0.0)
             my_vx, my_vy, my_vz = my_vel
 
+            if my_unit != self.last_my_unit:
+                if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
+                self.max_reload_cache = {} 
+                self.vel_window = {}
+                self.last_my_unit = my_unit
+
             valid_targets = []
             for u_ptr, is_air in all_units_data:
+                # 🚫 ซ่อนเครื่องตัวเอง (Disable My unit overlays)
+                if u_ptr == my_unit: continue 
+                
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
                 u_team, u_state, unit_name, reload_val = status 
                 if u_state >= 1: continue 
-                if my_team != 0 and u_team == my_team and u_ptr != my_unit: continue
+                
+                # ซ่อนเพื่อนร่วมทีม
+                if my_team != 0 and u_team == my_team: continue
+                
                 unit_name_lower = unit_name.lower()
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
                 valid_targets.append((u_ptr, unit_name, reload_val, is_air))
@@ -180,7 +192,7 @@ class ESPOverlay(QWidget):
                         avg_y = sum([p[1] for p in pts]) / 8.0  
                         
                         # -----------------------------------------------------
-                        # 🚀 THE ITERATIVE RAYMARCHING ENGINE
+                        # 🚀 THE ITERATIVE RAYMARCHING ENGINE (ABSOLUTE ACCURACY)
                         # -----------------------------------------------------
                         vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
                         
@@ -226,9 +238,10 @@ class ESPOverlay(QWidget):
                             else:
                                 k = 0.0001
                                 
-                            # 🧠===================================================
-                            # THE RAYMARCHING LOOP (จำลองก้าวเดินของฟิสิกส์ 1:1 กับ C++)
-                            # =====================================================
+                            t_sight = current_zeroing / current_bullet_speed if current_bullet_speed > 0 else 0
+                            sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
+                                
+                            # 🧠 THE RAYMARCHING LOOP (แม่นยำที่สุด)
                             sim_t = 0.0       
                             sim_dt = 0.025     
                             max_sim_time = 5.0 
@@ -265,15 +278,19 @@ class ESPOverlay(QWidget):
                                 else:
                                     bullet_t = 999.0
                                     
+                                # 🎯 เมื่อกระสุนวิ่งทันจุดที่จำลองไว้ (Intersection)
                                 if bullet_t <= sim_t:
                                     best_t = bullet_t
-                                    final_x, final_y, final_z = sim_x, sim_y, sim_z
+                                    # นำค่าจำลอง 100% จากลูปมาใช้ ไม่มีการคูณ 1.10 หรือสมการขยะมาผสม!
+                                    final_x, final_y, final_z = sim_x, sim_y, sim_z 
                                     break
                             
                             drop = 0.5 * BULLET_GRAVITY * (best_t * best_t)
+                            net_drop = drop - sight_drop_comp
                             
+                            # ลบความเร็วตัวเรา (เผื่อเราขับรถไปยิงไป)
                             final_x -= (my_vx * best_t)
-                            final_y = final_y - (my_vy * best_t) + drop 
+                            final_y = final_y - (my_vy * best_t) + net_drop 
                             final_z -= (my_vz * best_t)
                             
                             pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -285,12 +302,17 @@ class ESPOverlay(QWidget):
                                     if pos_screen and pos_screen[2] > 0:
                                         draw_start_x, draw_start_y = pos_screen[0], pos_screen[1]
                                         
-                                painter.setPen(QPen(QColor(255, 0, 50, 100), 1, Qt.DashLine))
+                                # 👁️ อัปเกรดความชัดเจนของเป้าดัก (High Visibility)
+                                painter.setPen(QPen(QColor(255, 100, 100, 150), 2, Qt.DashLine))
                                 painter.drawLine(int(draw_start_x), int(draw_start_y), int(pred_screen[0]), int(pred_screen[1]))
-                                painter.setPen(QPen(QColor(*COLOR_PREDICTION), 2))
-                                painter.drawEllipse(int(pred_screen[0]) - 5, int(pred_screen[1]) - 5, 10, 10)
+                                
+                                # วงกลมหลัก: แดงสด, หนา 3, ขยายใหญ่ขึ้น
+                                painter.setPen(QPen(QColor(*COLOR_PREDICTION), 3))
+                                painter.drawEllipse(int(pred_screen[0]) - 8, int(pred_screen[1]) - 8, 16, 16)
+                                
+                                # จุดศูนย์กลางตรงกลาง (Core)
                                 painter.setBrush(QColor(*COLOR_PREDICTION))
-                                painter.drawEllipse(int(pred_screen[0]) - 1, int(pred_screen[1]) - 1, 2, 2)
+                                painter.drawEllipse(int(pred_screen[0]) - 3, int(pred_screen[1]) - 3, 6, 6)
                                 painter.setBrush(Qt.NoBrush)
                         # -----------------------------------------------------
                         
@@ -372,7 +394,8 @@ class ESPOverlay(QWidget):
             for ptr in dead_targets:
                 del self.vel_window[ptr]
 
-        except Exception: 
+        except Exception as e: 
+            print(e)
             pass
         finally: 
             painter.end()
