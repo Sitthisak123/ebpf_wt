@@ -32,7 +32,7 @@ COLOR_FPS_GOOD       = (0, 255, 0, 255)
 
 BULLET_GRAVITY       = 9.81   
 
-BOT_KEYWORDS = ["dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery", "infantry", "ship", "boat", "freighter", "hangar", "technic", "vent", "railway", "freight"]
+BOT_KEYWORDS = ["speaker","water", "panzerzug","windmill","dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery", "infantry", "ship", "boat", "freighter", "hangar", "technic", "vent", "railway", "freight"]
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
 
 def is_aiming_at(barrel_base, barrel_tip, target_pos, threshold_degrees=6.0):
@@ -102,20 +102,20 @@ class ESPOverlay(QWidget):
             current_bullet_caliber = get_bullet_caliber(self.scanner, cgame_base)
             current_bullet_cd = get_bullet_cd(self.scanner, cgame_base)
             
-            painter.setPen(QColor(*COLOR_INFO_TEXT))
-            painter.drawText(20, 30, f"🔫 WTM ABSOLUTE RAYMARCHING")
-            painter.drawText(20, 50, f"⚡ VELOCITY : {current_bullet_speed:.0f} m/s")
-            painter.drawText(20, 70, f"🔭 ZEROING  : {current_zeroing:.0f} m")
+            # painter.setPen(QColor(*COLOR_INFO_TEXT))
+            # painter.drawText(20, 30, f"🔫 WTM ABSOLUTE RAYMARCHING")
+            # painter.drawText(20, 50, f"⚡ VELOCITY : {current_bullet_speed:.0f} m/s")
+            # painter.drawText(20, 70, f"🔭 ZEROING  : {current_zeroing:.0f} m")
 
             if self.current_fps > 45:
                 painter.setPen(QColor(*COLOR_FPS_GOOD))
             else:
                 painter.setPen(QColor(255, 50, 50))
-            painter.drawText(20, 90, f"📈 ESP FPS : {int(self.current_fps)}")
+            painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}")
             
             painter.setPen(QColor(*COLOR_INFO_TEXT))
-            if current_bullet_mass > 0:
-                painter.drawText(20, 110, f"⚖️ SHELL    : {current_bullet_mass:.2f}kg | Cd: {current_bullet_cd:.3f}")
+            # if current_bullet_mass > 0:
+                # painter.drawText(20, 110, f"⚖️ SHELL    : {current_bullet_mass:.2f}kg | Cd: {current_bullet_cd:.3f}")
 
             all_units_data = get_all_units(self.scanner, cgame_base) 
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
