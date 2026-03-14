@@ -27,7 +27,8 @@ COLOR_TEXT_AIR       = (255, 222, 66, 255)
 COLOR_RELOAD_BG      = (0, 0, 0, 150)        
 COLOR_RELOAD_READY   = (0, 255, 0, 200)      
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (0, 255, 255, 255)    # 🔵 สีเป้าดักหน้า (สีฟ้าสว่างเพื่อความชัดเจน)
+COLOR_PREDICTION     = (255, 40, 255, 255)    # 🔴 สีเป้าดักหน้า 
+COLOR_FLIGHT_PATH    = (255, 200, 0, 180)    # 🟡 สีเส้นหางจำลองวิถีการบิน
 COLOR_FPS_GOOD       = (0, 255, 0, 255)      
 
 BULLET_GRAVITY       = 9.80665   
@@ -36,22 +37,42 @@ BOT_KEYWORDS = ["speaker","water", "panzerzug","windmill","dummy", "bot", "ai_",
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
 
 def is_aiming_at(barrel_base, barrel_tip, target_pos, threshold_degrees=6.0):
-    dx = barrel_tip[0] - barrel_base[0]; dy = barrel_tip[1] - barrel_base[1]; dz = barrel_tip[2] - barrel_base[2]
-    tx = target_pos[0] - barrel_base[0]; ty = target_pos[1] - barrel_base[1]; tz = target_pos[2] - barrel_base[2]
+    dx = barrel_tip[0] - barrel_base[0]
+    dy = barrel_tip[1] - barrel_base[1]
+    dz = barrel_tip[2] - barrel_base[2]
+    tx = target_pos[0] - barrel_base[0]
+    ty = target_pos[1] - barrel_base[1]
+    tz = target_pos[2] - barrel_base[2]
     len_d = math.sqrt(dx*dx + dy*dy + dz*dz)
     len_t = math.sqrt(tx*tx + ty*ty + tz*tz)
     if len_d < 0.001 or len_t < 0.001: return False
-    dot_prod = max(-1.0, min(1.0, (dx*tx + dy*ty + dz*tz) / (len_d * len_t))) 
-    return math.degrees(math.acos(dot_prod)) <= threshold_degrees
+    dot_prod = (dx*tx + dy*ty + dz*tz) / (len_d * len_t)
+    dot_prod = max(-1.0, min(1.0, dot_prod)) 
+    angle = math.degrees(math.acos(dot_prod))
+    return angle <= threshold_degrees
 
 def is_ground_threat(barrel_base, barrel_tip, target_pos):
-    bx = barrel_tip[0] - barrel_base[0]; by = barrel_tip[1] - barrel_base[1]; bz = barrel_tip[2] - barrel_base[2]
-    tx = target_pos[0] - barrel_base[0]; ty = target_pos[1] - barrel_base[1]; tz = target_pos[2] - barrel_base[2]
+    bx = barrel_tip[0] - barrel_base[0]
+    by = barrel_tip[1] - barrel_base[1]
+    bz = barrel_tip[2] - barrel_base[2]
+    
+    tx = target_pos[0] - barrel_base[0]
+    ty = target_pos[1] - barrel_base[1]
+    tz = target_pos[2] - barrel_base[2]
+    
     dist_2d = math.hypot(tx, tz)
     len_b_2d = math.hypot(bx, bz)
+    
     if dist_2d < 0.001 or len_b_2d < 0.001: return False
-    yaw_angle = math.degrees(math.acos(max(-1.0, min(1.0, (bx*tx + bz*tz) / (len_b_2d * dist_2d)))))
-    pitch_diff = math.degrees(math.atan2(by, len_b_2d)) - math.degrees(math.atan2(ty, dist_2d))
+    
+    dot_2d = (bx*tx + bz*tz) / (len_b_2d * dist_2d)
+    dot_2d = max(-1.0, min(1.0, dot_2d))
+    yaw_angle = math.degrees(math.acos(dot_2d))
+    
+    barrel_pitch = math.degrees(math.atan2(by, len_b_2d))
+    target_pitch = math.degrees(math.atan2(ty, dist_2d))
+    pitch_diff = barrel_pitch - target_pitch
+    
     return yaw_angle <= .3 and -2.0 <= pitch_diff <= 6
 
 class ESPOverlay(QWidget):
@@ -83,15 +104,20 @@ class ESPOverlay(QWidget):
         dt = now - self.last_frame_time
         self.last_frame_time = now
         if dt > 0:
-            self.current_fps = (self.current_fps * 0.9) + ((1.0 / dt) * 0.1) 
+            fps = 1.0 / dt
+            self.current_fps = (self.current_fps * 0.9) + (fps * 0.1) 
             
         painter = QPainter()
         painter.begin(self) 
         painter.setRenderHint(QPainter.Antialiasing)
         
-        seen_targets_this_frame = set()
+        seen_targets_this_frame = set() 
         curr_t = time.time()
         lead_marks_to_draw = []
+        
+        # 📌 ตัวแปรเก็บเครื่องบินที่ใกล้เป้าเล็งที่สุด (Crosshair Proximity)
+        closest_crosshair_dist = float('inf')
+        closest_flight_data = None
         
         try:
             painter.setFont(QFont("Arial", 12, QFont.Bold))
@@ -106,8 +132,12 @@ class ESPOverlay(QWidget):
             current_bullet_cd = get_bullet_cd(self.scanner, cgame_base)
             current_bullet_caliber = get_bullet_caliber(self.scanner, cgame_base)
 
-            painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
+            if self.current_fps > 45:
+                painter.setPen(QColor(*COLOR_FPS_GOOD))
+            else:
+                painter.setPen(QColor(255, 50, 50))
             painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}")
+            
             painter.setPen(QColor(*COLOR_INFO_TEXT))
 
             all_units_data = get_all_units(self.scanner, cgame_base) 
@@ -133,39 +163,51 @@ class ESPOverlay(QWidget):
             valid_targets = []
             for u_ptr, is_air in all_units_data:
                 if u_ptr == my_unit: continue 
+                
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
                 u_team, u_state, unit_name, reload_val = status 
-                if u_state >= 1 or (my_team != 0 and u_team == my_team): continue 
+                if u_state >= 1: continue 
+                
+                if my_team != 0 and u_team == my_team: continue
                 
                 unit_name_lower = unit_name.lower()
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
                 valid_targets.append((u_ptr, unit_name, reload_val, is_air))
 
             # ========================================================
-            # 🎯 MAIN PROCESSING LOOP
+            # 🎯 วนลูปวาดกล่อง ชื่อ และดึงค่า Kinematics
             # ========================================================
             for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
-                seen_targets_this_frame.add(u_ptr)
+                seen_targets_this_frame.add(u_ptr) 
                 try:
                     box_data = get_unit_3d_box_data(self.scanner, u_ptr)
                     pos = box_data[0] if box_data else get_unit_pos(self.scanner, u_ptr)
                     if not pos: continue
                     
                     dist = math.sqrt((pos[0]-my_pos[0])**2 + (pos[1]-my_pos[1])**2 + (pos[2]-my_pos[2])**2) if my_pos else 0
-                    barrel_base_2d, barrel_data, has_valid_box = None, None, False
+
+                    barrel_base_2d = None
+                    barrel_data = None
+                    has_valid_box = False
                     avg_x, avg_y, min_y = 0, 0, 0
 
                     if box_data:
                         barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, box_data[3])
                         corners_3d = calculate_3d_box_corners(pos, box_data[1], box_data[2], box_data[3])
-                        pts = [p for c in corners_3d if (p := world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)) and p[2] >= 0.001]
+                        pts = []
+                        for c in corners_3d:
+                            res = world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                            if res and res[2] >= 0.001: pts.append((res[0], res[1]))
                         
                         if len(pts) == 8:
                             painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
-                            for e1, e2 in [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]: 
-                                painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
-                            min_y, avg_x, avg_y = min(p[1] for p in pts), sum(p[0] for p in pts)/8.0, sum(p[1] for p in pts)/8.0  
+                            edges = [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]
+                            for e1, e2 in edges: painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
+                            
+                            min_y = min([p[1] for p in pts])
+                            avg_x = sum([p[0] for p in pts]) / 8.0 
+                            avg_y = sum([p[1] for p in pts]) / 8.0  
                             has_valid_box = True
 
                     if not has_valid_box:
@@ -195,15 +237,22 @@ class ESPOverlay(QWidget):
                     if is_air_target and my_pos and abs(pos[1] - my_pos[1]) < 50: is_air_target = False
                             
                     has_reload_bar = (not is_air_target and (0 <= reload_val < 500))
+                    
+                    # 📌 คำนวณระยะห่างจากเป้าเล็ง (Crosshair) เพื่อวาดหาง Flight Path
                     dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
-                    hide_name = False if is_air_target else (dist > 550 and dist_to_crosshair >= 350)
+                    
+                    hide_name = False
+                    if not is_air_target:
+                        if dist_to_crosshair < 350: hide_name = False
+                        else:
+                            if dist > 550: hide_name = True
+
                     display_text = f"-{int(dist)}m-" if hide_name else f"{clean_name.upper()} [{int(dist)}m]"
                         
                     fm = painter.fontMetrics()
                     text_w = fm.boundingRect(display_text).width()
                     text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
 
-                    # 🚨 DUAL THREAT WARNING SYSTEM
                     warning_level = 0 
                     vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
                     
@@ -211,9 +260,12 @@ class ESPOverlay(QWidget):
                         if vel:
                             v_mag = math.sqrt(vel[0]**2 + vel[1]**2 + vel[2]**2)
                             if v_mag > 5.0: 
-                                t_mag = math.sqrt((my_pos[0]-pos[0])**2 + (my_pos[1]-pos[1])**2 + (my_pos[2]-pos[2])**2)
+                                dx_v, dy_v, dz_v = vel[0]/v_mag, vel[1]/v_mag, vel[2]/v_mag
+                                tx, ty, tz = my_pos[0] - pos[0], my_pos[1] - pos[1], my_pos[2] - pos[2]
+                                t_mag = math.sqrt(tx**2 + ty**2 + tz**2)
                                 if t_mag > 0:
-                                    dot_prod = max(-1.0, min(1.0, (vel[0]/v_mag*(my_pos[0]-pos[0])/t_mag) + (vel[1]/v_mag*(my_pos[1]-pos[1])/t_mag) + (vel[2]/v_mag*(my_pos[2]-pos[2])/t_mag)))
+                                    tx, ty, tz = tx/t_mag, ty/t_mag, tz/t_mag
+                                    dot_prod = max(-1.0, min(1.0, dx_v*tx + dy_v*ty + dz_v*tz))
                                     angle = math.degrees(math.acos(dot_prod))
                                     if angle <= 2.5: warning_level = 2
                                     elif angle <= 6.0: warning_level = 1
@@ -223,12 +275,16 @@ class ESPOverlay(QWidget):
                         elif is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=4.5): warning_level = 1
 
                     if warning_level > 0:
-                        line_dest_x, line_dest_y = barrel_base_2d[0] if barrel_base_2d else avg_x, barrel_base_2d[1] if barrel_base_2d else avg_y
+                        line_dest_x = barrel_base_2d[0] if barrel_base_2d else avg_x
+                        line_dest_y = barrel_base_2d[1] if barrel_base_2d else avg_y
                         if warning_level == 2:
-                            dot_text, dot_y = "⚠️ THREAT!", text_y - 14 
-                            dot_x = int(avg_x - fm.boundingRect(dot_text).width() / 2) 
+                            dot_text = "⚠️ THREAT!"
+                            dot_w = fm.boundingRect(dot_text).width()
+                            dot_x = int(avg_x - dot_w / 2) 
+                            dot_y = text_y - 14 
                             painter.setPen(QColor(255, 0, 0, 50))
-                            for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]: painter.drawText(dot_x + ox, dot_y + oy, dot_text)
+                            for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
+                                painter.drawText(dot_x + ox, dot_y + oy, dot_text)
                             painter.setPen(QColor(255, 0, 0, 255))
                             painter.drawText(dot_x, dot_y, dot_text)
                             painter.setPen(QPen(QColor(255, 0, 0, 100), 5, Qt.DashLine))
@@ -248,7 +304,8 @@ class ESPOverlay(QWidget):
                         max_val = self.max_reload_cache.setdefault(u_ptr, reload_val)
                         if reload_val > max_val: self.max_reload_cache[u_ptr] = max_val = reload_val
                         progress = 1.0 if (reload_val == 0 or max_val == 0) else 1.0 - (float(reload_val) / float(max_val))
-                        bar_w, bar_h, bar_x, bar_y = 40, 4, int(avg_x - 20), int(min_y - 8)
+                        bar_w, bar_h = 40, 4
+                        bar_x, bar_y = int(avg_x - bar_w / 2), int(min_y - 8)
                         painter.setPen(Qt.NoPen)
                         painter.setBrush(QColor(*COLOR_RELOAD_BG))
                         painter.drawRect(bar_x, bar_y, bar_w, bar_h)
@@ -256,16 +313,18 @@ class ESPOverlay(QWidget):
                         painter.drawRect(bar_x, bar_y, int(bar_w * progress), bar_h)
                         
                     # ========================================================
-                    # 🚀 THE ULTIMATE HYBRID ENGINE: Raymarching + Exact Drag
+                    # 🚀 KINEMATICS & TARGET TRACKING FILTER
                     # ========================================================
                     is_turning = False 
-                    if not vel or current_bullet_speed <= 0 or not my_pos or dist <= 10.0: continue
+                    
+                    if not vel or current_bullet_speed <= 0 or not my_pos or dist <= 10.0:
+                        continue
                         
                     vx, vy, vz = vel
                     ax, ay, az = 0.0, 0.0, 0.0
                     
                     if is_air_target:
-                        # 1. หาระยะเวลาและความเร่งปัจจุบัน
+                        t_x, t_y, t_z = pos[0], pos[1], pos[2]
                         if u_ptr not in self.vel_window:
                             self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (0.0, 0.0, 0.0)}
                         else:
@@ -277,7 +336,6 @@ class ESPOverlay(QWidget):
                                 raw_ay = (vy - history['v'][1]) / dt_track
                                 raw_az = (vz - history['v'][2]) / dt_track
                                 
-                                # EMA Filter เพื่อความนิ่ง
                                 alpha = 0.25 
                                 ax = history['a'][0] + alpha * (raw_ax - history['a'][0])
                                 ay = history['a'][1] + alpha * (raw_ay - history['a'][1])
@@ -289,109 +347,112 @@ class ESPOverlay(QWidget):
                                 
                         a_mag = math.sqrt(ax**2 + ay**2 + az**2)
                         if a_mag > 3.0: is_turning = True
-                        if a_mag > 150.0: # Cap กันเป้ากระเด็น
-                            ax = (ax / a_mag) * 150.0; ay = (ay / a_mag) * 150.0; az = (az / a_mag) * 150.0
+                        if a_mag > 150.0: 
+                            ax, ay, az = (ax / a_mag) * 150.0, (ay / a_mag) * 150.0, (az / a_mag) * 150.0
                             
-                        t_x, t_y, t_z = pos[0], pos[1], pos[2]
+                        # 📌 ตรวจสอบว่าเป็นเป้าที่ใกล้ Crosshair ที่สุดหรือไม่ (ถ้าใช่ บันทึกไว้เผื่อวาดหาง)
+                        if dist_to_crosshair < closest_crosshair_dist:
+                            closest_crosshair_dist = dist_to_crosshair
+                            closest_flight_data = {'pos': pos, 'v': vel, 'a': (ax, ay, az)}
                     else:
                         t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
 
-                    # 2. คำนวณสัมประสิทธิ์แรงต้านอากาศ (Exact Physics Drag)
-                    # 🛠️ ปรับจูน DRAG_TUNE เพื่อบาลานซ์ HE-VT (เช่น 0.85) ถ้าเป้านำหน้าเกินไปให้ลดลง
-                    DRAG_TUNE = 0.85
+                    # =========================================================
+                    # 🚀 GHIDRA PHYSICS: V^2 EXACT DRAG INTEGRATION
+                    # =========================================================
                     k = 0.0001
                     if current_bullet_mass > 0.001 and current_bullet_caliber > 0.001:
                         Cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
                         altitude = max(0.0, my_pos[1])
-                        rho = 1.225 * math.pow(max(1.0 - (2.25577e-5 * altitude), 0.0), 4.2561)
+                        temp_lapse = 1.0 - (2.25577e-5 * altitude)
+                        rho = 1.225 * math.pow(max(temp_lapse, 0.0), 4.2561)
                         area = math.pi * ((current_bullet_caliber / 2.0) ** 2)
-                        k = ((0.5 * rho * Cd * area) / current_bullet_mass) * DRAG_TUNE
-
+                        k = (0.5 * rho * Cd * area) / current_bullet_mass
+                        
                     t_sight = current_zeroing / current_bullet_speed
                     sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
+                        
+                    # วนลูป Newton-Raphson 5 รอบ หา Time of flight ที่แม่นยำ
+                    best_t = dist / current_bullet_speed
+                    final_x, final_y, final_z = t_x, t_y, t_z
                     
-                    # 3. 🧮 ITERATIVE RAYMARCHING (ระบบจำลองวิถีโค้งทีละ 0.025 วินาที)
-                    sim_t = 0.0       
-                    sim_dt = 0.025     
-                    max_sim_time = 10.0 
-                    
-                    sim_x, sim_y, sim_z = t_x, t_y, t_z
-                    sim_vx, sim_vy, sim_vz = vx, vy, vz
-                    
-                    best_t = 0.0
-                    final_x, final_y, final_z = sim_x, sim_y, sim_z
-                    
-                    while sim_t < max_sim_time:
-                        # 🌪️ Turn Decay: เครื่องบินไม่สามารถเลี้ยว 9G ได้ตลอดไป ความเร่งจะค่อยๆ ลดลง
-                        # ค่า -1.2 จำลองพฤติกรรมผู้เล่น WT ได้สมจริงที่สุด
-                        decay = math.exp(-1.2 * sim_t) if is_air_target else 1.0
-                        
-                        sim_vx += (ax * decay) * sim_dt
-                        sim_vy += (ay * decay) * sim_dt
-                        sim_vz += (az * decay) * sim_dt
-                        
-                        sim_x += sim_vx * sim_dt
-                        sim_y += sim_vy * sim_dt
-                        sim_z += sim_vz * sim_dt
-                        
-                        sim_t += sim_dt
-                        
-                        # เช็คระยะห่าง ณ เวลานั้น
-                        dx = sim_x - my_pos[0]
-                        dy = sim_y - (my_pos[1] + 1.5)
-                        dz = sim_z - my_pos[2]
-                        dist_to_sim = math.sqrt(dx*dx + dy*dy + dz*dz)
-                        
-                        # 🎯 EXACT DRAG FORMULA: คำนวณเวลาที่กระสุนบินจริง
-                        if current_bullet_speed > 0:
-                            if k > 0.000001:
-                                kx = min(k * dist_to_sim, 5.0)
-                                bullet_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
-                            else:
-                                bullet_t = dist_to_sim / current_bullet_speed
+                    for _ in range(5):
+                        if is_air_target:
+                            # 🧠 สมการปริพันธ์ตรง (Analytical Integration) ตาม Ghidra 
+                            # a_term = อินทิเกรตของสมการ a * exp(-2t) ทำให้เป้าแม่นยำแม้ศัตรูหักเลี้ยว
+                            a_term = (2.0 * best_t - 1.0 + math.exp(-2.0 * best_t)) / 4.0
+                            pred_x = t_x + (vx * best_t) + (ax * a_term)
+                            pred_y = t_y + (vy * best_t) + (ay * a_term)
+                            pred_z = t_z + (vz * best_t) + (az * a_term)
                         else:
-                            bullet_t = 999.0
+                            pred_x = t_x + (vx * best_t)
+                            pred_y = t_y + (vy * best_t)
+                            pred_z = t_z + (vz * best_t)
+                        
+                        # หักลบความเร็วรถเราเอง (Shooter Velocity Compensation)
+                        rel_dx = pred_x - (my_pos[0] + my_vx * best_t)
+                        rel_dy = pred_y - (my_pos[1] + 1.5 + my_vy * best_t)
+                        rel_dz = pred_z - (my_pos[2] + my_vz * best_t)
+                        d_req = math.sqrt(rel_dx**2 + rel_dy**2 + rel_dz**2)
+                        
+                        # 🌪️ THE CORRECT V^2 DRAG MODEL FORMULA: t = (e^(kd) - 1) / (k * v0)
+                        if k > 0.000001:
+                            kx = min(k * d_req, 5.0) # กัน Overflow
+                            best_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
+                        else:
+                            best_t = d_req / current_bullet_speed
                             
-                        # ถ้าเวลายิงทันเวลาจำลอง = ชนเป้า!
-                        if bullet_t <= sim_t:
-                            overshoot = sim_t - bullet_t
-                            ratio = 1.0 - (overshoot / sim_dt)
-                            best_t = bullet_t
-                            
-                            # Sub-tick Interpolation (ดึงเป้ากลับให้เป๊ะระดับมิลลิวินาที)
-                            final_x = sim_x - (sim_vx * sim_dt * (1.0 - ratio))
-                            final_y = sim_y - (sim_vy * sim_dt * (1.0 - ratio))
-                            final_z = sim_z - (sim_vz * sim_dt * (1.0 - ratio))
-                            break
-                    
-                    # 4. ชดเชยแรงโน้มถ่วง และ หักลบความเร็วรถถังเราเอง (Shooter Velocity Compensation)
+                        final_x, final_y, final_z = pred_x, pred_y, pred_z
+
+                    # ⬇️ ชดเชยแรงโน้มถ่วง (Gravity Drop)
                     drop = 0.5 * BULLET_GRAVITY * (best_t * best_t)
-                    net_drop = drop - sight_drop_comp
+                    final_y += (drop - sight_drop_comp)
                     
-                    final_x -= (my_vx * best_t)
-                    final_y = final_y - (my_vy * best_t) + net_drop 
-                    final_z -= (my_vz * best_t)
-                    
-                    # 🖥️ นำขึ้นจอ (World to Screen)
+                    # แปลงพิกัดขึ้นจอ
                     pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, SCREEN_WIDTH, SCREEN_HEIGHT)
                     
                     if pred_screen and pred_screen[2] > 0:
-                        draw_sx, draw_sy = avg_x, avg_y
+                        draw_start_x, draw_start_y = avg_x, avg_y
                         if is_air_target:
-                            pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                            if pos_scr and pos_scr[2] > 0: 
-                                draw_sx, draw_sy = pos_scr[0], pos_scr[1]
+                            pos_screen = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                            if pos_screen and pos_screen[2] > 0:
+                                draw_start_x, draw_start_y = pos_screen[0], pos_screen[1]
                         
                         lead_marks_to_draw.append({
-                            'sx': draw_sx, 'sy': draw_sy, 'px': pred_screen[0], 'py': pred_screen[1],
-                            'is_air': is_air_target, 'is_turning': is_turning
+                            'sx': draw_start_x,
+                            'sy': draw_start_y,
+                            'px': pred_screen[0],
+                            'py': pred_screen[1],
+                            'is_air': is_air_target,
+                            'is_turning': is_turning
                         })
 
                 except Exception:
                     pass
 
             # ========================================================
-            # 🔝 FRONT LAYER RENDERER (วาดเป้าดักหน้าเป็นชั้นบนสุด!)
+            # 🚀 FLIGHT PATH SIMULATION RENDERER (วาดหางอนาคตเป้าหมาย)
+            # ========================================================
+            if closest_flight_data:
+                c_pos, c_v, c_a = closest_flight_data['pos'], closest_flight_data['v'], closest_flight_data['a']
+                path_pts = []
+                for step in range(30): # วาดล่วงหน้า 3 วินาที (ขั้นละ 0.1)
+                    t_sim = step * 0.1
+                    a_term = (2.0 * t_sim - 1.0 + math.exp(-2.0 * t_sim)) / 4.0
+                    p_x = c_pos[0] + c_v[0] * t_sim + c_a[0] * a_term
+                    p_y = c_pos[1] + c_v[1] * t_sim + c_a[1] * a_term
+                    p_z = c_pos[2] + c_v[2] * t_sim + c_a[2] * a_term
+                    
+                    scr = world_to_screen(view_matrix, p_x, p_y, p_z, SCREEN_WIDTH, SCREEN_HEIGHT)
+                    if scr and scr[2] > 0: path_pts.append((scr[0], scr[1]))
+                
+                if len(path_pts) > 1:
+                    painter.setPen(QPen(QColor(*COLOR_FLIGHT_PATH), 2, Qt.DotLine))
+                    for i in range(len(path_pts) - 1):
+                        painter.drawLine(int(path_pts[i][0]), int(path_pts[i][1]), int(path_pts[i+1][0]), int(path_pts[i+1][1]))
+
+            # ========================================================
+            # 🔝 FRONT LAYER RENDERER (วาดเป้าดักหน้าเป็นชั้นบนสุด)
             # ========================================================
             for lm in lead_marks_to_draw:
                 painter.setPen(QPen(QColor(255, 100, 100, 150), 2, Qt.DashLine))
@@ -399,9 +460,10 @@ class ESPOverlay(QWidget):
                 
                 pred_color = QColor(*COLOR_PREDICTION)
                 if lm['is_air'] and lm['is_turning']:
-                    # 🌪️ กะพริบเฉพาะเวลาที่เครื่องบินกำลังเลี้ยวโค้งแรงๆ
-                    blink_alpha = int(((math.sin(time.time() * 25.0) + 1.0) / 2.0) * 150 + 105)
+                    blink_alpha = int(((math.sin(time.time() * 25.0) + 1.0) / 2.0) * 200 + 55)
                     pred_color.setAlpha(blink_alpha)
+                else:
+                    pred_color.setAlpha(255) 
                 
                 painter.setPen(QPen(pred_color, 3))
                 painter.drawEllipse(int(lm['px']) - 8, int(lm['py']) - 8, 16, 16)
@@ -413,7 +475,8 @@ class ESPOverlay(QWidget):
                 del self.vel_window[ptr]
 
         except Exception as e: 
-            print(f"Main loop error: {e}")
+            print(e)
+            pass
         finally: 
             painter.end()
 
