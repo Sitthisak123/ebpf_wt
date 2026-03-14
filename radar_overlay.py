@@ -27,15 +27,14 @@ COLOR_TEXT_AIR       = (255, 222, 66, 255)
 COLOR_RELOAD_BG      = (0, 0, 0, 150)        
 COLOR_RELOAD_READY   = (0, 255, 0, 200)      
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (255, 40, 40, 255)    # 🔴 สีเป้าดักหน้า 
+COLOR_PREDICTION     = (255, 255, 255, 255)    # 🔴 สีเป้าดักหน้า 
 COLOR_FPS_GOOD       = (0, 255, 0, 255)      
 
-BULLET_GRAVITY       = 9.81   
+BULLET_GRAVITY       = 9.80665   # ค่า G ตามมาตรฐานเป๊ะๆ
 
 BOT_KEYWORDS = ["speaker","water", "panzerzug","windmill","dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery", "infantry", "ship", "boat", "freighter", "hangar", "technic", "vent", "railway", "freight"]
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
 
-# 🚀 ระบบเช็คเล็งแบบดั้งเดิม (Direct 3D) 
 def is_aiming_at(barrel_base, barrel_tip, target_pos, threshold_degrees=6.0):
     dx = barrel_tip[0] - barrel_base[0]
     dy = barrel_tip[1] - barrel_base[1]
@@ -51,7 +50,6 @@ def is_aiming_at(barrel_base, barrel_tip, target_pos, threshold_degrees=6.0):
     angle = math.degrees(math.acos(dot_prod))
     return angle <= threshold_degrees
 
-# 🚀 THE NEW DYNAMIC THREAT SENSOR (ระบบจับการกระดกปืนเผื่อระยะ 97%)
 def is_ground_threat(barrel_base, barrel_tip, target_pos):
     bx = barrel_tip[0] - barrel_base[0]
     by = barrel_tip[1] - barrel_base[1]
@@ -84,7 +82,7 @@ class ESPOverlay(QWidget):
         self.max_reload_cache = {}
         
         self.last_my_unit = 0 
-        self.vel_window = {} 
+        self.vel_window = {} # 🛡️ ประวัติศาสตร์ความเร็วสำหรับหาความเร่ง
         
         self.last_frame_time = time.time()
         self.current_fps = 0.0
@@ -114,8 +112,6 @@ class ESPOverlay(QWidget):
         
         seen_targets_this_frame = set()
         curr_t = time.time()
-        
-        # 🌟 ตัวคิววาดเป้าดักหน้า (เอาไว้วาดทีหลังสุด เพื่อให้อยู่ด้านหน้าสุด!)
         lead_marks_to_draw = []
         
         try:
@@ -125,6 +121,7 @@ class ESPOverlay(QWidget):
             view_matrix = get_view_matrix(self.scanner, cgame_base)
             if not view_matrix: return
 
+            # ดึงข้อมูลกระสุน
             current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
             current_zeroing = get_sight_compensation_factor(self.scanner, self.base_address)
             current_bullet_mass = get_bullet_mass(self.scanner, cgame_base)
@@ -155,8 +152,8 @@ class ESPOverlay(QWidget):
 
             if my_unit != self.last_my_unit:
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
-                self.max_reload_cache = {} 
-                self.vel_window = {}
+                self.max_reload_cache = {}
+                self.vel_window = {} 
                 self.last_my_unit = my_unit
 
             valid_targets = []
@@ -175,7 +172,7 @@ class ESPOverlay(QWidget):
                 valid_targets.append((u_ptr, unit_name, reload_val, is_air))
 
             # ========================================================
-            # 🎯 วนลูปวาดกล่อง ชื่อ และคำนวณภัยคุกคาม
+            # 🎯 Main Loop
             # ========================================================
             for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
@@ -267,12 +264,12 @@ class ESPOverlay(QWidget):
                     text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
 
                     # ========================================================
-                    # 🚨 DUAL THREAT WARNING SYSTEM (Warning vs Alert)
+                    # 🚨 DUAL THREAT WARNING SYSTEM
                     # ========================================================
-                    warning_level = 0 # 0 = ปลอดภัย, 1 = เฝ้าระวัง (เส้นเหลือง), 2 = อันตราย 97% (เส้นแดง + ข้อความ)
+                    warning_level = 0 
+                    vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
                     
                     if is_air_target and my_pos and dist > 10.0:
-                        vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
                         if vel:
                             v_mag = math.sqrt(vel[0]**2 + vel[1]**2 + vel[2]**2)
                             if v_mag > 5.0: 
@@ -292,39 +289,32 @@ class ESPOverlay(QWidget):
                         is_alert = is_ground_threat(barrel_data[0], barrel_data[1], my_pos)
                         is_warn = is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=4.5)
                         
-                        if is_alert:
-                            warning_level = 2
-                        elif is_warn:
-                            warning_level = 1
+                        if is_alert: warning_level = 2
+                        elif is_warn: warning_level = 1
 
                     if warning_level > 0:
                         line_dest_x = barrel_base_2d[0] if barrel_base_2d else avg_x
                         line_dest_y = barrel_base_2d[1] if barrel_base_2d else avg_y
                         
                         if warning_level == 2:
-                            # 🔴 LEVEL 2: ALERT (อันตราย 97% - เส้นแดงประ + ข้อความ) ไม่มีกะพริบ
                             dot_text = "⚠️ THREAT!"
                             dot_w = fm.boundingRect(dot_text).width()
                             dot_x = int(avg_x - dot_w / 2) 
                             dot_y = text_y - 14 
                             
-                            # วาดเงาข้อความสีแดง
                             painter.setPen(QColor(255, 0, 0, 50))
                             for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
                                 painter.drawText(dot_x + ox, dot_y + oy, dot_text)
                             
-                            # วาดตัวหนังสือหลัก
                             painter.setPen(QColor(255, 0, 0, 255))
                             painter.drawText(dot_x, dot_y, dot_text)
 
-                            # เส้นชี้เป้าสีแดงแบบนิ่งสนิท
                             painter.setPen(QPen(QColor(255, 0, 0, 100), 5, Qt.DashLine))
                             painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
                             painter.setPen(QPen(QColor(255, 0, 0, 255), 2, Qt.DashLine))
                             painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
                             
                         elif warning_level == 1:
-                            # 🟡 LEVEL 1: WARNING (เฝ้าระวัง 6 องศา - เส้นเหลืองอมส้ม นิ่งสนิท ไม่มีข้อความ)
                             painter.setPen(QPen(QColor(255, 180, 0, 80), 5))
                             painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
                             painter.setPen(QPen(QColor(255, 180, 0, 255), 2))
@@ -354,129 +344,121 @@ class ESPOverlay(QWidget):
                         painter.drawRect(bar_x, bar_y, fill_w, bar_h)
                         
                     # ========================================================
-                    # 🚀 THE ITERATIVE RAYMARCHING ENGINE (เตรียมค่าไว้วาดทีหลัง)
+                    # 🚀 ZERO-LAG RADAR TRACKING (Exact Ghidra Method)
                     # ========================================================
-                    vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
                     is_turning = False 
                     
-                    if vel and my_pos and dist > 10.0:
-                        vx, vy, vz = vel
-                        ax, ay, az = 0.0, 0.0, 0.0
+                    if not vel or current_bullet_speed <= 0:
+                        continue
                         
-                        if is_air_target:
-                            t_x, t_y, t_z = pos[0], pos[1], pos[2] 
-                            if u_ptr not in self.vel_window:
-                                self.vel_window[u_ptr] = []
-                            
-                            window = self.vel_window[u_ptr]
-                            window.append((curr_t, vx, vy, vz))
-                            while len(window) > 0 and curr_t - window[0][0] > 0.2:
-                                window.pop(0)
-                                
-                            if len(window) >= 2:
-                                old_t, ovx, ovy, ovz = window[0]
-                                dt_win = curr_t - old_t
-                                if dt_win > 0.05: 
-                                    ax = (vx - ovx) / dt_win
-                                    ay = (vy - ovy) / dt_win
-                                    az = (vz - ovz) / dt_win
-                                    
-                                    a_mag = math.sqrt(ax**2 + ay**2 + az**2)
-                                    if a_mag < 3.0: 
-                                        ax, ay, az = 0.0, 0.0, 0.0
-                                    else:
-                                        is_turning = True 
-                                        
-                                    if a_mag > 150.0: 
-                                        ax = (ax / a_mag) * 150.0
-                                        ay = (ay / a_mag) * 150.0
-                                        az = (az / a_mag) * 150.0
+                    vx, vy, vz = vel
+                    ax, ay, az = 0.0, 0.0, 0.0
+                    
+                    if is_air_target:
+                        t_x, t_y, t_z = pos[0], pos[1], pos[2]
+                        if u_ptr not in self.vel_window:
+                            self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (0.0, 0.0, 0.0)}
                         else:
-                            t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
-
-                        if current_bullet_mass > 0.001 and current_bullet_caliber > 0.001:
-                            Cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
-                            rho = 1.225
-                            area = math.pi * ((current_bullet_caliber / 2.0) ** 2)
-                            k = (0.5 * rho * Cd * area) / current_bullet_mass
-                        else:
-                            k = 0.0001
+                            history = self.vel_window[u_ptr]
+                            dt_track = curr_t - history['time']
                             
-                        t_sight = current_zeroing / current_bullet_speed if current_bullet_speed > 0 else 0
-                        sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
-                            
-                        sim_t = 0.0       
-                        sim_dt = 0.025     
-                        max_sim_time = 5.0 
-                        
-                        sim_x, sim_y, sim_z = t_x, t_y, t_z
-                        sim_vx, sim_vy, sim_vz = vx, vy, vz
-                        
-                        best_t = 0.0
-                        final_x, final_y, final_z = sim_x, sim_y, sim_z
-                        
-                        while sim_t < max_sim_time:
-                            if sim_t < 1.5:
-                                sim_vx += ax * sim_dt
-                                sim_vy += ay * sim_dt
-                                sim_vz += az * sim_dt
+                            if dt_track >= 0.033: # Update ความเร่งที่ 30Hz (เท่ากับ Tick เกม)
+                                raw_ax = (vx - history['v'][0]) / dt_track
+                                raw_ay = (vy - history['v'][1]) / dt_track
+                                raw_az = (vz - history['v'][2]) / dt_track
                                 
-                            sim_x += sim_vx * sim_dt
-                            sim_y += sim_vy * sim_dt
-                            sim_z += sim_vz * sim_dt
-                            
-                            sim_t += sim_dt
-                            
-                            dx = sim_x - my_pos[0]
-                            dy = sim_y - (my_pos[1] + 1.5)
-                            dz = sim_z - my_pos[2]
-                            dist_to_sim = math.sqrt(dx*dx + dy*dy + dz*dz)
-                            
-                            if current_bullet_speed > 0:
-                                if k > 0.000001:
-                                    kx = min(k * dist_to_sim, 5.0)
-                                    bullet_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
-                                else:
-                                    bullet_t = dist_to_sim / current_bullet_speed
+                                # EMA Filter เลียนแบบความหน่วงเรดาร์ในเกม
+                                alpha = 0.25 
+                                ax = history['a'][0] + alpha * (raw_ax - history['a'][0])
+                                ay = history['a'][1] + alpha * (raw_ay - history['a'][1])
+                                az = history['a'][2] + alpha * (raw_az - history['a'][2])
+                                
+                                self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (ax, ay, az)}
                             else:
-                                bullet_t = 999.0
+                                ax, ay, az = history['a']
                                 
-                            if bullet_t <= sim_t:
-                                best_t = bullet_t
-                                final_x, final_y, final_z = sim_x, sim_y, sim_z 
-                                break
-                        
-                        drop = 0.5 * BULLET_GRAVITY * (best_t * best_t)
-                        net_drop = drop - sight_drop_comp
-                        
-                        final_x -= (my_vx * best_t)
-                        final_y = final_y - (my_vy * best_t) + net_drop 
-                        final_z -= (my_vz * best_t)
-                        
-                        pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, SCREEN_WIDTH, SCREEN_HEIGHT)
-                        
-                        if pred_screen and pred_screen[2] > 0:
-                            draw_start_x, draw_start_y = avg_x, avg_y
-                            if is_air_target:
-                                pos_screen = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                                if pos_screen and pos_screen[2] > 0:
-                                    draw_start_x, draw_start_y = pos_screen[0], pos_screen[1]
-                            
-                            # 📥 บันทึกข้อมูลเป้าดักลงคิว (ยังไม่วาดในลูปนี้ เพื่อไม่ให้กล่องมาบัง)
-                            lead_marks_to_draw.append({
-                                'sx': draw_start_x,
-                                'sy': draw_start_y,
-                                'px': pred_screen[0],
-                                'py': pred_screen[1],
-                                'is_air': is_air_target,
-                                'is_turning': is_turning
-                            })
+                        a_mag = math.sqrt(ax**2 + ay**2 + az**2)
+                        if a_mag > 3.0: is_turning = True
+                        if a_mag > 150.0: # Cap กันเป้ากระเด็น
+                            ax = (ax / a_mag) * 150.0; ay = (ay / a_mag) * 150.0; az = (az / a_mag) * 150.0
+                    else:
+                        t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
 
-                except Exception:
+                    # =========================================================
+                    # 🚀 THE EXACT ITERATIVE SOLVER (Newton-Raphson 5 Steps)
+                    # =========================================================
+                    k = 0.0001
+                    if current_bullet_mass > 0.001 and current_bullet_caliber > 0.001:
+                        Cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
+                        altitude = max(0.0, my_pos[1])
+                        temp_lapse = 1.0 - (2.25577e-5 * altitude)
+                        rho = 1.225 * math.pow(max(temp_lapse, 0.0), 4.2561)
+                        area = math.pi * ((current_bullet_caliber / 2.0) ** 2)
+                        k = (0.5 * rho * Cd * area) / current_bullet_mass
+
+                    t_sight = current_zeroing / current_bullet_speed if current_bullet_speed > 0 else 0
+                    sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
+                    
+                    # 1. เดาเวลาเริ่มต้นจากความเร็วต้นดื้อๆ
+                    best_t = dist / current_bullet_speed
+                    final_x, final_y, final_z = t_x, t_y, t_z
+                    
+                    # 2. วนลูป 5 ครั้งเพื่อบีบหาจุดตัด (Converge)
+                    for _ in range(5):
+                        # คำนวณพิกัดเป้าหมายในอนาคต (บวกความเร่งและดึงความเร่งให้ลดลงตามเวลา)
+                        decay = math.exp(-2.0 * best_t) if is_air_target else 1.0
+                        
+                        pred_x = t_x + (vx * best_t) + 0.5 * (ax * decay) * (best_t ** 2)
+                        pred_y = t_y + (vy * best_t) + 0.5 * (ay * decay) * (best_t ** 2)
+                        pred_z = t_z + (vz * best_t) + 0.5 * (az * decay) * (best_t ** 2)
+                        
+                        # หักลบความเร็วรถถังเรา (Shooter Velocity Compensation)
+                        pred_x -= (my_vx * best_t)
+                        pred_y -= (my_vy * best_t)
+                        pred_z -= (my_vz * best_t)
+                        
+                        # คำนวณระยะทางใหม่
+                        dx = pred_x - my_pos[0]
+                        dy = pred_y - (my_pos[1] + 1.5)
+                        dz = pred_z - my_pos[2]
+                        d_new = math.sqrt(dx*dx + dy*dy + dz*dz)
+                        
+                        # ปรับเวลาใหม่ด้วยสมการ Air Drag
+                        if k > 0.000001:
+                            kx = min(k * d_new, 5.0) 
+                            best_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
+                        else:
+                            best_t = d_new / current_bullet_speed
+                            
+                        final_x, final_y, final_z = pred_x, pred_y, pred_z
+
+                    # 3. ชดเชยแรงโน้มถ่วงขั้นสุดท้าย
+                    drop = 0.5 * BULLET_GRAVITY * (best_t * best_t)
+                    final_y += (drop - sight_drop_comp)
+                    
+                    pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, SCREEN_WIDTH, SCREEN_HEIGHT)
+                    
+                    if pred_screen and pred_screen[2] > 0:
+                        draw_start_x, draw_start_y = avg_x, avg_y
+                        if is_air_target:
+                            pos_screen = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                            if pos_screen and pos_screen[2] > 0:
+                                draw_start_x, draw_start_y = pos_screen[0], pos_screen[1]
+                        
+                        lead_marks_to_draw.append({
+                            'sx': draw_start_x,
+                            'sy': draw_start_y,
+                            'px': pred_screen[0],
+                            'py': pred_screen[1],
+                            'is_air': is_air_target,
+                            'is_turning': is_turning
+                        })
+
+                except Exception as e:
                     pass
 
             # ========================================================
-            # 🔝 FRONT LAYER RENDERER (วาดเป้าดักหน้าเป็นชั้นบนสุด!)
+            # 🔝 FRONT LAYER RENDERER (วาดเป้าดักหน้า)
             # ========================================================
             for lm in lead_marks_to_draw:
                 painter.setPen(QPen(QColor(255, 100, 100, 150), 2, Qt.DashLine))
@@ -484,7 +466,6 @@ class ESPOverlay(QWidget):
                 
                 pred_color = QColor(*COLOR_PREDICTION)
                 if lm['is_air'] and lm['is_turning']:
-                    # 🌪️ กะพริบเฉพาะเวลาที่เครื่องบินกำลังเลี้ยวโค้ง
                     blink_alpha = int(((math.sin(time.time() * 25.0) + 1.0) / 2.0) * 200 + 55)
                     pred_color.setAlpha(blink_alpha)
                 else:
@@ -496,7 +477,7 @@ class ESPOverlay(QWidget):
                 painter.drawEllipse(int(lm['px']) - 3, int(lm['py']) - 3, 6, 6)
                 painter.setBrush(Qt.NoBrush)
 
-            # ล้างประวัติเป้าหมายที่ตาย
+            # ล้างประวัติเป้าหมายที่หลุดจอ/ตาย
             dead_targets = [ptr for ptr in self.vel_window if ptr not in seen_targets_this_frame]
             for ptr in dead_targets:
                 del self.vel_window[ptr]
