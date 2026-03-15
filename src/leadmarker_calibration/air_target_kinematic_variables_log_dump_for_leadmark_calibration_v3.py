@@ -2,6 +2,7 @@ import sys
 import math
 import time
 import struct
+import os
 
 try:
     import keyboard
@@ -34,19 +35,13 @@ COLOR_TEXT_AIR       = (255, 222, 66, 255)
 COLOR_RELOAD_BG      = (0, 0, 0, 150)        
 COLOR_RELOAD_READY   = (0, 255, 0, 200)      
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (0, 255, 255, 255)    
+COLOR_PREDICTION     = (255, 0, 255, 255)    
 COLOR_FLIGHT_PATH    = (255, 200, 0, 180)    
 COLOR_FPS_GOOD       = (0, 255, 0, 255)      
 
 BULLET_GRAVITY       = 9.80665   
 BOT_KEYWORDS = ["speaker","water", "panzerzug","windmill","dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery", "infantry", "ship", "boat", "freighter", "hangar", "technic", "vent", "railway", "freight"]
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
-
-# 🎯 TURN BOOST: ตัวคูณช่วยดึงเป้าไปทางที่เลี้ยว
-# 1.0 = ปกติ (ตามที่ AI คำนวณ)
-# 1.15 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 15%
-# 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
-turn_boost = 1.3
 
 class ESPOverlay(QWidget):
     def __init__(self, scanner, base_address):
@@ -60,9 +55,9 @@ class ESPOverlay(QWidget):
         self.last_frame_time = time.time()
         self.current_fps = 0.0
         
-        # 🤖 AI Auto-Calibration for Maneuvers (6 Threads)
-        self.ai_ghost_queue = []
-        self.dynamic_decay = 0.15 
+        # 🤖 ตัวแปรระบบ AI Auto-Calibration
+        self.ai_ghost_queue = [] # คิวเก็บพิกัดอนาคตคู่ขนาน
+        self.dynamic_decay = 0.15 # ค่าเริ่มต้นของการเลี้ยว (จะเปลี่ยนอัตโนมัติ)
         
         self.target_idx = 0
         self.q_pressed_last = False
@@ -97,13 +92,6 @@ class ESPOverlay(QWidget):
         active_flight_data = None 
         active_target_ptr = 0
         
-        if HAS_KEYBOARD:
-            try:
-                is_q_pressed = keyboard.is_pressed('q')
-                if is_q_pressed and not self.q_pressed_last: self.target_idx += 1
-                self.q_pressed_last = is_q_pressed
-            except: pass
-
         try:
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             cgame_base = get_cgame_base(self.scanner, self.base_address)
@@ -117,10 +105,12 @@ class ESPOverlay(QWidget):
             current_bullet_cd = get_bullet_cd(self.scanner, cgame_base)
             current_bullet_caliber = get_bullet_caliber(self.scanner, cgame_base)
 
+            # 🤖 โชว์สถานะ AI บนหน้าจอซ้ายบน
             painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
             painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}")
             painter.setPen(QColor(0, 255, 255, 255))
-            painter.drawText(20, 115, f"🧠 AI Tracking : 6 Threads Active (Decay={self.dynamic_decay:.3f})")
+            painter.drawText(20, 115, f"🧠 AI Auto-Turn Decay : {self.dynamic_decay:.3f}")
+            
             painter.setPen(QColor(*COLOR_INFO_TEXT))
 
             all_units_data = get_all_units(self.scanner, cgame_base) 
@@ -140,7 +130,7 @@ class ESPOverlay(QWidget):
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
                 self.max_reload_cache = {}
                 self.vel_window = {} 
-                self.ai_ghost_queue = [] 
+                self.ai_ghost_queue = [] # ล้าง AI Queue เมื่อเปลี่ยนรถ
                 self.last_my_unit = my_unit
 
             valid_targets = []
@@ -155,11 +145,15 @@ class ESPOverlay(QWidget):
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
                 valid_targets.append((u_ptr, unit_name, reload_val, is_air))
 
-            # 🎯 Auto-Lock เป้าหมายที่ใกล้กลางจอที่สุด
+            # ========================================================
+            # 🎯 MAIN PROCESSING LOOP
+            # ========================================================
+            # 1. หาระยะห่างเพื่อหาเป้าหมายหลักก่อน
             for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
                 if not is_air_target: continue
                 pos = get_unit_pos(self.scanner, u_ptr)
                 if not pos: continue
+                
                 res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
                 if res_pos and res_pos[2] > 0:
                     dist_crosshair = math.hypot(res_pos[0] - self.center_x, res_pos[1] - self.center_y)
@@ -168,37 +162,40 @@ class ESPOverlay(QWidget):
                         active_target_ptr = u_ptr
 
             # ========================================================
-            # 🧠 AI EVALUATION STEP (ประเมินผล 6 สมมติฐาน)
+            # 🧠 AI EVALUATION STEP (ประเมินผลการทำนายในอดีต)
             # ========================================================
+            # คัดกรองและประเมินคิวที่เวลามาถึงแล้ว (หน่วงเวลาไปแล้ว 1.0 วินาที)
             remaining_ghosts = []
             for ghost in self.ai_ghost_queue:
                 if curr_t >= ghost['impact_time']:
+                    # เวลามาถึงแล้ว! เรามาดูว่าเป้าหมายจริงอยู่ไหน
                     if ghost['target_id'] == active_target_ptr:
                         actual_pos = get_unit_pos(self.scanner, ghost['target_id'])
                         if actual_pos:
-                            # เทียบความห่างของสมการทั้ง 6 แบบกับความจริง
-                            errs = [
-                                (0.01, math.hypot(ghost['p1'][0]-actual_pos[0], ghost['p1'][1]-actual_pos[1], ghost['p1'][2]-actual_pos[2])),
-                                (0.05, math.hypot(ghost['p2'][0]-actual_pos[0], ghost['p2'][1]-actual_pos[1], ghost['p2'][2]-actual_pos[2])),
-                                (0.15, math.hypot(ghost['p3'][0]-actual_pos[0], ghost['p3'][1]-actual_pos[1], ghost['p3'][2]-actual_pos[2])),
-                                (ghost['dyn_val'], math.hypot(ghost['p4'][0]-actual_pos[0], ghost['p4'][1]-actual_pos[1], ghost['p4'][2]-actual_pos[2])),
-                                (0.35, math.hypot(ghost['p5'][0]-actual_pos[0], ghost['p5'][1]-actual_pos[1], ghost['p5'][2]-actual_pos[2])),
-                                (0.65, math.hypot(ghost['p6'][0]-actual_pos[0], ghost['p6'][1]-actual_pos[1], ghost['p6'][2]-actual_pos[2]))
-                            ]
+                            # เทียบความห่างของสมการทั้ง 3 แบบกับความจริง
+                            err1 = math.hypot(ghost['p1'][0]-actual_pos[0], ghost['p1'][1]-actual_pos[1], ghost['p1'][2]-actual_pos[2])
+                            err2 = math.hypot(ghost['p2'][0]-actual_pos[0], ghost['p2'][1]-actual_pos[1], ghost['p2'][2]-actual_pos[2])
+                            err3 = math.hypot(ghost['p3'][0]-actual_pos[0], ghost['p3'][1]-actual_pos[1], ghost['p3'][2]-actual_pos[2])
                             
-                            # ดึงค่า Decay ที่มี Error ต่ำที่สุด
-                            best_decay = min(errs, key=lambda x: x[1])[0]
+                            # หาว่าแบบไหนแม่นสุด
+                            min_err = min(err1, err2, err3)
+                            best_decay_for_this_frame = self.dynamic_decay
+                            if min_err == err1: best_decay_for_this_frame = 0.05  # เลี้ยวแคบ
+                            elif min_err == err3: best_decay_for_this_frame = 0.35 # เลี้ยวกว้าง
                             
-                            # Gradient Update: เลื่อนค่าหลักเข้าหาเป้าอย่างนุ่มนวล
-                            lr = 0.09
-                            self.dynamic_decay = (self.dynamic_decay * (1.0 - lr)) + (best_decay * lr)
+                            # Gradient Update: เลื่อนค่าหลักของโปรแกรมเข้าหาค่าที่แม่นยำที่สุด (Smooth Learning)
+                            learning_rate = 0.05
+                            self.dynamic_decay = (self.dynamic_decay * (1.0 - learning_rate)) + (best_decay_for_this_frame * learning_rate)
+                            
+                            # ตรึงค่าไว้ไม่ให้ AI เพี้ยนไปไกล
                             self.dynamic_decay = max(0.01, min(self.dynamic_decay, 0.8))
                 else:
                     remaining_ghosts.append(ghost)
+                    
             self.ai_ghost_queue = remaining_ghosts
 
             # ========================================================
-            # 🎯 MAIN PROCESSING LOOP
+            # 🎯 CALCULATE & RENDER TARGETS
             # ========================================================
             for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
@@ -234,37 +231,8 @@ class ESPOverlay(QWidget):
 
                     if not has_valid_box: continue 
 
-                    clean_name = raw_name
-                    for p in NAME_PREFIXES:
-                        if clean_name.lower().startswith(p): clean_name = clean_name[len(p):]; break
-                    
-                    if is_air_target and my_pos and abs(pos[1] - my_pos[1]) < 50: is_air_target = False
-                            
-                    has_reload_bar = (not is_air_target and (0 <= reload_val < 500))
-                    dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
-                    hide_name = False if is_air_target else (dist > 550 and dist_to_crosshair >= 350)
-                    display_text = f"-{int(dist)}m-" if hide_name else f"{clean_name.upper()} [{int(dist)}m]"
-                        
-                    fm = painter.fontMetrics()
-                    text_w = fm.boundingRect(display_text).width()
-                    text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
-
-                    painter.setPen(QColor(*COLOR_TEXT_AIR) if is_air_target else QColor(*COLOR_TEXT_GROUND))
-                    painter.drawText(int(avg_x - text_w/2), text_y, display_text)
-
-                    if has_reload_bar:
-                        max_val = self.max_reload_cache.setdefault(u_ptr, reload_val)
-                        if reload_val > max_val: self.max_reload_cache[u_ptr] = max_val = reload_val
-                        progress = 1.0 if (reload_val == 0 or max_val == 0) else 1.0 - (float(reload_val) / float(max_val))
-                        bar_w, bar_h, bar_x, bar_y = 40, 4, int(avg_x - 20), int(min_y - 8)
-                        painter.setPen(Qt.NoPen)
-                        painter.setBrush(QColor(*COLOR_RELOAD_BG))
-                        painter.drawRect(bar_x, bar_y, bar_w, bar_h)
-                        painter.setBrush(QColor(*COLOR_RELOAD_READY) if progress >= 0.99 else QColor(*COLOR_RELOAD_LOADING)) 
-                        painter.drawRect(bar_x, bar_y, int(bar_w * progress), bar_h)
-                        
                     # ========================================================
-                    # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
+                    # 🚀 KINEMATICS & ANTI-JITTER FILTER
                     # ========================================================
                     vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
                     is_turning = False 
@@ -275,14 +243,11 @@ class ESPOverlay(QWidget):
                     ax, ay, az = 0.0, 0.0, 0.0
                     
                     if is_air_target:
-                        # 🎯 เพิ่มตัวแปร 'turn_time' เพื่อจำเวลาเลี้ยวล่าสุด
                         if u_ptr not in self.vel_window:
-                            self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (0.0, 0.0, 0.0), 'fail_count': 0, 'turn_time': 0.0}
+                            self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (0.0, 0.0, 0.0), 'fail_count': 0}
                         else:
                             history = self.vel_window[u_ptr]
-                            old_v, old_t, old_a = history['v'], history['time'], history['a']
-                            fail_count = history.get('fail_count', 0)
-                            turn_time = history.get('turn_time', 0.0) # ดึงเวลาเลี้ยวเดิมมา
+                            old_v, old_t, old_a, fail_count = history['v'], history['time'], history['a'], history.get('fail_count', 0)
                             
                             if vx != old_v[0] or vy != old_v[1] or vz != old_v[2]:
                                 dt_track = curr_t - old_t
@@ -295,38 +260,24 @@ class ESPOverlay(QWidget):
                                     ax = old_a[0] + alpha * (raw_ax - old_a[0])
                                     ay = old_a[1] + alpha * (raw_ay - old_a[1])
                                     az = old_a[2] + alpha * (raw_az - old_a[2])
-                                    self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (ax, ay, az), 'fail_count': 0, 'turn_time': turn_time}
+                                    self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (ax, ay, az), 'fail_count': 0}
                                 else:
                                     ax, ay, az = old_a
                             else:
                                 fail_count += 1
                                 ax, ay, az = old_a
-                                if fail_count > 15: ax, ay, az = 0.0, 0.0, 0.0 # เพิ่มความอดทนเป็น 15 เฟรม เผื่อเซิร์ฟเวอร์แลค
-                                self.vel_window[u_ptr] = {'time': old_t, 'v': old_v, 'a': (ax, ay, az), 'fail_count': fail_count, 'turn_time': turn_time}
+                                if fail_count > 12: ax, ay, az = 0.0, 0.0, 0.0
+                                self.vel_window[u_ptr] = {'time': old_t, 'v': old_v, 'a': (ax, ay, az), 'fail_count': fail_count}
                                 
                         a_mag = math.sqrt(ax**2 + ay**2 + az**2)
-                        
-                        # =======================================================
-                        # 🧠 ระบบแก้ไข Is Turning (ไวขึ้น + มี Cooldown หน่วงดับ)
-                        # =======================================================
-                        if a_mag > 1.5: 
-                            # 1. ปรับลดเกณฑ์ความเร่งจาก 3.0 เหลือ 1.5 (จับการตีโค้งเบาๆ ได้)
-                            is_turning = True
-                            self.vel_window[u_ptr]['turn_time'] = curr_t # บันทึกว่าวินาทีนี้กำลังเลี้ยวอยู่
-                        else:
-                            # 2. ถ้าหยุดเลี้ยวแล้ว ให้ดูว่าเพิ่งหยุดเลี้ยวไปไม่ถึง 1.5 วินาทีใช่หรือไม่?
-                            if curr_t - self.vel_window[u_ptr].get('turn_time', 0.0) < 1.5:
-                                is_turning = True # บังคับให้ถือว่ายังเลี้ยวอยู่ (หน่วงเวลาดับ)
-                            else:
-                                is_turning = False # เลยเวลา 1 วินาทีแล้ว ค่อยปิดสถานะการเลี้ยว
-                                
+                        if a_mag > 3.0: is_turning = True
                         if a_mag > 150.0: ax, ay, az = (ax/a_mag)*150.0, (ay/a_mag)*150.0, (az/a_mag)*150.0
-                        
                         t_x, t_y, t_z = pos[0], pos[1], pos[2]
                         
-                        # 🧠 6-THREADS AI GHOST PREDICTION
+                        # 🧠 AI GHOST PREDICTION STEP: ทิ้งพิกัดอนาคต 1 วินาที ไว้ให้ตัวเองตรวจข้อสอบทีหลัง
                         if u_ptr == active_target_ptr and len(self.ai_ghost_queue) < 100:
-                            sim_t = 1.0 
+                            sim_t = 1.0 # ทำนายอนาคตล่วงหน้า 1 วินาที
+                            
                             def get_pred_pos(d_rate):
                                 a_t = (d_rate * sim_t - 1.0 + math.exp(-d_rate * sim_t)) / (d_rate**2) if d_rate>0 else 0.0
                                 return (t_x + vx*sim_t + ax*a_t, t_y + vy*sim_t + ay*a_t, t_z + vz*sim_t + az*a_t)
@@ -334,62 +285,44 @@ class ESPOverlay(QWidget):
                             self.ai_ghost_queue.append({
                                 'impact_time': curr_t + sim_t,
                                 'target_id': u_ptr,
-                                'dyn_val': self.dynamic_decay,
-                                'p1': get_pred_pos(0.01), # เลี้ยวแคบมาก
-                                'p2': get_pred_pos(0.05), # เลี้ยวแคบ
-                                'p3': get_pred_pos(0.15), # เลี้ยวปกติ
-                                'p4': get_pred_pos(self.dynamic_decay), # ค่าที่ AI คิดว่าดีที่สุด
-                                'p5': get_pred_pos(0.35), # เลี้ยวกว้าง
-                                'p6': get_pred_pos(0.60)  # เลี้ยวกว้างมาก
+                                'p1': get_pred_pos(0.05),                 # สมมติฐาน 1: เลี้ยวแคบ
+                                'p2': get_pred_pos(self.dynamic_decay),   # สมมติฐาน 2: ค่าปัจจุบัน
+                                'p3': get_pred_pos(0.35)                  # สมมติฐาน 3: เลี้ยวกว้าง
                             })
+                            
                             active_flight_data = {'pos': pos, 'v': vel, 'a': (ax, ay, az)}
                     else:
                         t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
 
                     # =========================================================
-                    # 🚀 WT TRUE BALLISTICS SOLVER (Lanz-Odermatt & DeMarre)
+                    # 🚀 EXACT ANALYTICAL SOLVER
                     # =========================================================
-                    altitude = max(0.0, my_pos[1])
-                    rho = 1.225 * math.pow(max(1.0 - (2.25577e-5 * altitude), 0.0), 4.2561)
-                    
-                    is_sub_caliber = (current_bullet_speed >= 1200.0)
-                    if is_sub_caliber:
-                        eff_cd = current_bullet_cd if current_bullet_cd > 0 else 0.20
-                        eff_caliber = current_bullet_caliber if current_bullet_caliber < 0.05 else current_bullet_caliber * 0.25
+                    if dist <= 1500.0:
+                        DRAG_TUNE = 0.20 + (0.35 * (dist / 1500.0))
                     else:
-                        eff_cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
-                        eff_caliber = current_bullet_caliber
-
-                    area = math.pi * ((eff_caliber / 2.0) ** 2)
-                    base_k = (0.5 * rho * eff_cd * area) / current_bullet_mass if current_bullet_mass > 0.001 else 0.0001
-                    
-                    avg_speed = current_bullet_speed * (1.0 - min(dist / 5000.0, 0.4))
-                    mach = avg_speed / 343.0
-                    
-                    # if mach > 2.5:    mach_mult = 0.5 + (1.5 / mach) 
-                    # elif mach > 1.2:  mach_mult = 0.8 + (1.2 / mach) 
-                    # elif mach > 0.8:  mach_mult = 1.5                
-                    # else:             mach_mult = 1.0       
-                    if mach > 2.5:    mach_mult = 0.35 + (1.0 / mach) # Hypersonic (ลดแรงต้าน)
-                    elif mach > 1.2:  mach_mult = 0.95                # Supersonic (แรงต้านเริ่มสูง)
-                    elif mach > 0.8:  mach_mult = 0.9                # Transonic (แรงต้านสูงสุด)
-                    else:             mach_mult = 0.85                # Subsonic (ปกติ)         
-
-                    k = base_k * mach_mult
+                        DRAG_TUNE = 0.55 + (0.15 * min((dist - 1500.0) / 2000.0, 1.0))
+                        
+                    k = 0.0001
+                    if current_bullet_mass > 0.001 and current_bullet_caliber > 0.001:
+                        Cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
+                        altitude = max(0.0, my_pos[1])
+                        rho = 1.225 * math.pow(max(1.0 - (2.25577e-5 * altitude), 0.0), 4.2561)
+                        area = math.pi * ((current_bullet_caliber / 2.0) ** 2)
+                        k = ((0.5 * rho * Cd * area) / current_bullet_mass) * DRAG_TUNE
 
                     t_sight = current_zeroing / current_bullet_speed if current_bullet_speed > 0 else 0
                     sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
                     
                     best_t = dist / current_bullet_speed if current_bullet_speed > 0 else 0.1
                     final_x, final_y, final_z = t_x, t_y, t_z
-                    pred_x, pred_y, pred_z = t_x, t_y, t_z
                     
                     for _ in range(4):
                         if is_air_target:
+                            # 🧠 ใช้งานค่า Decay Rate ที่ AI เพิ่งจะปรับแต่งมาให้แบบ Real-time!
                             a_term = (self.dynamic_decay * best_t - 1.0 + math.exp(-self.dynamic_decay * best_t)) / (self.dynamic_decay**2) if best_t > 0 else 0.0
-                            pred_x = t_x + (vx * best_t) + (ax * a_term * turn_boost)
-                            pred_y = t_y + (vy * best_t) + (ay * a_term * turn_boost)
-                            pred_z = t_z + (vz * best_t) + (az * a_term * turn_boost)
+                            pred_x = t_x + (vx * best_t) + (ax * a_term)
+                            pred_y = t_y + (vy * best_t) + (ay * a_term)
+                            pred_z = t_z + (vz * best_t) + (az * a_term)
                         else:
                             pred_x = t_x + (vx * best_t)
                             pred_y = t_y + (vy * best_t)
@@ -411,7 +344,7 @@ class ESPOverlay(QWidget):
                             
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
 
-                    gravity_offset = 0.5 * BULLET_GRAVITY * (best_t ** 2)
+                    gravity_offset = 0.5 * BULLET_GRAVITY * (best_t ** 2) * 1.05
                     final_y += (gravity_offset - sight_drop_comp)
                     
                     final_x -= (my_vx * best_t)
@@ -425,12 +358,7 @@ class ESPOverlay(QWidget):
                             pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
                             if pos_scr and pos_scr[2] > 0: 
                                 draw_sx, draw_sy = pos_scr[0], pos_scr[1]
-
-                        if is_air_target and u_ptr == active_target_ptr:
-                            print(f"🎯 [LEAD MARK] Target(X,Y): ({draw_sx:.1f}, {draw_sy:.1f}) | "
-                                  f"Pred(X,Y): ({pred_screen[0]:.1f}, {pred_screen[1]:.1f}) | "
-                                  f"Turning: {is_turning}")
-                            
+                        
                         lead_marks_to_draw.append({
                             'sx': draw_sx, 'sy': draw_sy, 'px': pred_screen[0], 'py': pred_screen[1],
                             'is_air': is_air_target, 'is_turning': is_turning
@@ -440,13 +368,14 @@ class ESPOverlay(QWidget):
                     pass
 
             # ========================================================
-            # 🚀 FLIGHT PATH SIMULATION RENDERER
+            # 🚀 FLIGHT PATH SIMULATION RENDERER (ด้วย AI Data)
             # ========================================================
             if active_flight_data:
                 c_pos, c_v, c_a = active_flight_data['pos'], active_flight_data['v'], active_flight_data['a']
                 path_pts = []
                 for step in range(30): 
                     t_sim = step * 0.1
+                    # เส้นทางการบินวาดตามสมอง AI ที่กำลังปรับจูนอยู่
                     a_term = (self.dynamic_decay * t_sim - 1.0 + math.exp(-self.dynamic_decay * t_sim)) / (self.dynamic_decay**2) if t_sim > 0 else 0.0
                     p_x = c_pos[0] + c_v[0] * t_sim + c_a[0] * a_term
                     p_y = c_pos[1] + c_v[1] * t_sim + c_a[1] * a_term

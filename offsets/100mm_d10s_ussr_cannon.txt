@@ -7,7 +7,7 @@ offset Relate:
 0x1F30: dammage_caliber
 0x1F34: CD | dragOff
 0x1F38: maxDistance
-0x1F68: mazzle velocity? const = 2000 = 0 if ATGM ammo  
+0x1F68: ? const = 2000 = 0 if ATGM-ammo  
 
 "100mm_ussr_Smoke" :
 metadata: ""100mm_ussr_Smoke": {
