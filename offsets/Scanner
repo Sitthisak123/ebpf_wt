@@ -1,0 +1,8 @@
+find_unit_name:     Unit-info
+
+my_ground_unit_velocity_scanner:    OFF_GROUND_MOVEMENT = 0x2108  # 🎯 อัปเดตจาก 0x1b30 เป็น 0x2108
+                                    OFF_GROUND_VEL = 0x138         # 🎯 อัปเดตจาก 0x54 เป็น 0x138
+
+find_my_unit:   Ballistics
+                DAT_CONTROLLED_UNIT = 0x9807e40
+

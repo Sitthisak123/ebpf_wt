@@ -1,18 +1,19 @@
 import os
 import sys
+import math
 import time
 import struct
 import subprocess
-
 # 🎯 ตั้งค่าหน้าจอของคุณ
 screen_w = 2560
 screen_h = 1440
 
 # 🚨 ดึง (Import) ฟังก์ชันทั้งหมด รวมถึง world_to_screen ด้วย!
 try:
-    from src.untils.mul import get_cgame_base, get_view_matrix, get_unit_pos, world_to_screen
+    from src.utils.mul import get_cgame_base, get_view_matrix, get_unit_pos, world_to_screen
+    import src.utils.validator
 except ImportError:
-    print("[-] Error: หาไฟล์ src/untils/mul.py ไม่เจอ หรือลืมใส่ฟังก์ชัน world_to_screen ไว้ในนั้น!")
+    print("[-] Error: หาไฟล์ src/utils/* ไม่เจอ")
     sys.exit(1)
 
 # ==========================================
@@ -24,9 +25,18 @@ class MemoryScanner:
         self.mem_fd = os.open(f"/proc/{pid}/mem", os.O_RDONLY)
 
     def read_mem(self, address, size):
+        # 🛡️ Pointer Validation: ป้องกันการอ่าน Address ที่เป็น 0 หรือค่าน้อยผิดปกติ
+        # Memory ใน Linux ของแอป 64-bit มักจะเริ่มต้นที่ตำแหน่งสูงกว่า 0x10000 เสมอ
+        if address is None or address <= 0x10000:
+            return None
+            
         try:
             os.lseek(self.mem_fd, address, os.SEEK_SET)
             return os.read(self.mem_fd, size)
+        except OSError:
+            # 🔇 ปิดการทำงานของ print เพื่อไม่ให้มันสแปมหน้าจอเวลาที่อ่านพลาด (Errno 5)
+            # เพราะในเกมมีการเกิด/ตายของ Object ตลอดเวลา การอ่านพลาดเป็นเรื่องปกติ
+            return None
         except Exception:
             return None
             
@@ -68,11 +78,16 @@ def main():
     # 1. หา PID และ Base Address
     pid = get_game_pid()
     base_address = get_game_base_address(pid)
-    
+    scanner = MemoryScanner(pid)
+    validator = src.utils.validator.OffsetValidator(scanner, base_address)
+    if not validator.run_diagnostics():
+        print("🚨 [CRITICAL] Offsets ไม่ถูกต้อง! กรุณาตรวจสอบ Ghidra หรืออัปเดตเลข DAT_MANAGER")
+        # sys.exit(1) # ปิดโปรแกรมหากพิกัดเพี้ยน
+
     if base_address == 0:
         print("[-] Error: หา Base Address ของเกมไม่เจอ")
         sys.exit(1)
-        
+
     print(f"[+] เจอ War Thunder (PID: {pid})")
     print(f"[+] Base Address ของ aces : {hex(base_address)}")
     
@@ -123,6 +138,30 @@ def main():
             
     except KeyboardInterrupt:
         print("\n[!] ปิดระบบเรียบร้อยแล้ว")
+def auto_find_unit_position(scanner, u_ptr):
+    if u_ptr == 0: return
+    
+    # ดึงข้อมูลรวดเดียวตั้งแต่ Offset 0xB00 ถึง 0xE00 (ช่วงที่พิกัดน่าจะอยู่)
+    data = scanner.read_mem(u_ptr + 0xB00, 0x300)
+    if not data: return
+    
+    print(f"\n🔍 [สแกนยูนิต: {hex(u_ptr)}] กำลังหาพิกัด X, Y, Z...")
+    
+    # สแกนทีละ 4 bytes เพื่อหา Float 3 ตัวติดกัน
+    for i in range(0, len(data) - 12, 4):
+        x, y, z = struct.unpack_from("<fff", data, i)
+        
+        # เงื่อนไขพิกัดใน War Thunder:
+        # 1. ต้องเป็นตัวเลขจริง (ไม่ใช่ NaN / Inf)
+        # 2. ต้องไม่ใช่ 0.0 ทั้งหมด
+        # 3. พิกัดแผนที่มักจะไม่เกิน 20,000 เมตร และความสูง (Y) ไม่เกิน 5,000
+        if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
+            if x != 0.0 and y != 0.0 and z != 0.0:
+                if abs(x) < 20000 and abs(y) < 5000 and abs(z) < 20000:
+                    # ถ้าผ่านเงื่อนไข ให้พิมพ์ Offset นั้นออกมา!
+                    real_offset = 0xB00 + i
+                    print(f"✨ เจอพิกัดที่น่าจะใช่! -> Offset: [ {hex(real_offset)} ] | X:{x:.1f} Y:{y:.1f} Z:{z:.1f}")
+
 
 if __name__ == "__main__":
     main()

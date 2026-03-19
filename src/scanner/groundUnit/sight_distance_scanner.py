@@ -6,9 +6,9 @@ import time
 from main import MemoryScanner, get_game_pid, get_game_base_address
 
 try:
-    from src.untils.mul import get_cgame_base, get_local_team, is_valid_ptr
+    from src.utils.mul import get_cgame_base, get_local_team, is_valid_ptr
 except ImportError:
-    print("[-] Error: หาไฟล์ src/untils/mul.py ไม่เจอ")
+    print("[-] Error: หาไฟล์ src/utils/mul.py ไม่เจอ")
     sys.exit(1)
 
 def clear_screen(): os.system('clear')

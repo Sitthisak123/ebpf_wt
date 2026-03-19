@@ -176,12 +176,12 @@ class ESPOverlay(QWidget):
                 if u_ptr == my_unit: continue 
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
-                u_team, u_state, unit_name, reload_val = status 
+                u_team, u_state, unit_name, reload_val, unit_class = status
                 if u_state >= 1 or (my_team != 0 and u_team == my_team): continue 
                 
                 unit_name_lower = unit_name.lower()
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
-                valid_targets.append((u_ptr, unit_name, reload_val, is_air))
+                valid_targets.append((u_ptr, unit_name, reload_val, is_air, unit_class))
 
             # 🎯 ค้นหาว่าเป้าหมายไหนถูกล็อคเป้าด้วยปุ่ม [Q]
             air_targets_list = [(u[0], u[1]) for u in valid_targets if u[3]]

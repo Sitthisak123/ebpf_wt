@@ -6,9 +6,9 @@ import time
 from main import MemoryScanner, get_game_pid, get_game_base_address
 
 try:
-    from src.untils.mul import get_cgame_base, get_local_team, is_valid_ptr
+    from src.utils.mul import get_cgame_base, get_all_units, is_valid_ptr
 except ImportError:
-    print("[-] Error: ไม่สามารถ import src.untils.mul ได้")
+    print("[-] Error: ไม่สามารถ import src.utils.mul ได้")
     sys.exit(1)
 
 def clear_screen():
@@ -17,7 +17,7 @@ def clear_screen():
 def print_header(candidates_count):
     clear_screen()
     print("==================================================")
-    print("🚙 WTM TACTICAL: PROGRESSIVE FILTER SCANNER")
+    print("🚙 WTM TACTICAL: OMNI-UNIT VELOCITY SCANNER")
     print("==================================================")
     print(f"🎯 ผู้ต้องสงสัย (Candidates) ที่เหลืออยู่: {candidates_count} รายการ")
     print("==================================================")
@@ -32,18 +32,23 @@ def main():
         print("[-] ไม่พบเกม War Thunder")
         sys.exit(1)
 
-    my_unit, my_team = get_local_team(scanner, base_address)
-    if my_unit == 0:
-        print("[-] ไม่พบรถถังของคุณ! (กรุณากดเข้าสนาม Test Drive รถถังก่อนสแกน)")
+    # 🚨 ยุทธวิธีใหม่: ดึงมัน "ทุกคัน" ทั้งเครื่องบิน ฮอ รถถัง บอท
+    all_units = get_all_units(scanner, cgame_base)
+    print(f"[*] 📡 พบยูนิตในระบบทั้งหมด: {len(all_units)} คัน")
+
+    if not all_units:
+        print("[-] ไม่พบยูนิตในแมปเลย! (ท่านอยู่ในหน้า Hangar หรือเปล่า? กรุณากดเข้า Test Drive ก่อนรัน)")
         sys.exit(1)
+
+    target_units = [u[0] for u in all_units] # ไม่กรองอะไรทิ้งทั้งนั้น เอามาหมด!
 
     # ตัวแปรระบบ
     tolerance = 2.0
-    candidates = [] # เก็บข้อมูลในรูปแบบ: (ptr_offset, vel_offset, data_type)
+    candidates = [] # เก็บข้อมูล: (u_ptr, ptr_offset, vel_offset, data_type)
 
     while True:
         print_header(len(candidates))
-        print(f"[+] พบรถถังที่ Address: {hex(my_unit)}")
+        print(f"[+] 📡 พร้อมสแกนยูนิตทั้งหมด: {len(target_units)} คัน")
         print(f"[*] ⚙️ ระยะการกรอง (Filter Tolerance): +- {tolerance} km/h")
         print("-" * 50)
         print("[1] 🔍 สแกนครั้งแรก (First Scan - หาค่าทั้งหมด)")
@@ -74,47 +79,46 @@ def main():
         # 1️⃣ FIRST SCAN (กวาดหาทั้งหมด)
         # ==========================================
         elif choice == '1':
-            val = input("   > ใส่ความเร็วรถถัง ปัจจุบัน (km/h): ").strip()
+            val = input("   > ใส่ความเร็ว ปัจจุบัน บนหน้าปัด (km/h): ").strip()
             try: target_speed = float(val)
             except ValueError: continue
             
             min_s, max_s = target_speed - tolerance, target_speed + tolerance
-            print(f"\n[*] 📡 กำลังสแกนปูพรมหาช่วง {min_s:.1f} - {max_s:.1f} km/h ...")
+            print(f"\n[*] 📡 กำลังสแกนปูพรมทุกยูนิต หาช่วง {min_s:.1f} - {max_s:.1f} km/h ...")
             
             candidates = []
-            unit_data = scanner.read_mem(my_unit, 0x2500)
-            if not unit_data:
-                print("[-] อ่าน Memory ล้มเหลว")
-                time.sleep(1)
-                continue
-                
-            for ptr_off in range(0, 0x2500, 8):
-                ptr_val = struct.unpack_from("<Q", unit_data, ptr_off)[0]
-                if is_valid_ptr(ptr_val):
-                    mem_block = scanner.read_mem(ptr_val, 0x1000)
-                    if not mem_block or len(mem_block) < 0x1000: continue
-                        
-                    # สแกนหา Float (32-bit)
-                    for off in range(0, 0x1000 - 12, 4):
-                        try:
-                            vx, vy, vz = struct.unpack_from("<fff", mem_block, off)
-                            if math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz):
-                                if abs(vx) < 200 and abs(vy) < 200 and abs(vz) < 200:
-                                    speed_kmh = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
-                                    if min_s <= speed_kmh <= max_s:
-                                        candidates.append((ptr_off, off, "FLOAT"))
-                        except: pass
-                        
-                    # สแกนหา Double (64-bit)
-                    for off in range(0, 0x1000 - 24, 8):
-                        try:
-                            vx, vy, vz = struct.unpack_from("<ddd", mem_block, off)
-                            if math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz):
-                                if abs(vx) < 200 and abs(vy) < 200 and abs(vz) < 200:
-                                    speed_kmh = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
-                                    if min_s <= speed_kmh <= max_s:
-                                        candidates.append((ptr_off, off, "DOUBLE"))
-                        except: pass
+            
+            for u_ptr in target_units:
+                unit_data = scanner.read_mem(u_ptr, 0x2500)
+                if not unit_data: continue
+                    
+                for ptr_off in range(0, len(unit_data) - 8, 8):
+                    ptr_val = struct.unpack_from("<Q", unit_data, ptr_off)[0]
+                    if is_valid_ptr(ptr_val):
+                        mem_block = scanner.read_mem(ptr_val, 0x1000)
+                        if not mem_block or len(mem_block) < 0x1000: continue
+                            
+                        # สแกนหา Float (32-bit)
+                        for off in range(0, len(mem_block) - 12, 4):
+                            try:
+                                vx, vy, vz = struct.unpack_from("<fff", mem_block, off)
+                                if math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz):
+                                    if abs(vx) < 500 and abs(vy) < 500 and abs(vz) < 500:
+                                        speed_kmh = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
+                                        if min_s <= speed_kmh <= max_s:
+                                            candidates.append((u_ptr, ptr_off, off, "FLOAT"))
+                            except: pass
+                            
+                        # สแกนหา Double (64-bit)
+                        for off in range(0, len(mem_block) - 24, 8):
+                            try:
+                                vx, vy, vz = struct.unpack_from("<ddd", mem_block, off)
+                                if math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz):
+                                    if abs(vx) < 500 and abs(vy) < 500 and abs(vz) < 500:
+                                        speed_kmh = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
+                                        if min_s <= speed_kmh <= max_s:
+                                            candidates.append((u_ptr, ptr_off, off, "DOUBLE"))
+                            except: pass
             
             print(f"[+] สแกนครั้งแรกสำเร็จ! พบ {len(candidates)} รายการ ถูกบันทึกไว้ใน Candidates แล้ว")
             input("กด Enter เพื่อกลับไปเมนู...")
@@ -128,7 +132,7 @@ def main():
                 time.sleep(1.5)
                 continue
                 
-            val = input("   > ใส่ความเร็วรถถัง ใหม่ล่าสุด (km/h): ").strip()
+            val = input("   > ใส่ความเร็ว ใหม่ล่าสุด บนหน้าปัด (km/h): ").strip()
             try: target_speed = float(val)
             except ValueError: continue
                 
@@ -136,12 +140,12 @@ def main():
             print(f"\n[*] 🎯 กำลังคัดกรอง {len(candidates)} รายการ ที่ความเร็ว {min_s:.1f} - {max_s:.1f} km/h ...")
             
             new_candidates = []
-            unit_data = scanner.read_mem(my_unit, 0x2500)
-            if unit_data:
-                for ptr_off, vel_off, dtype in candidates:
+            
+            for u_ptr, ptr_off, vel_off, dtype in candidates:
+                unit_data = scanner.read_mem(u_ptr, 0x2500)
+                if unit_data and ptr_off + 8 <= len(unit_data):
                     ptr_val = struct.unpack_from("<Q", unit_data, ptr_off)[0]
                     if is_valid_ptr(ptr_val):
-                        # อ่านเฉพาะจุดที่เป็นผู้ต้องสงสัย
                         vel_data = scanner.read_mem(ptr_val + vel_off, 24 if dtype == "DOUBLE" else 12)
                         if vel_data:
                             try:
@@ -152,20 +156,17 @@ def main():
                                     
                                 if math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz):
                                     speed_kmh = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
-                                    # ถ้าความเร็วยังอยู่ในระยะเป้าหมายใหม่ ให้เก็บไว้!
                                     if min_s <= speed_kmh <= max_s:
-                                        new_candidates.append((ptr_off, vel_off, dtype))
+                                        new_candidates.append((u_ptr, ptr_off, vel_off, dtype))
                             except: pass
                             
             candidates = new_candidates
             print(f"[+] คัดกรองเสร็จสิ้น! ผู้ต้องสงสัยร่วงลงไปเหลือ {len(candidates)} รายการ")
             
-            # ถ้าเหลือผู้ต้องสงสัยน้อยกว่า 20 รายการ ให้โชว์หน้าจอเลย
             if 0 < len(candidates) <= 20:
                 print("\n🎯 [ แจ็คพอต! รายชื่อ Offset ที่รอดชีวิต ]")
-                for p_off, v_off, dt in candidates:
-                    marker = "⭐" if p_off == 0x1b38 else "->"
-                    print(f" {marker} Move Ptr: 0x{p_off:04X} | Vel Offset: 0x{v_off:04X} ({dt})")
+                for u_ptr, p_off, v_off, dt in candidates:
+                    print(f" -> Move Ptr: 0x{p_off:04X} | Vel Offset: 0x{v_off:04X} ({dt}) | ยูนิต: {hex(u_ptr)}")
             elif len(candidates) == 0:
                 print("[-] ร่วงหมดเลยครับท่าน! กรุณากด 5 Reset แล้วเริ่มสแกน 1 ใหม่อีกครั้ง")
             
@@ -185,10 +186,10 @@ def main():
             print("-" * 60)
             try:
                 while True:
-                    unit_data = scanner.read_mem(my_unit, 0x2500)
-                    if unit_data:
-                        print(f"\n[{time.strftime('%H:%M:%S')}] --- LIVE MONITORING ({len(candidates)} items) ---")
-                        for p_off, v_off, dt in candidates:
+                    print(f"\n[{time.strftime('%H:%M:%S')}] --- LIVE MONITORING ({len(candidates)} items) ---")
+                    for u_ptr, p_off, v_off, dt in candidates:
+                        unit_data = scanner.read_mem(u_ptr, 0x2500)
+                        if unit_data and p_off + 8 <= len(unit_data):
                             ptr_val = struct.unpack_from("<Q", unit_data, p_off)[0]
                             if is_valid_ptr(ptr_val):
                                 vel_data = scanner.read_mem(ptr_val + v_off, 24 if dt == "DOUBLE" else 12)
@@ -199,10 +200,9 @@ def main():
                                         else:
                                             vx, vy, vz = struct.unpack("<ddd", vel_data)
                                         speed_kmh = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
-                                        marker = "⭐" if p_off == 0x1b38 else "🔸"
-                                        print(f"{marker} Ptr: 0x{p_off:04X} -> Vel: 0x{v_off:04X} | SPEED: {speed_kmh:6.1f} km/h")
+                                        print(f"🔸 Ptr: 0x{p_off:04X} -> Vel: 0x{v_off:04X} | SPEED: {speed_kmh:6.1f} km/h")
                                     except: pass
-                    time.sleep(0.5) # อัปเดตทุกๆ ครึ่งวินาที
+                    time.sleep(0.5) 
             except KeyboardInterrupt:
                 print("\n[!] หยุดเฝ้าระวัง กลับสู่เมนู...")
                 time.sleep(1)

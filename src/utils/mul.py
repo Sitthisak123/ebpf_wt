@@ -6,35 +6,51 @@ import os
 # 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
 # ===================================================
 GHIDRA_BASE = 0x400000
-DAT_MANAGER = 0x093924e0
+DAT_MANAGER = 0x09807d80 # 🎯 เลขผู้ต้องสงสัยอันดับ 1 ใน v_2_linux
 MANAGER_OFFSET = DAT_MANAGER - GHIDRA_BASE
-OFF_CAMERA_PTR = 0x5F0
-OFF_VIEW_MATRIX = 0x1B8
+DAT_CONTROLLED_UNIT = 0x09807E00
 
-OFF_UNIT_X = 0xb38
-OFF_UNIT_ROTATION = 0xB14
-OFF_UNIT_BBMIN = 0x230 
-OFF_UNIT_BBMAX = 0x23C 
+OFF_CAMERA_PTR = 0x670
+OFF_VIEW_MATRIX = 0x1C0
 
+# 📍 อัปเดตพิกัดยูนิตสำหรับเวอร์ชันใหม่
+OFF_UNIT_X = 0xD00          # ✅ จากเดิม 0xb38
+OFF_UNIT_ROTATION = 0xCDC  # ✅ จากเดิม 0xb14 (Pos - 36)
+OFF_UNIT_BBMIN = 0x240     # ✅ จากเดิม 0x230
+OFF_UNIT_BBMAX = 0x24C     # ✅ จากเดิม 0x23C
+
+# 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
+OFF_UNIT_STATE = 0xF38         # สถานะรถถัง (เป็น/ตาย)
+OFF_UNIT_TEAM  = 0xFB8         # ทีม (มิตร/ศัตรู)
+OFF_UNIT_INFO  = 0xFC0         # 🎯 Pointer ไปหาข้อมูลรถถัง (เปลี่ยนจาก 0xFC8 เป็น 0xFC0)
+OFF_UNIT_CLASS_PTR = 0x38      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
+OFF_UNIT_TYPE_PTR  = 0x38      # 🎯 Pointer ไปหาชนิด (เช่น exp_tank)
+OFF_UNIT_NAME_PTR  = 0x40      # 🎯 Pointer ไปหาชื่อย่อ (เช่น ussr_2s38)
+OFF_UNIT_RELOAD = 0xAB8        # หลอดรีโหลดกระสุน
+
+OFF_AIR_UNITS = (0x340, True)
 OFF_AIR_MOVEMENT = 0x18       # ✈️ Pointer ฟิสิกส์เครื่องบิน
 OFF_AIR_VEL = 0x0318          # ✈️ ความเร็วเครื่องบิน (แกน X, Y, Z)
 OFF_AIR_OMEGA = 0x03F8        # 🌪️ THE HOLY GRAIL: ความเร็วเชิงมุมของจริง!!
 
-OFF_GROUND_MOVEMENT = 0x1b30  # 🚙 Pointer รถถัง
-OFF_GROUND_VEL = 0x54         # 🚙 ความเร็วรถถัง
+OFF_GROUND_UNITS = (0x358, False)
+OFF_GROUND_MOVEMENT = 0x2108  # 🎯 อัปเดตจาก 0x1b30 เป็น 0x2108
+OFF_GROUND_VEL = 0x138         # 🎯 อัปเดตจาก 0x54 เป็น 0x138
 
-OFF_WEAPON_PTR = 0x0408       
-OFF_BULLET_SPEED = 0x1f20     
-OFF_BULLET_MASS = 0x1F2C      # ⚖️ มวลกระสุน (kg)
-OFF_BULLET_CALIBER = 0x1F30   # 📏 หน้าตัดกระสุน (m)
-OFF_BULLET_CD = 0x1F34        # 💨 ค่าสัมประสิทธิ์แรงต้านอากาศ (Drag Coefficient)
+# 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก Deep Scan ล่าสุด)
+OFF_WEAPON_PTR = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
+OFF_BULLET_SPEED = 0x2048     # 🎯 ความเร็วต้น (Muzzle Velocity)
+OFF_BULLET_MASS = 0x2040      # ⚖️ มวลกระสุน (Relative -8 จาก Speed)
+OFF_BULLET_CALIBER = 0x2058   # 📏 คาดว่าเป็น Caliber (0.016 หรือค่าใกล้เคียง)
+OFF_BULLET_CD = 0x2054        # 💨 คาดว่าเป็น Drag Coeff (0.95)
 
 SIGHT_POINTER_CHAINS = [
-    [0x76638, 0x2C20, 0x20F8, 0x1C28],
-    [0x3830,  0xD50,  0x1848, 0x1C28],
-    [0xC538,  0x2C18, 0x1058, 0x1C28],
-    [0x76640, 0x2C20, 0x20D8, 0x1C28],
-    [0x76608, 0x2BC0, 0x2138, 0x1C28]
+    [0x13C50, -0x64C0, 0x1780, 0x1C28],
+    [0x123E0, -0x37B8, 0x1780, 0x1C28],
+    [0x13260, -0x4680, 0x1780, 0x1C28],
+    [0x133D0, -0x4E40, 0x13D0, 0x7088],
+    [0x13B88, -0x5140, 0x13D0, 0x7088],
+    [0x13E68, -0x75F0, 0x13D0, 0x7088]
 ]
 
 def is_valid_ptr(p): 
@@ -67,7 +83,7 @@ def get_unit_pos(scanner, u_ptr):
 def get_all_units(scanner, cgame_base):
     if cgame_base == 0: return []
     units = []
-    for off, is_air in [(0x310, True), (0x328, False)]:
+    for off, is_air in [OFF_AIR_UNITS, OFF_GROUND_UNITS]:
         raw_array_ptr = scanner.read_mem(cgame_base + off, 8)
         raw_count = scanner.read_mem(cgame_base + off + 16, 4) 
         if raw_array_ptr and raw_count:
@@ -228,50 +244,64 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                     lx*unit_rot_matrix[1] + ly*unit_rot_matrix[4] + lz*unit_rot_matrix[7] + unit_pos[1],
                                     lx*unit_rot_matrix[2] + ly*unit_rot_matrix[5] + lz*unit_rot_matrix[8] + unit_pos[2])
                         return to_world(bx, by, bz), to_world(bx + (fx * length), by + (fy * length), bz + (fz * length))
-    except Exception: pass
+    except Exception as e:
+        print("get_weapon_barrel: ", e)
     return None
 
 def get_local_team(scanner, base_addr):
     try:
-        control_ptr = struct.unpack("<Q", scanner.read_mem(base_addr + (0x09394248 - 0x400000), 8))[0]
-        team = struct.unpack("<B", scanner.read_mem(control_ptr + 0xDE8, 1))[0]
+        # ใช้ตำแหน่งที่เราหาเจอใหม่
+        raw_ptr = scanner.read_mem(base_addr + (DAT_CONTROLLED_UNIT - 0x400000), 8)
+        if not raw_ptr: return 0, 0
+        control_ptr = struct.unpack("<Q", raw_ptr)[0]
+        
+        # ทีมมักจะอยู่ที่ Offset 0xDE8 หรือ 0xFB8
+        team_data = scanner.read_mem(control_ptr + 0xFB8, 1)
+        team = struct.unpack("<B", team_data)[0] if team_data else 0
         return control_ptr, team
     except: return 0, 0
 
 def get_unit_status(scanner, u_ptr):
     if u_ptr == 0: return None
     try:
-        status_data = scanner.read_mem(u_ptr + 0xD68, 132) 
+        status_data = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 132) 
         if not status_data: return None
+        
         state = struct.unpack_from("<H", status_data, 0)[0]
-        team = struct.unpack_from("<B", status_data, 0x80)[0]
+        team_offset = OFF_UNIT_TEAM - OFF_UNIT_STATE 
+        team = struct.unpack_from("<B", status_data, team_offset)[0]
         
         unit_name = "UNKNOWN"
-        info_raw = scanner.read_mem(u_ptr + 0xDF8, 8) 
+        
+        # เข้าถึง Pointer กล่องข้อมูลหลัก (0xFC0)
+        info_raw = scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8) 
         if info_raw:
             info_ptr = struct.unpack("<Q", info_raw)[0]
             if is_valid_ptr(info_ptr):
-                name_ptr_raw = scanner.read_mem(info_ptr + 0x28, 8)
+                # ดึงเฉพาะชื่อรถถัง (0x40)
+                name_ptr_raw = scanner.read_mem(info_ptr + OFF_UNIT_NAME_PTR, 8) 
                 if name_ptr_raw:
                     name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
                     if is_valid_ptr(name_ptr):
-                        str_data = scanner.read_mem(name_ptr, 32)
+                        str_data = scanner.read_mem(name_ptr, 64)
                         if str_data:
                             try:
                                 raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
                                 unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
                             except: pass
-                            
+                                
         reload_val = -1
-        reload_raw = scanner.read_mem(u_ptr + 0x8E8, 4)
+        reload_raw = scanner.read_mem(u_ptr + OFF_UNIT_RELOAD, 4)
         if reload_raw:
             try:
                 reload_val = struct.unpack("<i", reload_raw)[0]
             except: pass
                 
+        # ส่งกลับแค่ 4 ค่า (เอา unit_class ออก)
         return team, state, unit_name, reload_val
-    except Exception:
+    except Exception as e:
         return None
+    
 
 def get_unit_velocity(scanner, u_ptr, is_air):
     if u_ptr == 0: return None
@@ -300,7 +330,8 @@ def get_unit_velocity(scanner, u_ptr, is_air):
             vx, vy, vz = struct.unpack("<fff", vel_data)
             if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return None
             return (vx, vy, vz)
-    except Exception:
+    except Exception as e:
+        print("get_unit_velocity: ", e)
         return None
 
 # 🌪️ THE REAL OMEGA PULLER (0x3F8)
@@ -318,8 +349,8 @@ def get_unit_omega(scanner, unit_ptr, is_air):
             wx, wy, wz = struct.unpack("<fff", omega_data)
             if math.isfinite(wx) and math.isfinite(wy) and math.isfinite(wz):
                 return (wx, wy, wz)
-    except:
-        pass
+    except Exception as e: 
+        print("get_unit_omega", e)
     return (0.0, 0.0, 0.0)
 
 def get_bullet_speed(scanner, cgame_base):
@@ -334,7 +365,9 @@ def get_bullet_speed(scanner, cgame_base):
         speed = struct.unpack("<f", speed_data)[0]
         if math.isfinite(speed) and 50.0 < speed < 3000.0: return speed
         return 1000.0
-    except Exception: return 1000.0
+    except Exception as e: 
+        print("get_bullet_speed: ", e)
+        return 1000.0
 
 def get_pince_segment(pid, segment_idx=4):
     segments = []
@@ -347,7 +380,8 @@ def get_pince_segment(pid, segment_idx=4):
                     if start_addr not in segments: segments.append(start_addr)
         if len(segments) > segment_idx: return segments[segment_idx]
         elif segments: return segments[-1]
-    except Exception: pass
+    except Exception as e:
+        print("get_bullet_speed: ", e)
     return 0
 
 def get_sight_compensation_factor(scanner, base_addr):
@@ -376,7 +410,9 @@ def get_sight_compensation_factor(scanner, base_addr):
                 val = struct.unpack("<f", data)[0]
                 if val < 0.0: return 0.0
                 elif math.isfinite(val) and 0.0 <= val <= 10000.0: return val
-        except Exception: continue
+        except Exception as e: 
+            print("get_sight_compensation_factor: ", e)
+            continue
     return 0.0
 
 def get_bullet_mass(scanner, cgame_base):

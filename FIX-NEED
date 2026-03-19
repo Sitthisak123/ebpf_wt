@@ -1,0 +1,12 @@
+./ Sight Distance Calc DragOff
+./ Radar DragOff calibrate for All Equation for All calibrate
+./ Tank lead mark > lead Box
+./ Air Dynamic Fire Range Limitation
+./ Ground Units Filter
+
+errors:
+1: "
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py 
+QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
+Main loop error: argument 3 overflowed: value must be in the range -2147483648 to 2147483647
+"

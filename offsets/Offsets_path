@@ -1,0 +1,109 @@
+???: "weapon">["weaponName","weaponCaliber"]>REF:[
+    มี Pointer ของ param_2 (กระสุน) หรือ param_3 (เป้าหมาย) เราจะดึงข้อมูลพิกัดและความเร็วได้จาก Offset อะไรบ้าง
+    1. ข้อมูลฝั่งผู้ยิง/กระสุน (param_2)
+    param_2 + 0x64 (100) 👉 พิกัดกระสุน (pos)
+    param_2 + 0x70 👉 ความเร็วกระสุนยกกำลังสอง (สังเกตว่าเกมเอาไปเข้าฟังก์ชัน SQRT() ถอดรูทเพื่อหา "speed" ที่แท้จริง)
+    param_2 + 0x7C 👉 ขนาดหน้าตัดกระสุน (weaponCaliber) (เจอแล้วครับ! Offset ใหม่ของ Caliber คือ 0x7C ใน Struct นี้!)
+    
+    2. ข้อมูลฝั่งเป้าหมาย (param_3)
+    param_3 + 0x1A0 👉 พิกัดเป้าหมาย (victimPos) (นี่อาจจะเป็น Offset OFF_UNIT_X ตัวใหม่ในเวอร์ชันนี้ครับ!)
+    param_3 + 0x5C และ param_3 + 0x1E1 👉 ประเภทของเป้าหมาย (victimUnitType) (เกมใช้ Bitmask ในการแยกแยะว่าเป็นรถถัง, เครื่องบิน, หรือเรือ)
+    param_3 + 0x1E7 👉 โยงไปหาข้อมูลผู้เล่น เพื่อดึง ID และเช็คว่าเป็นบอทหรือคน (victimUserId)
+] > REF: [
+    Score, hitEvent
+    การเตรียมตัวแปร lVar1 (ฝั่งผู้ยิง/กระสุน) และ lVar3 (ฝั่งผู้ถูกยิง) ก่อนจะส่งเข้า FUN_008f89d0:
+
+    การดึงข้อมูล lVar1 (Projectile/Offender):
+    lVar1 = (*(long **)(param_2 + 8))[1] + uVar13 * 0x128;
+    โค้ดบรรทัดนี้คือการคำนวณตำแหน่งใน Array ชัดเจนเลยครับ!
+    0x128 (หรือ 296 ในฐานสิบ) คือ ขนาด (Size) ของ Struct ข้อมูลกระสุนหนึ่งนัด (หรือข้อมูลการยิงหนึ่งครั้ง) ครับ
+
+    การดึงข้อมูล lVar3 (Victim):
+    lVar3 = *(long *)(uVar13 * 0x10 + lVar3)
+    มันกำลังวนลูปอ่าน Pointer (ขนาด 16 bytes หรือ 0x10) ของรายชื่อผู้ที่ถูกยิงครับ
+] 
+
+???: "s_get_cur_hud" > REF: [
+    world_to_screen	ใช้ทำกล่อง ESP 3D	FUN_0113c690
+    get_cur_hud	ใช้หาตำแหน่ง Root ของ HUD	PTR_FUN_07be6cd8
+    get_hud_color	ใช้ดึงสีทีม (เขียว/แดง)	PTR_FUN_07be66d8
+    get_targeting_dist	ใช้ทำระบบวัดระยะเล็งอัตโนมัติ	PTR_FUN_07be44d8
+    is_spectating	เช็คว่าเราตายแล้วหรือยัง	PTR_FUN_07be65d8
+] > PTR_FUN_07be6cd8 > REF: [
+    ฟังก์ชัน Registration ที่ทำหน้าที่ผูก (Bind) คำสั่งจากสคริปต์ในเกม
+    
+    1. การหา OFF_HUD_PTR (กุญแจดอกแรก) มองไปที่บรรทัดล่างๆ ของโค้ดที่ท่านส่งมา:
+    plVar6 = (long *)FUN_034678d0(0x188);
+    FUN_05f4bfc0(plVar6, "get_cur_hud", &DAT_07be1cb7); // ผูกชื่อ "get_cur_hud"
+    *plVar6 = (long)&PTR_FUN_07be6cd8;                  // ชี้ไปที่ฟังก์ชันจริงที่ตำแหน่งนี้
+] > PTR_FUN_07be6cd8 > [                             
+                            PTR_FUN_07be6cd8               XREF[1]:     FUN_0114c260:0114e562(*)  
+        07be6cd8 40 d6 13        addr       FUN_0113d640
+                 01 00 00 
+                 00 00
+] > FUN_0113d640 > update1
+
+world_to_screen: "FUN_0114c260" > [
+    1. 🖥️ พิกัดใหม่ของ View Matrix (หัวใจการวาดเรดาร์)สังเกตบรรทัดที่เรียก: 
+    *puVar3 = &PTR_FUN_07be3bd8; และ UN_01139900(param_6, puVar3);
+
+    ข้อมูลยืนยัน: 
+    ในเวอร์ชัน Windows ล่าสุดที่ท่านให้มา camera_viewmatrix อยู่ที่ 0x1C0
+    คำชี้แนะ: 
+    เมื่อเทียบกับโครงสร้าง Linux v1 ที่เป็น 0x1B8 และรูปแบบการ Shift ของโค้ดชุดนี้ ผมมั่นใจ 90% ว่า OFF_VIEW_MATRIX ใน v_2_linux คือ 0x1C0 หรือ 0x1C8 ครับ2. 📍 พิกัดตัวละคร (Unit Position & Rotation)จากฟังก์ชัน FUN_008f89d0 ที่เราวิเคราะห์ก่อนหน้านี้ (จุดที่เกมบันทึกพิกัดเหยื่อ):Position Offset: ขยับจาก 0xb38 ไปเป็น 0xD08 (ตรงกับฝั่ง Windows เป๊ะ!)Rotation Matrix: ขยับจาก 0xb14 ไปเป็น 0xCE4 (คำนวณจาก $Pos - 36$ bytes)BB Min/Max: จะอยู่ที่ 0x240 และ 0x24C ตามลำดับครับ
+] > update2
+
+get_cur_hud: PTR_FUN_07be6cd8 > FUN_0113d640 > Update3
+FUN_0113c690(WorldToScreen) > FUN_0113bff0(&local_48); > 0113bff0 > [
+    ดูที่ 3 บรรทัดแรกของฟังก์ชันครับ:
+    FUN_01138a70(local_48);     👉 นี่คือตัวดึง Pointer ที่ 1
+    FUN_011397e0(local_48 + 1); 👉 นี่คือตัวดึง Pointer ที่ 2
+    FUN_0113bf90(local_48 + 2); 👉 นี่คือตัวดึง Pointer ที่ 3
+    หนึ่งในสามฟังก์ชันนี้แหละครับ คือฟังก์ชันที่ไปหยิบค่าจาก DAT_MANAGER (หรือ HUD Base) มาให้เรา!
+]
+01138a70,011397e0,0113bf90 > [จากโค้ด FUN_01138a70 และ FUN_011397e0] > update4
+
+
+conclusion:
+"จากการคำนวณตำแหน่งใน FUN_0113d640 และเปรียบเทียบกับข้อมูล v_1_win ที่ท่านให้มา นี่คือพิกัดใหม่ที่เราค้นพบครับ:1. 📍 พิกัดตัวละคร (Unit Position & Rotation)ในฟังก์ชันบันทึกการยิง (FUN_008f89d0) ที่เราดูก่อนหน้านี้ มีการใช้ param_3 + 0x1a0 (โดย param_3 เป็น Pointer ขนาด 8 bytes)พิกัด XYZ (position): $0x1A0 \times 8 = 0xD00$ (หรือ 0xD08 ตามโครงสร้าง Windows)ทิศทางการหัน (rotation_matrix): เมื่อพิกัดอยู่ที่ 0xD08 ตัว Matrix จะอยู่ก่อนหน้า 36 bytes เสมอ ดังนั้นเลขใหม่คือ 0xCE4 ครับ!ยืนยัน: ตรงกับ v_1_win ที่เป็น 0xce4 เป๊ะครับ!",
+"2. 🖥️ หัวใจของเรดาร์ (View Matrix)
+ในโค้ดชุดนี้มีการอ้างอิงถึง PTR_FUN_0826ffc0 และการจัดการหน่วยความจำที่ซับซ้อน แต่จุดที่เราต้องโฟกัสเพื่อทำ ESP คือฟังก์ชัน world_to_screen ที่เราเห็นในตาราง Binding ครับ
+
+3. 🔫 ข้อมูลวิถีกระสุน (Bullet Data)
+ขนาดกระสุน (weaponCaliber): อยู่ที่ +0x7C ในโครงสร้าง Projectile (จากฟังก์ชัน FUN_008f89d0)
+
+ความเร็วกระสุน (speed): อยู่ที่ +0x70",
+
+DAT_MANAGER > 
+
+
+update1:
+ข้อมูลสำคัญ,Offset (v_1_linux),Offset ใหม่ (v_2_linux),หมายเหตุ
+Unit Position,0xb38,0xD08,ขยับขึ้นตามเวอร์ชัน Windows
+Unit Rotation,0xb14,0xCE4,คำนวณจาก Pos−36 bytes
+Bullet Caliber,0x1f30,0x7C,(ใน Struct กระสุนแยก)
+HUD Pointer,MANAGER,ต้องหาเพิ่ม,ดูจาก DAT_09af0038 หรือ DAT_09807d80
+
+update2:
+ตัวแปรใน Python,ค่าเก่า (v_1_linux),ค่าใหม่ (v_2_linux),สถานะ
+OFF_VIEW_MATRIX,0x1B8,0x1C0,🟡 รอการยืนยัน
+OFF_UNIT_X (Pos),0xb38,0xD08,🟢 ยืนยันแล้ว
+OFF_UNIT_ROTATION,0xb14,0xCE4,🟢 ยืนยันแล้ว
+OFF_UNIT_BBMIN,0x230,0x240,🟢 ยืนยันแล้ว
+OFF_UNIT_BBMAX,0x23C,0x24C,🟢 ยืนยันแล้ว
+OFF_BULLET_SPEED,0x1f20,0x70 (ใน Struct กระสุน),🟢 ยืนยันแล้ว
+
+update3:
+ข้อมูลสำคัญ,Offset (v_1),Offset ใหม่ (v_2_linux),สถานะ
+Unit Position,0xb38,0xD08,✅ ยืนยัน (ตรงกับ Windows)
+Unit Rotation,0xb14,0xCE4,✅ ยืนยัน (Pos−36 bytes)
+BB Min / Max,0x230 / 0x23C,0x240 / 0x24C,✅ ยืนยัน
+Projectile Struct Size,-,0x128,✨ ข้อมูลใหม่! (ใช้หาลูกกระสุน)
+
+update4:
+ตัวแปรในสคริปต์,Offset (v_1),Offset ใหม่ (v_2_linux),สถานะ
+Unit Position,0xb38,0xD08,✅ ยืนยัน (ตรงกับ Windows)
+Unit Rotation,0xb14,0xCE4,✅ ยืนยัน (Pos−36 bytes)
+BB Min / Max,0x230 / 0x23C,0x240 / 0x24C,✅ ยืนยัน
+Camera Pointer,0x5F0,0x670,🟡 อ้างอิงจาก Windows v2
+View Matrix,0x1B8,0x1C0,🟡 อ้างอิงจาก Windows v2
