@@ -8,7 +8,7 @@ import os
 GHIDRA_BASE = 0x400000
 DAT_MANAGER = 0x09807d80 # 🎯 เลขผู้ต้องสงสัยอันดับ 1 ใน v_2_linux
 MANAGER_OFFSET = DAT_MANAGER - GHIDRA_BASE
-DAT_CONTROLLED_UNIT = 0x09807E00
+DAT_CONTROLLED_UNIT = 0x9809ac8
 
 OFF_CAMERA_PTR = 0x670
 OFF_VIEW_MATRIX = 0x1C0
@@ -20,7 +20,7 @@ OFF_UNIT_BBMIN = 0x240     # ✅ จากเดิม 0x230
 OFF_UNIT_BBMAX = 0x24C     # ✅ จากเดิม 0x23C
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
-OFF_UNIT_STATE = 0xF38         # สถานะรถถัง (เป็น/ตาย)
+OFF_UNIT_STATE = 0xF30         # สถานะรถถัง (เป็น/ตาย)
 OFF_UNIT_TEAM  = 0xFB8         # ทีม (มิตร/ศัตรู)
 OFF_UNIT_INFO  = 0xFC0         # 🎯 Pointer ไปหาข้อมูลรถถัง (เปลี่ยนจาก 0xFC8 เป็น 0xFC0)
 OFF_UNIT_CLASS_PTR = 0x38      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
@@ -43,6 +43,7 @@ OFF_BULLET_SPEED = 0x2048     # 🎯 ความเร็วต้น (Muzzle V
 OFF_BULLET_MASS = 0x2040      # ⚖️ มวลกระสุน (Relative -8 จาก Speed)
 OFF_BULLET_CALIBER = 0x2058   # 📏 คาดว่าเป็น Caliber (0.016 หรือค่าใกล้เคียง)
 OFF_BULLET_CD = 0x2054        # 💨 คาดว่าเป็น Drag Coeff (0.95)
+OFF_WEAPON_BARREL   = 0x480  # 🎯 ตัวคูณทิศทางลำกล้อง
 
 SIGHT_POINTER_CHAINS = [
     [0x13C50, -0x64C0, 0x1780, 0x1C28],
@@ -104,18 +105,36 @@ def get_unit_3d_box_data(scanner, u_ptr):
     if not pos_data or len(pos_data) < 12: return None
     pos = struct.unpack("<fff", pos_data) 
     
-    box_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 24)
-    if not box_data or len(box_data) < 24: return None
-    bmin = list(struct.unpack_from("<fff", box_data, 0))
-    bmax = list(struct.unpack_from("<fff", box_data, 12))
-    
-    for i in range(3):
-        if bmin[i] > bmax[i]: bmin[i], bmax[i] = bmax[i], bmin[i]
-        
     rot_data = scanner.read_mem(u_ptr + OFF_UNIT_ROTATION, 36)
     if not rot_data or len(rot_data) < 36: return None
     R = struct.unpack("<9f", rot_data)
-    return pos, tuple(bmin), tuple(bmax), R
+
+    # 🎯 1. ระบบค้นหา Bounding Box อัตโนมัติ (แก้ปัญหากล่องเป็นเสา/สลับแกน)
+    # ระบบจะสแกนหาช่วง 0x200 - 0x300 เพื่อหากล่องที่มีสัดส่วน "รถถัง" ของจริง
+    best_bmin, best_bmax = None, None
+    bbox_area = scanner.read_mem(u_ptr + 0x200, 0x100)
+    if bbox_area:
+        for i in range(0, len(bbox_area) - 24, 4):
+            bmin = struct.unpack_from("<fff", bbox_area, i)
+            bmax = struct.unpack_from("<fff", bbox_area, i + 12)
+            
+            dx = bmax[0] - bmin[0]
+            dy = bmax[1] - bmin[1]
+            dz = bmax[2] - bmin[2]
+            
+            # กรองสัดส่วน: กว้าง(X) 1.5-15m, สูง(Y) 0.5-10m, ยาว(Z) 2.0-20m
+            # และ ความสูง (Y) ต้องน้อยกว่าความกว้างและยาว (กล่องจะได้ไม่เป็นเสา!)
+            if 1.5 < dx < 15.0 and 0.5 < dy < 10.0 and 2.0 < dz < 20.0:
+                if dx > dy and dz > dy: 
+                    best_bmin, best_bmax = bmin, bmax
+                    break # เจอสัดส่วนที่ถูกต้องแล้ว หยุดหาทันที
+                    
+    # ถ้าหาไม่เจอ ให้ใช้ค่า Default เพื่อไม่ให้แอปแครช
+    if not best_bmin:
+        best_bmin = (-2.0, -1.0, -3.0)
+        best_bmax = (2.0, 1.5, 3.0)
+        
+    return pos, best_bmin, best_bmax, R
 
 def calculate_3d_box_corners(pos, bmin, bmax, R):
     local_center = [(bmin[i] + bmax[i]) * 0.5 for i in range(3)]
@@ -182,9 +201,12 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                 else: del scanner.bone_cache[u_ptr]
                             else: del scanner.bone_cache[u_ptr]
 
+        # (ในไฟล์ mul.py ภายใต้ฟังก์ชัน get_weapon_barrel)
         if wtm_ptr == 0 or target_bone_index == -1:
             best_score, best_idx = -1, -1
-            for off in [0x1E8, 0x1E0, 0x1F0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8]:
+            
+            # 🎯 1. อัปเดต List ค้นหาชื่อกระดูก (เพิ่ม 0x3E8, 0x400, 0x13B0)
+            for off in [0x1E8, 0x1E0, 0x1F0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8, 0x3E8, 0x400, 0x13B0]:
                 raw_ptr = scanner.read_mem(u_ptr + off, 8)
                 if not raw_ptr: continue
                 tree_ptr = struct.unpack("<Q", raw_ptr)[0]
@@ -214,19 +236,23 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                 if best_idx != -1: break
 
             if best_idx != -1:
-                for a_off in [0x228, 0x220, 0x230, 0x218, 0x240, 0x200, 0x250]:
+                # 🎯 2. อัปเดต List ค้นหา Matrix Array (เพิ่ม 0x230 ไว้หน้าสุด, ตามด้วย 0x400, 0x3E8)
+                for a_off in [0x230, 0x228, 0x220, 0x218, 0x240, 0x200, 0x250, 0x3E8, 0x400, 0x13B0]:
                     anim_raw = scanner.read_mem(u_ptr + a_off, 8)
                     if anim_raw:
                         anim_char = struct.unpack("<Q", anim_raw)[0]
                         if is_valid_ptr(anim_char):
-                            wtm_raw = scanner.read_mem(anim_char + 0x0, 8)
-                            if wtm_raw:
-                                w_ptr = struct.unpack("<Q", wtm_raw)[0]
-                                if is_valid_ptr(w_ptr):
-                                    wtm_ptr = w_ptr
-                                    target_bone_index = best_idx
-                                    scanner.bone_cache[u_ptr] = {'anim_off': a_off, 'bone_idx': best_idx}
-                                    break
+                            # รองรับการซ้อน 2 ชั้นทั้งแบบ 0x0 และ 0x78 ตามที่ท่านสแกนเจอ
+                            for sub_matrix_off in [0x0, 0x78]: 
+                                wtm_raw = scanner.read_mem(anim_char + sub_matrix_off, 8)
+                                if wtm_raw:
+                                    w_ptr = struct.unpack("<Q", wtm_raw)[0]
+                                    if is_valid_ptr(w_ptr):
+                                        wtm_ptr = w_ptr
+                                        target_bone_index = best_idx
+                                        scanner.bone_cache[u_ptr] = {'anim_off': a_off, 'bone_idx': best_idx}
+                                        break
+                            if wtm_ptr != 0: break
 
         if wtm_ptr != 0 and target_bone_index != -1:
             matrix_data = scanner.read_mem(wtm_ptr + (target_bone_index * 64), 64)
@@ -264,75 +290,69 @@ def get_local_team(scanner, base_addr):
 def get_unit_status(scanner, u_ptr):
     if u_ptr == 0: return None
     try:
-        status_data = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 132) 
+        # 🎯 FIX: ขยายขนาดการอ่านเป็น 256 bytes เพื่อให้ครอบคลุมถึง OFF_UNIT_TEAM (0xFB8)
+        status_data = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 256) 
         if not status_data: return None
         
         state = struct.unpack_from("<H", status_data, 0)[0]
-        team_offset = OFF_UNIT_TEAM - OFF_UNIT_STATE 
+        # คำนวณระยะห่างจากจุดเริ่มสแกน (0xF30) ไปยังทีม (0xFB8)
+        team_offset = 0xFB8 - 0xF30 
         team = struct.unpack_from("<B", status_data, team_offset)[0]
         
         unit_name = "UNKNOWN"
-        
-        # เข้าถึง Pointer กล่องข้อมูลหลัก (0xFC0)
         info_raw = scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8) 
         if info_raw:
             info_ptr = struct.unpack("<Q", info_raw)[0]
             if is_valid_ptr(info_ptr):
-                # ดึงเฉพาะชื่อรถถัง (0x40)
                 name_ptr_raw = scanner.read_mem(info_ptr + OFF_UNIT_NAME_PTR, 8) 
                 if name_ptr_raw:
                     name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
                     if is_valid_ptr(name_ptr):
                         str_data = scanner.read_mem(name_ptr, 64)
                         if str_data:
-                            try:
-                                raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
-                                unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
-                            except: pass
+                            raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
+                            unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
                                 
-        reload_val = -1
         reload_raw = scanner.read_mem(u_ptr + OFF_UNIT_RELOAD, 4)
-        if reload_raw:
-            try:
-                reload_val = struct.unpack("<i", reload_raw)[0]
-            except: pass
-                
-        # ส่งกลับแค่ 4 ค่า (เอา unit_class ออก)
+        reload_val = struct.unpack("<i", reload_raw)[0] if reload_raw else -1
         return team, state, unit_name, reload_val
-    except Exception as e:
-        return None
+    except: return None
     
 
 def get_unit_velocity(scanner, u_ptr, is_air):
-    if u_ptr == 0: return None
+    if u_ptr == 0: return (0.0, 0.0, 0.0) # 🎯 คืนค่าเริ่มต้นแทน None
     try:
         if is_air:
             raw_move_ptr = scanner.read_mem(u_ptr + OFF_AIR_MOVEMENT, 8)
-            if not raw_move_ptr: return None
+            if not raw_move_ptr: return (0.0, 0.0, 0.0)
             move_ptr = struct.unpack("<Q", raw_move_ptr)[0]
-            if not is_valid_ptr(move_ptr): return None
+            if not is_valid_ptr(move_ptr): return (0.0, 0.0, 0.0)
             
             vel_data = scanner.read_mem(move_ptr + OFF_AIR_VEL, 12)
-            if not vel_data or len(vel_data) < 12: return None
+            if not vel_data or len(vel_data) < 12: return (0.0, 0.0, 0.0)
             
             vx, vy, vz = struct.unpack("<fff", vel_data)
-            if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return None
+            if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return (0.0, 0.0, 0.0)
             return (vx, vy, vz)
         else:
             raw_move_ptr = scanner.read_mem(u_ptr + OFF_GROUND_MOVEMENT, 8)
-            if not raw_move_ptr: return None
+            if not raw_move_ptr: return (0.0, 0.0, 0.0)
             move_ptr = struct.unpack("<Q", raw_move_ptr)[0]
-            if not is_valid_ptr(move_ptr): return None
+            if not is_valid_ptr(move_ptr): return (0.0, 0.0, 0.0)
             
             vel_data = scanner.read_mem(move_ptr + OFF_GROUND_VEL, 12)
-            if not vel_data or len(vel_data) < 12: return None
+            if not vel_data or len(vel_data) < 12: return (0.0, 0.0, 0.0)
             
             vx, vy, vz = struct.unpack("<fff", vel_data)
-            if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return None
+            if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return (0.0, 0.0, 0.0)
+            
+            # 🎯 กรองความเร็วขยะของรถภาคพื้นดิน (ถ้าวิ่งเกิน 1000 m/s ถือว่าบั๊ก ให้เป็น 0)
+            if abs(vx) > 1000 or abs(vy) > 1000 or abs(vz) > 1000:
+                return (0.0, 0.0, 0.0)
+                
             return (vx, vy, vz)
     except Exception as e:
-        print("get_unit_velocity: ", e)
-        return None
+        return (0.0, 0.0, 0.0)
 
 # 🌪️ THE REAL OMEGA PULLER (0x3F8)
 def get_unit_omega(scanner, unit_ptr, is_air):

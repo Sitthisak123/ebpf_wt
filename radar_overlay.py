@@ -152,6 +152,7 @@ class ESPOverlay(QWidget):
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
+            
             my_is_air = False
             for u_ptr, is_air in all_units_data:
                 if u_ptr == my_unit:
@@ -160,10 +161,6 @@ class ESPOverlay(QWidget):
             my_vel = get_unit_velocity(self.scanner, my_unit, my_is_air) if my_unit else (0.0, 0.0, 0.0)
             if not my_vel: my_vel = (0.0, 0.0, 0.0)
             my_vx, my_vy, my_vz = my_vel
-            
-            # 🚨 ใส่โค้ดเปิดเครื่องสแกนตรงนี้! 🚨
-            if my_unit:
-                auto_find_unit_velocity(self.scanner, my_unit)
 
             if my_unit != self.last_my_unit:
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
@@ -198,15 +195,6 @@ class ESPOverlay(QWidget):
                     if dist_crosshair < closest_crosshair_dist:
                         closest_crosshair_dist = dist_crosshair
                         active_target_ptr = u_ptr
-            
-            # ... โค้ดช่วงที่ดึงข้อมูลตัวเรา ...
-            my_unit, my_team = get_local_team(self.scanner, self.base_address)
-            my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
-
-            # 🚨 ใส่โค้ดสแกนตัวเองตรงนี้! 🚨
-            if my_unit:
-                # print(f"DEBUG: สแกนตัวเองที่ {hex(my_unit)}")
-                auto_find_unit_velocity(self.scanner, my_unit)
 
             # ========================================================
             # 🧠 AI EVALUATION STEP (ประเมินผล 6 สมมติฐาน)

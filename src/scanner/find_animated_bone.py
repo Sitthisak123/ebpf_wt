@@ -3,22 +3,31 @@ import time
 import struct
 import math
 from main import MemoryScanner, get_game_pid, get_game_base_address
-from src.untils.mul import get_cgame_base, get_all_units
+from src.utils.mul import get_cgame_base, get_all_units, get_local_team
 
-def is_valid_ptr(p): return 0x10000000000 < p < 0x7FFFFFFFFFFF
+# 🎯 ปรับ Pointer Range ให้ครอบคลุมมาตรฐาน 64-bit ของเกม
+def is_valid_ptr(p): 
+    return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
 
-print("[*] 🕵️‍♂️ เริ่มปฏิบัติการ The Matrix Hunter V.2 (ค้นหาแบบยืดหยุ่น)...")
+print("[*] 🕵️‍♂️ เริ่มปฏิบัติการ The Matrix Hunter V.3 (ล่าแกนปืนหลัก)...")
 pid = get_game_pid()
+base_addr = get_game_base_address(pid)
 scanner = MemoryScanner(pid)
-cgame_base = get_cgame_base(scanner, get_game_base_address(pid))
-units = get_all_units(scanner, cgame_base)
+cgame_base = get_cgame_base(scanner, base_addr)
 
-if not units:
-    print("[-] ไม่พบรถถัง (กรุณาเข้าโหมด Test Drive)")
-    sys.exit()
+# 🎯 ยุทธวิธีใหม่: ดึง Address ของรถถัง "ตัวเราเอง" (Local Player)
+my_unit, _ = get_local_team(scanner, base_addr)
 
-u_ptr = units[0]
-print(f"[*] ตรวจสอบรถถัง: {hex(u_ptr)}")
+if my_unit != 0:
+    u_ptr = my_unit
+    print(f"[*] 🎯 ตรวจสอบรถถังของคุณเอง (Local Player): {hex(u_ptr)}")
+else:
+    units = get_all_units(scanner, cgame_base)
+    if not units:
+        print("[-] ไม่พบรถถังเลย (กรุณาเข้าโหมด Test Drive)")
+        sys.exit()
+    u_ptr = units[0][0] # ✅ แก้ Error Tuple ตรงนี้!
+    print(f"[*] ⚠️ ไม่พบตัวคุณ! สลับไปตรวจสอบรถถังคันแรกที่เจอ: {hex(u_ptr)}")
 
 target_idx = -1
 target_name = ""
@@ -44,18 +53,18 @@ for offset in range(0x10, 0x1500, 8):
                     end_idx = names_block.find(b'\x00', str_offset)
                     if end_idx != -1:
                         bone_name = names_block[str_offset:end_idx].decode('utf-8', errors='ignore').strip().lower()
-                        # กรองถังน้ำมันทิ้ง เอาแค่ปืน
+                        # กรองถังน้ำมัน ทิ้ง เอาแค่ปืน
                         bad_words = ["fuel", "water", "smoke", "mg", "machine", "camera", "optic", "antenna", "gunner", "track", "wheel", "suspension"]
                         if "barrel" in bone_name and not any(bad in bone_name for bad in bad_words):
                             target_idx = i
                             target_name = bone_name
-                            print(f"[+] BINGO! เจอ Index ปืนแล้ว: {i} (ชื่อ '{bone_name}' ที่ Offset {hex(offset)})")
+                            print(f"[+] BINGO! เจอ Index ปืน: {i} (ชื่อ '{bone_name}' จากโครงสร้าง Offset {hex(offset)})")
                             break
                 except: pass
     if target_idx != -1: break
 
 if target_idx == -1:
-    print("[-] หา Index ปืนไม่เจอ! (ลองเปลี่ยนคันรถถังดูครับ เช่น รถถังหลักธรรมดา)")
+    print("[-] หา Index ปืนไม่เจอ! (โปรดตรวจสอบว่ารถคันนี้มีปืนหลักหรือไม่)")
     sys.exit()
 
 print("\n[!] ห้ามขยับเมาส์! กำลังสแกนหา Matrix ทั้งหมดในตัวรถ...")
@@ -71,7 +80,7 @@ for off in range(0x10, 0x2000, 8):
         if mat_raw and len(mat_raw) == 64:
             candidates[f"Offset 1 ชั้น: {hex(off)}"] = {'ptr': ptr, 'mat': mat_raw}
 
-# ดึง pointer ชั้นที่ 2 (AnimChar)
+# ดึง pointer ชั้นที่ 2 (AnimChar - โครงสร้างหลักของเกม)
 for off in range(0x10, 0x1500, 8):
     p_raw = scanner.read_mem(u_ptr + off, 8)
     if not p_raw: continue
@@ -98,10 +107,11 @@ for name, data in candidates.items():
         old_fx = struct.unpack_from("<f", data['mat'], 0x00)[0]
         new_fx = struct.unpack_from("<f", new_mat, 0x00)[0]
         
+        # ถ่ายทอดความสัมพันธ์: ถ้า Matrix เปลี่ยนแปลงเกินค่า Threshold = ปืนขยับจริง!
         if math.isfinite(old_fx) and math.isfinite(new_fx):
             if abs(old_fx - new_fx) > 0.01:
                 print(f"  👉 [🔥 ขุมทรัพย์ WTM] เจอ Matrix ปืนขยับได้ที่: {name}")
                 found_any = True
 
 if not found_any:
-    print("[-] ไม่เจอ Matrix ที่ขยับเลย (ลองขยับเมาส์ให้เยอะกว่าเดิมครับ)")
+    print("[-] ไม่เจอ Matrix ที่ขยับเลย (ลองขยับเมาส์ให้เยอะกว่าเดิมระหว่างนับถอยหลังครับ)")
