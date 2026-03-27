@@ -8,7 +8,7 @@ import os
 GHIDRA_BASE         = 0
 DAT_MANAGER         = 0
 MANAGER_OFFSET      = DAT_MANAGER - GHIDRA_BASE
-DAT_CONTROLLED_UNIT = 0
+DAT_CONTROLLED_UNIT = 0x981dfc8
 
 OFF_CAMERA_PTR      = 0
 OFF_VIEW_MATRIX     = 0
@@ -36,7 +36,7 @@ OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเ
 OFF_GROUND_UNITS    = (0x358, False)
 OFF_GROUND_MOVEMENT = 0xD18  
 OFF_GROUND_VEL      = 0x3C
-
+OFF_GROUND_OMEGA    = 0
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก Deep Scan ล่าสุด)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
 OFF_BULLET_SPEED    = 0x2048     # 🎯 ความเร็วต้น (Muzzle Velocity)

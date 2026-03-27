@@ -19,9 +19,6 @@ from src.utils.scanner import *
 from src.utils.mul import *
 from src.utils.debug import *
 
-SCREEN_WIDTH = 2560
-SCREEN_HEIGHT = 1440
-
 COLOR_INFO_TEXT      = (255, 228, 64, 255)   
 COLOR_BARREL_LINE    = (0, 255, 0, 255)      
 COLOR_BOX_TARGET     = (255, 68, 0, 200)     
@@ -43,6 +40,7 @@ NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw
 # 1.15 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 15%
 # 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
 turn_boost = 1.3
+DEBUG_LOG_INTERVAL = 0.5
 
 # ========================================================
 # 🚨 DUAL THREAT WARNING SYSTEM (จากเวอร์ชันเก่า)
@@ -83,21 +81,33 @@ class ESPOverlay(QWidget):
         self.ai_ghost_queue = []
         self.dynamic_decay = 0.15 
         
-        self.target_idx = 0
+        self.target_cycle_index = 0
         self.q_pressed_last = False
-        
-        self.center_x = SCREEN_WIDTH / 2
-        self.center_y = SCREEN_HEIGHT / 2
+        self.last_debug_log_time = 0.0
+
+        self._update_screen_metrics()
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
-        self.setGeometry(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
-        
+        self.setGeometry(0, 0, self.screen_width, self.screen_height)
+
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(12) 
 
+    def _update_screen_metrics(self):
+        screen = self.screen() or QApplication.primaryScreen()
+        geometry = screen.geometry() if screen is not None else QApplication.desktop().screenGeometry()
+        self.screen_width = geometry.width()
+        self.screen_height = geometry.height()
+        self.center_x = self.screen_width / 2
+        self.center_y = self.screen_height / 2
+
     def paintEvent(self, event):
+        self._update_screen_metrics()
+        if self.width() != self.screen_width or self.height() != self.screen_height:
+            self.setGeometry(0, 0, self.screen_width, self.screen_height)
+
         now = time.time()
         dt = now - self.last_frame_time
         self.last_frame_time = now
@@ -112,14 +122,14 @@ class ESPOverlay(QWidget):
         curr_t = time.time()
         lead_marks_to_draw = []
         
-        closest_crosshair_dist = float('inf')
         active_flight_data = None 
         active_target_ptr = 0
         
         if HAS_KEYBOARD:
             try:
                 is_q_pressed = keyboard.is_pressed('q')
-                if is_q_pressed and not self.q_pressed_last: self.target_idx += 1
+                if is_q_pressed and not self.q_pressed_last:
+                    self.target_cycle_index += 1
                 self.q_pressed_last = is_q_pressed
             except: pass
 
@@ -192,16 +202,22 @@ class ESPOverlay(QWidget):
                 my_unit != 0
             )
 
-            # 🎯 Auto-Lock เป้าหมายที่ใกล้กลางจอที่สุด
+            # 🎯 เลือกเป้าหมายจากลิสต์ที่มองเห็น โดยให้ Q วนเป้าได้จริง
+            visible_targets = []
             for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
                 pos = get_unit_pos(self.scanner, u_ptr)
                 if not pos: continue
-                res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
                 if res_pos and res_pos[2] > 0:
                     dist_crosshair = math.hypot(res_pos[0] - self.center_x, res_pos[1] - self.center_y)
-                    if dist_crosshair < closest_crosshair_dist:
-                        closest_crosshair_dist = dist_crosshair
-                        active_target_ptr = u_ptr
+                    visible_targets.append((dist_crosshair, u_ptr))
+
+            if visible_targets:
+                visible_targets.sort(key=lambda item: item[0])
+                self.target_cycle_index %= len(visible_targets)
+                active_target_ptr = visible_targets[self.target_cycle_index][1]
+            else:
+                self.target_cycle_index = 0
 
             # ========================================================
             # 🧠 AI EVALUATION STEP (ประเมินผล 6 สมมติฐาน)
@@ -252,7 +268,7 @@ class ESPOverlay(QWidget):
 
                     if box_data:
                         corners_3d = calculate_3d_box_corners(pos, box_data[1], box_data[2], box_data[3])
-                        pts = [p for c in corners_3d if (p := world_to_screen(view_matrix, c[0], c[1], c[2], SCREEN_WIDTH, SCREEN_HEIGHT)) and p[2] >= 0.001]
+                        pts = [p for c in corners_3d if (p := world_to_screen(view_matrix, c[0], c[1], c[2], self.screen_width, self.screen_height)) and p[2] >= 0.001]
                         if len(pts) == 8:
                             box_color = QColor(255, 0, 255, 255) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
                             painter.setPen(QPen(box_color, 2))
@@ -262,7 +278,7 @@ class ESPOverlay(QWidget):
                             has_valid_box = True
 
                     if not has_valid_box:
-                        res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                        res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
                         if res_pos and res_pos[2] > 0:
                             box_w = max(20, int(3000 / (dist + 1))) if is_air_target else max(30, int(4000 / (dist + 1)))
                             box_h = box_w * 0.8 if is_air_target else box_w * 0.6
@@ -275,8 +291,8 @@ class ESPOverlay(QWidget):
                     
                     # 🔫 วาดเส้นเล็งของปืนศัตรู
                     if barrel_data:
-                        res_p1 = world_to_screen(view_matrix, barrel_data[0][0], barrel_data[0][1], barrel_data[0][2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                        res_p2 = world_to_screen(view_matrix, barrel_data[1][0], barrel_data[1][1], barrel_data[1][2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                        res_p1 = world_to_screen(view_matrix, barrel_data[0][0], barrel_data[0][1], barrel_data[0][2], self.screen_width, self.screen_height)
+                        res_p2 = world_to_screen(view_matrix, barrel_data[1][0], barrel_data[1][1], barrel_data[1][2], self.screen_width, self.screen_height)
                         if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0:
                             painter.setPen(QPen(QColor(*COLOR_BARREL_LINE), 2)) 
                             painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
@@ -285,12 +301,15 @@ class ESPOverlay(QWidget):
                     clean_name = raw_name
                     for p in NAME_PREFIXES:
                         if clean_name.lower().startswith(p): clean_name = clean_name[len(p):]; break
-                    
-                    if is_air_target and my_pos and abs(pos[1] - my_pos[1]) < 50: is_air_target = False
-                            
-                    has_reload_bar = (not is_air_target and (0 <= reload_val < 500))
+
+                    physics_is_air = is_air_target
+                    display_is_air = is_air_target
+                    if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
+                        display_is_air = False
+
+                    has_reload_bar = (not display_is_air and (0 <= reload_val < 500))
                     dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
-                    hide_name = False if is_air_target else (dist > 550 and dist_to_crosshair >= 350)
+                    hide_name = False if display_is_air else (dist > 550 and dist_to_crosshair >= 350)
                     
                     # 🎯 กลับมาใช้รูปแบบเดิมที่โชว์แค่ ชื่อ และ ระยะทาง
                     display_text = f"-{int(dist)}m-" if hide_name else f"{clean_name.upper()} [{int(dist)}m]"
@@ -304,8 +323,8 @@ class ESPOverlay(QWidget):
                     # ========================================================
                     warning_level = 0 
                     
-                    if is_air_target and my_pos and dist > 10.0:
-                        vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
+                    if physics_is_air and my_pos and dist > 10.0:
+                        vel = get_unit_velocity(self.scanner, u_ptr, physics_is_air)
                         if vel:
                             v_mag = math.sqrt(vel[0]**2 + vel[1]**2 + vel[2]**2)
                             if v_mag > 5.0: 
@@ -319,7 +338,7 @@ class ESPOverlay(QWidget):
                                     if angle <= 2.5: warning_level = 2
                                     elif angle <= 6.0: warning_level = 1
                                         
-                    elif not is_air_target and my_pos and barrel_data and dist > 10.0:
+                    elif not physics_is_air and my_pos and barrel_data and dist > 10.0:
                         if is_ground_threat(barrel_data[0], barrel_data[1], my_pos): warning_level = 2
                         elif is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=4.5): warning_level = 1
 
@@ -337,17 +356,17 @@ class ESPOverlay(QWidget):
                             painter.setPen(QColor(255, 0, 0, 255))
                             painter.drawText(dot_x, dot_y, dot_text)
                             painter.setPen(QPen(QColor(255, 0, 0, 100), 5, Qt.DashLine))
-                            painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
+                            painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
                             painter.setPen(QPen(QColor(255, 0, 0, 255), 2, Qt.DashLine))
-                            painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
+                            painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
                             
                         elif warning_level == 1:
                             painter.setPen(QPen(QColor(255, 180, 0, 80), 5))
-                            painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
+                            painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
                             painter.setPen(QPen(QColor(255, 180, 0, 255), 2))
-                            painter.drawLine(int(self.center_x), SCREEN_HEIGHT, int(line_dest_x), int(line_dest_y))
+                            painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
 
-                    painter.setPen(QColor(*COLOR_TEXT_AIR) if is_air_target else QColor(*COLOR_TEXT_GROUND))
+                    painter.setPen(QColor(*COLOR_TEXT_AIR) if display_is_air else QColor(*COLOR_TEXT_GROUND))
                     painter.drawText(int(avg_x - text_w/2), text_y, display_text)
 
                     if has_reload_bar:
@@ -364,7 +383,7 @@ class ESPOverlay(QWidget):
                     # ========================================================
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
-                    vel = get_unit_velocity(self.scanner, u_ptr, is_air_target)
+                    vel = get_unit_velocity(self.scanner, u_ptr, physics_is_air)
                     is_turning = False 
                     
                     if not vel or current_bullet_speed <= 0 or not my_pos or dist <= 10.0: continue
@@ -372,7 +391,7 @@ class ESPOverlay(QWidget):
                     vx, vy, vz = vel
                     ax, ay, az = 0.0, 0.0, 0.0
                     
-                    if is_air_target:
+                    if physics_is_air:
                         if u_ptr not in self.vel_window:
                             self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (0.0, 0.0, 0.0), 'fail_count': 0, 'turn_time': 0.0}
                         else:
@@ -472,7 +491,7 @@ class ESPOverlay(QWidget):
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
                     
                     for _ in range(4):
-                        if is_air_target:
+                        if physics_is_air:
                             a_term = (self.dynamic_decay * best_t - 1.0 + math.exp(-self.dynamic_decay * best_t)) / (self.dynamic_decay**2) if best_t > 0 else 0.0
                             pred_x = t_x + (vx * best_t) + (ax * a_term * turn_boost)
                             pred_y = t_y + (vy * best_t) + (ay * a_term * turn_boost)
@@ -508,7 +527,8 @@ class ESPOverlay(QWidget):
                     # =========================================================
                     # 🐞 [DEBUG LOG]: พิมพ์ข้อมูลเฉพาะเป้าหมายที่โดนล็อคอยู่
                     # =========================================================
-                    if u_ptr == active_target_ptr:
+                    if u_ptr == active_target_ptr and curr_t - self.last_debug_log_time >= DEBUG_LOG_INTERVAL:
+                        self.last_debug_log_time = curr_t
                         print(f"\n--- 🎯 [DEBUG LEAD: {clean_name.upper()}] ---")
                         print(f"🔫 Bullet : Speed = {current_bullet_speed:.1f} m/s | Mass = {current_bullet_mass:.2f} kg | Drag = {current_bullet_cd:.2f}")
                         print(f"🚀 Target : Vel(X:{vx:.1f}, Y:{vy:.1f}, Z:{vz:.1f}) | Accel(X:{ax:.1f}, Y:{ay:.1f}, Z:{az:.1f})")
@@ -519,7 +539,7 @@ class ESPOverlay(QWidget):
 
                     # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
                     if all(math.isfinite(c) for c in [final_x, final_y, final_z]):
-                        pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, SCREEN_WIDTH, SCREEN_HEIGHT)
+                        pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, self.screen_width, self.screen_height)
                         
                         if pred_screen and pred_screen[2] > 0:
                             px, py = pred_screen[0], pred_screen[1]
@@ -530,8 +550,8 @@ class ESPOverlay(QWidget):
                                 draw_sx, draw_sy = avg_x, avg_y
                                 
                                 # ถ้าเป็นเครื่องบิน ให้ดึงพิกัดที่แม่นยำกว่ามาวาดเส้น
-                                if is_air_target:
-                                    pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                                if display_is_air:
+                                    pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
                                     if pos_scr and pos_scr[2] > 0:
                                         draw_sx, draw_sy = pos_scr[0], pos_scr[1]
                                 
@@ -540,7 +560,7 @@ class ESPOverlay(QWidget):
                                     lead_marks_to_draw.append({
                                         'sx': draw_sx, 'sy': draw_sy, 
                                         'px': px, 'py': py,
-                                        'is_air': is_air_target, 
+                                        'is_air': display_is_air, 
                                         'is_turning': is_turning
                                     })
 
@@ -562,7 +582,7 @@ class ESPOverlay(QWidget):
                     p_y = c_pos[1] + c_v[1] * t_sim + c_a[1] * a_term
                     p_z = c_pos[2] + c_v[2] * t_sim + c_a[2] * a_term
                     
-                    scr = world_to_screen(view_matrix, p_x, p_y, p_z, SCREEN_WIDTH, SCREEN_HEIGHT)
+                    scr = world_to_screen(view_matrix, p_x, p_y, p_z, self.screen_width, self.screen_height)
                     if scr and scr[2] > 0: path_pts.append((scr[0], scr[1]))
                 
                 if len(path_pts) > 1:
