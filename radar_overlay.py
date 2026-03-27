@@ -13,16 +13,11 @@ except ImportError:
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
-from main import MemoryScanner, get_game_pid, get_game_base_address, auto_find_unit_position
-from src.utils.debug import *
-from src.utils.mul import (
-    get_cgame_base, get_view_matrix, world_to_screen, 
-    get_all_units, get_unit_3d_box_data, calculate_3d_box_corners, get_weapon_barrel,
-    get_local_team, get_unit_status, get_unit_pos, get_unit_velocity,
-    get_bullet_speed, get_bullet_mass, get_bullet_caliber, get_bullet_cd,
-    get_sight_compensation_factor
-)
 
+# 🎯 นำเข้าจากระบบ Core Engine ที่แยกออกมาใหม่
+from src.utils.scanner import *
+from src.utils.mul import *
+from src.utils.debug import *
 
 SCREEN_WIDTH = 2560
 SCREEN_HEIGHT = 1440
@@ -131,9 +126,18 @@ class ESPOverlay(QWidget):
         try:
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             cgame_base = get_cgame_base(self.scanner, self.base_address)
-            if cgame_base == 0: return
+            
+            # 🐞 แทรก Debug: เช็ค CGame
+            if cgame_base == 0: 
+                dprint("CGame Base is 0! ข้ามการวาดรูป", force=True)
+                return
+                
             view_matrix = get_view_matrix(self.scanner, cgame_base)
-            if not view_matrix: return
+            
+            # 🐞 แทรก Debug: เช็ค View Matrix
+            if not view_matrix: 
+                dprint("อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป", force=True)
+                return
 
             current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
             current_zeroing = get_sight_compensation_factor(self.scanner, self.base_address)
@@ -147,12 +151,10 @@ class ESPOverlay(QWidget):
             painter.drawText(20, 115, f"🧠 AI Tracking : 6 Threads Active (Decay={self.dynamic_decay:.3f})")
             painter.setPen(QColor(*COLOR_INFO_TEXT))
 
-            all_units_data = get_all_units(self.scanner, cgame_base) 
-            painter.drawText(20, 140, f"📦 Units Found: {len(all_units_data)}")
+            all_units_data = get_all_units(self.scanner, cgame_base)
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
-            
             my_is_air = False
             for u_ptr, is_air in all_units_data:
                 if u_ptr == my_unit:
@@ -180,14 +182,19 @@ class ESPOverlay(QWidget):
                 unit_name_lower = unit_name.lower()
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
                 valid_targets.append((u_ptr, unit_name, reload_val, is_air))
+            
+            dprint_frame_stats(
+                self.current_fps, 
+                cgame_base, 
+                view_matrix is not None, 
+                len(all_units_data), 
+                len(valid_targets),
+                my_unit != 0
+            )
 
             # 🎯 Auto-Lock เป้าหมายที่ใกล้กลางจอที่สุด
             for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
-                if not is_air_target: continue
                 pos = get_unit_pos(self.scanner, u_ptr)
-                if pos:
-                    # print(f"DEBUG: Unit {hex(u_ptr)} Pos: X={pos[0]:.2f}, Y={pos[1]:.2f}, Z={pos[2]:.2f}")
-                    pass
                 if not pos: continue
                 res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
                 if res_pos and res_pos[2] > 0:
@@ -498,21 +505,48 @@ class ESPOverlay(QWidget):
                     final_y -= (my_vy * best_t)
                     final_z -= (my_vz * best_t)
                     
-                    pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, SCREEN_WIDTH, SCREEN_HEIGHT)
-                    if pred_screen and pred_screen[2] > 0:
-                        draw_sx, draw_sy = avg_x, avg_y
-                        if is_air_target:
-                            pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
-                            if pos_scr and pos_scr[2] > 0: 
-                                draw_sx, draw_sy = pos_scr[0], pos_scr[1]
-                            
-                        lead_marks_to_draw.append({
-                            'sx': draw_sx, 'sy': draw_sy, 'px': pred_screen[0], 'py': pred_screen[1],
-                            'is_air': is_air_target, 'is_turning': is_turning
-                        })
+                    # =========================================================
+                    # 🐞 [DEBUG LOG]: พิมพ์ข้อมูลเฉพาะเป้าหมายที่โดนล็อคอยู่
+                    # =========================================================
+                    if u_ptr == active_target_ptr:
+                        print(f"\n--- 🎯 [DEBUG LEAD: {clean_name.upper()}] ---")
+                        print(f"🔫 Bullet : Speed = {current_bullet_speed:.1f} m/s | Mass = {current_bullet_mass:.2f} kg | Drag = {current_bullet_cd:.2f}")
+                        print(f"🚀 Target : Vel(X:{vx:.1f}, Y:{vy:.1f}, Z:{vz:.1f}) | Accel(X:{ax:.1f}, Y:{ay:.1f}, Z:{az:.1f})")
+                        print(f"🚙 My Unit: Vel(X:{my_vx:.1f}, Y:{my_vy:.1f}, Z:{my_vz:.1f})")
+                        print(f"📏 Range  : {dist:.1f} m | Time of Flight (best_t): {best_t:.3f} s")
+                        print(f"📉 Drop   : Gravity (+{gravity_offset:.2f} m) | Zeroing (-{sight_drop_comp:.2f} m)")
+                        print(f"----------------------------------------")
 
-                except Exception:
-                    print(f"MAIN PROCESSING LOOP error: {e}")
+                    # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
+                    if all(math.isfinite(c) for c in [final_x, final_y, final_z]):
+                        pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, SCREEN_WIDTH, SCREEN_HEIGHT)
+                        
+                        if pred_screen and pred_screen[2] > 0:
+                            px, py = pred_screen[0], pred_screen[1]
+                            
+                            # 🎯 เช็ค NaN ก่อนแปลงเป็น int
+                            if math.isfinite(px) and math.isfinite(py):
+                                # 🛡️ ใช้ avg_x และ avg_y ที่คำนวณไว้ด้านบนแทน screen_pos
+                                draw_sx, draw_sy = avg_x, avg_y
+                                
+                                # ถ้าเป็นเครื่องบิน ให้ดึงพิกัดที่แม่นยำกว่ามาวาดเส้น
+                                if is_air_target:
+                                    pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], SCREEN_WIDTH, SCREEN_HEIGHT)
+                                    if pos_scr and pos_scr[2] > 0:
+                                        draw_sx, draw_sy = pos_scr[0], pos_scr[1]
+                                
+                                # ✅ เพิ่มเข้าคิววาดเมื่อทุกอย่างเป็นตัวเลขปกติ
+                                if math.isfinite(draw_sx) and math.isfinite(draw_sy):
+                                    lead_marks_to_draw.append({
+                                        'sx': draw_sx, 'sy': draw_sy, 
+                                        'px': px, 'py': py,
+                                        'is_air': is_air_target, 
+                                        'is_turning': is_turning
+                                    })
+
+                except Exception as e:
+                    if "NaN" not in str(e):
+                        print(f"Main processing error: {e}")
                     pass
 
             # ========================================================
@@ -567,10 +601,14 @@ if __name__ == '__main__':
         pid = get_game_pid()
         base_addr = get_game_base_address(pid)
         scanner = MemoryScanner(pid)
+        
+        # 🚀 THE MAGIC: สแกนหา Manager Offset อัตโนมัติก่อนเปิดเรดาร์!
+        init_dynamic_offsets(scanner, base_addr)
+        
         app = QApplication(sys.argv)
         overlay = ESPOverlay(scanner, base_addr)
         overlay.show()
         sys.exit(app.exec_())
     except Exception as e: 
-        print(e)
+        print(f"Error starting Overlay: {e}")
         sys.exit(1)

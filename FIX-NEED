@@ -11,3 +11,55 @@ xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ su
 QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
 Main loop error: argument 3 overflowed: value must be in the range -2147483648 to 2147483647
 "
+
+
+UPDATE OFFSETS:
+    GHIDRA_BASE = 0x400000  #✅
+    DAT_MANAGER = 0x09807d80 
+    MANAGER_OFFSET = DAT_MANAGER - GHIDRA_BASE
+    DAT_CONTROLLED_UNIT = 0x9809ac8
+
+    OFF_CAMERA_PTR = 0x670
+    OFF_VIEW_MATRIX = 0x1C0
+
+    # 📍 อัปเดตพิกัดยูนิตสำหรับเวอร์ชันใหม่
+    OFF_UNIT_X = 0xD00          
+    OFF_UNIT_ROTATION = 0xCDC  
+    OFF_UNIT_BBMIN = 0x240    
+    OFF_UNIT_BBMAX = 0x24C     
+
+    OFF_UNIT_STATE = 0xF30 
+    OFF_UNIT_TEAM  = 0xFB0 
+    OFF_UNIT_INFO  = 0xFC0       
+    OFF_UNIT_CLASS_PTR = 0x38   
+    OFF_UNIT_TYPE_PTR  = 0x38    
+    OFF_UNIT_NAME_PTR  = 0x40      
+    OFF_UNIT_RELOADING = 0x994
+    OFF_UNIT_RELOAD = 0xAB0
+
+
+    OFF_AIR_UNITS = (0x340, False)
+    OFF_AIR_MOVEMENT = 0xD18     
+    OFF_AIR_VEL = 0xC0        
+    OFF_AIR_OMEGA = 0x03F8     
+
+    OFF_GROUND_UNITS = (0x358, False)
+    OFF_GROUND_MOVEMENT = 0x1668  
+    OFF_GROUND_VEL = 0x0DD8
+
+
+    OFF_WEAPON_PTR = 0x3f0      
+    OFF_BULLET_SPEED = 0x2048    
+    OFF_BULLET_MASS = 0x2054     
+    OFF_BULLET_CALIBER = 0x2058  
+    OFF_BULLET_CD = 0x205C       
+    OFF_WEAPON_BARREL   = 0x480 
+
+    SIGHT_POINTER_CHAINS = [
+        [0x13C50, -0x64C0, 0x1780, 0x1C28],
+        [0x123E0, -0x37B8, 0x1780, 0x1C28],
+        [0x13260, -0x4680, 0x1780, 0x1C28],
+        [0x133D0, -0x4E40, 0x13D0, 0x7088],
+        [0x13B88, -0x5140, 0x13D0, 0x7088],
+        [0x13E68, -0x75F0, 0x13D0, 0x7088]
+    ]

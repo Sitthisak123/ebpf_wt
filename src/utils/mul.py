@@ -5,44 +5,44 @@ import os
 # ===================================================
 # 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
 # ===================================================
-GHIDRA_BASE = 0x400000
-DAT_MANAGER = 0x09807d80 # 🎯 เลขผู้ต้องสงสัยอันดับ 1 ใน v_2_linux
+GHIDRA_BASE = 0
+DAT_MANAGER = 0
 MANAGER_OFFSET = DAT_MANAGER - GHIDRA_BASE
-DAT_CONTROLLED_UNIT = 0x9809ac8
+DAT_CONTROLLED_UNIT = 0
 
-OFF_CAMERA_PTR = 0x670
-OFF_VIEW_MATRIX = 0x1C0
+OFF_CAMERA_PTR = 0
+OFF_VIEW_MATRIX = 0
 
-# 📍 อัปเดตพิกัดยูนิตสำหรับเวอร์ชันใหม่
-OFF_UNIT_X = 0xD00          # ✅ จากเดิม 0xb38
-OFF_UNIT_ROTATION = 0xCDC  # ✅ จากเดิม 0xb14 (Pos - 36)
-OFF_UNIT_BBMIN = 0x240     # ✅ จากเดิม 0x230
-OFF_UNIT_BBMAX = 0x24C     # ✅ จากเดิม 0x23C
+OFF_UNIT_X = 0
+OFF_UNIT_ROTATION = 0
+OFF_UNIT_BBMIN = 0
+OFF_UNIT_BBMAX = 0
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
-OFF_UNIT_STATE = 0xF30         # สถานะรถถัง (เป็น/ตาย)
-OFF_UNIT_TEAM  = 0xFB8         # ทีม (มิตร/ศัตรู)
-OFF_UNIT_INFO  = 0xFC0         # 🎯 Pointer ไปหาข้อมูลรถถัง (เปลี่ยนจาก 0xFC8 เป็น 0xFC0)
-OFF_UNIT_CLASS_PTR = 0x38      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
-OFF_UNIT_TYPE_PTR  = 0x38      # 🎯 Pointer ไปหาชนิด (เช่น exp_tank)
-OFF_UNIT_NAME_PTR  = 0x40      # 🎯 Pointer ไปหาชื่อย่อ (เช่น ussr_2s38)
-OFF_UNIT_RELOAD = 0xAB8        # หลอดรีโหลดกระสุน
+OFF_UNIT_STATE = 0         # สถานะรถถัง (เป็น/ตาย)
+OFF_UNIT_TEAM  = 0         # ทีม (มิตร/ศัตรู)
+OFF_UNIT_INFO  = 0         # 🎯 Pointer ไปหาข้อมูลรถถัง (เปลี่ยนจาก 0xFC8 เป็น 0xFC0)
+OFF_UNIT_CLASS_PTR = 0      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
+OFF_UNIT_TYPE_PTR  = 0      # 🎯 Pointer ไปหาชนิด (เช่น exp_tank)
+OFF_UNIT_NAME_PTR  = 0      # 🎯 Pointer ไปหาชื่อย่อ (เช่น ussr_2s38)
+OFF_UNIT_RELOADING = 0
+OFF_UNIT_RELOAD = 0
 
-OFF_AIR_UNITS = (0x340, True)
-OFF_AIR_MOVEMENT = 0x18       # ✈️ Pointer ฟิสิกส์เครื่องบิน
-OFF_AIR_VEL = 0x0318          # ✈️ ความเร็วเครื่องบิน (แกน X, Y, Z)
+OFF_AIR_UNITS = (0x340, False)
+OFF_AIR_MOVEMENT = 0xD18       # ✈️ Pointer ฟิสิกส์เครื่องบิน
+OFF_AIR_VEL = 0xC0          # ✈️ ความเร็วเครื่องบิน (แกน X, Y, Z)
 OFF_AIR_OMEGA = 0x03F8        # 🌪️ THE HOLY GRAIL: ความเร็วเชิงมุมของจริง!!
 
 OFF_GROUND_UNITS = (0x358, False)
-OFF_GROUND_MOVEMENT = 0x2108  # 🎯 อัปเดตจาก 0x1b30 เป็น 0x2108
-OFF_GROUND_VEL = 0x138         # 🎯 อัปเดตจาก 0x54 เป็น 0x138
+OFF_GROUND_MOVEMENT = 0x1668  
+OFF_GROUND_VEL = 0x0DD8
 
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก Deep Scan ล่าสุด)
 OFF_WEAPON_PTR = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
 OFF_BULLET_SPEED = 0x2048     # 🎯 ความเร็วต้น (Muzzle Velocity)
-OFF_BULLET_MASS = 0x2040      # ⚖️ มวลกระสุน (Relative -8 จาก Speed)
+OFF_BULLET_MASS = 0x2054      # ⚖️ มวลกระสุน (Relative -8 จาก Speed)
 OFF_BULLET_CALIBER = 0x2058   # 📏 คาดว่าเป็น Caliber (0.016 หรือค่าใกล้เคียง)
-OFF_BULLET_CD = 0x2054        # 💨 คาดว่าเป็น Drag Coeff (0.95)
+OFF_BULLET_CD = 0x205C        # 💨 คาดว่าเป็น Drag Coeff (0.95)
 OFF_WEAPON_BARREL   = 0x480  # 🎯 ตัวคูณทิศทางลำกล้อง
 
 SIGHT_POINTER_CHAINS = [
@@ -164,15 +164,28 @@ def calculate_3d_box_corners(pos, bmin, bmax, R):
     return corners
 
 def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
-    w = (pos_x * matrix[3]) + (pos_y * matrix[7]) + (pos_z * matrix[11]) + matrix[15]
-    if w < 0.01: return None
-    clip_x = (pos_x * matrix[0]) + (pos_y * matrix[4]) + (pos_z * matrix[8]) + matrix[12]
-    clip_y = (pos_x * matrix[1]) + (pos_y * matrix[5]) + (pos_z * matrix[9]) + matrix[13]
-    ndc_x = clip_x / w
-    ndc_y = clip_y / w
-    screen_x = (screen_width / 2) * (1 + ndc_x)
-    screen_y = (screen_height / 2) * (1 - ndc_y)
-    return (int(screen_x), int(screen_y), w)
+    try:
+        # 🛡️ แก้จาก vm เป็น matrix
+        if not matrix or any(not math.isfinite(v) for v in matrix):
+            return None
+            
+        w = (pos_x * matrix[3]) + (pos_y * matrix[7]) + (pos_z * matrix[11]) + matrix[15]
+        if w < 0.01 or not math.isfinite(w): return None
+        
+        clip_x = (pos_x * matrix[0]) + (pos_y * matrix[4]) + (pos_z * matrix[8]) + matrix[12]
+        clip_y = (pos_x * matrix[1]) + (pos_y * matrix[5]) + (pos_z * matrix[9]) + matrix[13]
+        
+        ndc_x = clip_x / w
+        ndc_y = clip_y / w
+        
+        screen_x = (screen_width / 2) * (1 + ndc_x)
+        screen_y = (screen_height / 2) * (1 - ndc_y)
+        
+        if math.isfinite(screen_x) and math.isfinite(screen_y):
+            return (screen_x, screen_y, w)
+        return None
+    except:
+        return None
 
 def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=False):
     if u_ptr == 0: return None
@@ -282,7 +295,7 @@ def get_local_team(scanner, base_addr):
         control_ptr = struct.unpack("<Q", raw_ptr)[0]
         
         # ทีมมักจะอยู่ที่ Offset 0xDE8 หรือ 0xFB8
-        team_data = scanner.read_mem(control_ptr + 0xFB8, 1)
+        team_data = scanner.read_mem(control_ptr + OFF_UNIT_TEAM, 1)
         team = struct.unpack("<B", team_data)[0] if team_data else 0
         return control_ptr, team
     except: return 0, 0
@@ -296,7 +309,7 @@ def get_unit_status(scanner, u_ptr):
         
         state = struct.unpack_from("<H", status_data, 0)[0]
         # คำนวณระยะห่างจากจุดเริ่มสแกน (0xF30) ไปยังทีม (0xFB8)
-        team_offset = 0xFB8 - 0xF30 
+        team_offset = OFF_UNIT_TEAM - OFF_UNIT_STATE 
         team = struct.unpack_from("<B", status_data, team_offset)[0]
         
         unit_name = "UNKNOWN"
@@ -320,7 +333,7 @@ def get_unit_status(scanner, u_ptr):
     
 
 def get_unit_velocity(scanner, u_ptr, is_air):
-    if u_ptr == 0: return (0.0, 0.0, 0.0) # 🎯 คืนค่าเริ่มต้นแทน None
+    if u_ptr == 0: return (0.0, 0.0, 0.0)
     try:
         if is_air:
             raw_move_ptr = scanner.read_mem(u_ptr + OFF_AIR_MOVEMENT, 8)
@@ -331,7 +344,8 @@ def get_unit_velocity(scanner, u_ptr, is_air):
             vel_data = scanner.read_mem(move_ptr + OFF_AIR_VEL, 12)
             if not vel_data or len(vel_data) < 12: return (0.0, 0.0, 0.0)
             
-            vx, vy, vz = struct.unpack("<fff", vel_data)
+            # 🎯 FIX: เปลี่ยนจาก <ddd เป็น <fff เพราะพิกัดคือ Float 3 ตัว
+            vx, vy, vz = struct.unpack("<fff", vel_data) 
             if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return (0.0, 0.0, 0.0)
             return (vx, vy, vz)
         else:
