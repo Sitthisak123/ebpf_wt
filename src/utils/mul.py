@@ -5,44 +5,44 @@ import os
 # ===================================================
 # 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
 # ===================================================
-GHIDRA_BASE = 0
-DAT_MANAGER = 0
-MANAGER_OFFSET = DAT_MANAGER - GHIDRA_BASE
+GHIDRA_BASE         = 0
+DAT_MANAGER         = 0
+MANAGER_OFFSET      = DAT_MANAGER - GHIDRA_BASE
 DAT_CONTROLLED_UNIT = 0
 
-OFF_CAMERA_PTR = 0
-OFF_VIEW_MATRIX = 0
+OFF_CAMERA_PTR      = 0
+OFF_VIEW_MATRIX     = 0
 
-OFF_UNIT_X = 0
-OFF_UNIT_ROTATION = 0
-OFF_UNIT_BBMIN = 0
-OFF_UNIT_BBMAX = 0
+OFF_UNIT_X          = 0
+OFF_UNIT_ROTATION   = 0
+OFF_UNIT_BBMIN      = 0
+OFF_UNIT_BBMAX      = 0
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
-OFF_UNIT_STATE = 0         # สถานะรถถัง (เป็น/ตาย)
-OFF_UNIT_TEAM  = 0         # ทีม (มิตร/ศัตรู)
-OFF_UNIT_INFO  = 0         # 🎯 Pointer ไปหาข้อมูลรถถัง (เปลี่ยนจาก 0xFC8 เป็น 0xFC0)
-OFF_UNIT_CLASS_PTR = 0      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
-OFF_UNIT_TYPE_PTR  = 0      # 🎯 Pointer ไปหาชนิด (เช่น exp_tank)
-OFF_UNIT_NAME_PTR  = 0      # 🎯 Pointer ไปหาชื่อย่อ (เช่น ussr_2s38)
-OFF_UNIT_RELOADING = 0
-OFF_UNIT_RELOAD = 0
+OFF_UNIT_STATE      = 0         # สถานะรถถัง (เป็น/ตาย)
+OFF_UNIT_TEAM       = 0         # ทีม (มิตร/ศัตรู)
+OFF_UNIT_INFO       = 0         # 🎯 Pointer ไปหาข้อมูลรถถัง (เปลี่ยนจาก 0xFC8 เป็น 0xFC0)
+OFF_UNIT_CLASS_PTR  = 0      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
+OFF_UNIT_TYPE_PTR   = 0      # 🎯 Pointer ไปหาชนิด (เช่น exp_tank)
+OFF_UNIT_NAME_PTR   = 0      # 🎯 Pointer ไปหาชื่อย่อ (เช่น ussr_2s38)
+OFF_UNIT_RELOADING  = 0
+OFF_UNIT_RELOAD     = 0
 
-OFF_AIR_UNITS = (0x340, False)
-OFF_AIR_MOVEMENT = 0xD18       # ✈️ Pointer ฟิสิกส์เครื่องบิน
-OFF_AIR_VEL = 0xC0          # ✈️ ความเร็วเครื่องบิน (แกน X, Y, Z)
-OFF_AIR_OMEGA = 0x03F8        # 🌪️ THE HOLY GRAIL: ความเร็วเชิงมุมของจริง!!
+OFF_AIR_UNITS       = (0x340, True)
+OFF_AIR_MOVEMENT    = 0x0AD8       # 🎯 The True Physics Object
+OFF_AIR_VEL         = 0x40        # 🎯 Velocity (DOUBLE Vector 24-byte)
+OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)
 
-OFF_GROUND_UNITS = (0x358, False)
-OFF_GROUND_MOVEMENT = 0x1668  
-OFF_GROUND_VEL = 0x0DD8
+OFF_GROUND_UNITS    = (0x358, False)
+OFF_GROUND_MOVEMENT = 0xD18  
+OFF_GROUND_VEL      = 0x3C
 
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก Deep Scan ล่าสุด)
-OFF_WEAPON_PTR = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
-OFF_BULLET_SPEED = 0x2048     # 🎯 ความเร็วต้น (Muzzle Velocity)
-OFF_BULLET_MASS = 0x2054      # ⚖️ มวลกระสุน (Relative -8 จาก Speed)
-OFF_BULLET_CALIBER = 0x2058   # 📏 คาดว่าเป็น Caliber (0.016 หรือค่าใกล้เคียง)
-OFF_BULLET_CD = 0x205C        # 💨 คาดว่าเป็น Drag Coeff (0.95)
+OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
+OFF_BULLET_SPEED    = 0x2048     # 🎯 ความเร็วต้น (Muzzle Velocity)
+OFF_BULLET_MASS     = 0x2054      # ⚖️ มวลกระสุน (Relative -8 จาก Speed)
+OFF_BULLET_CALIBER  = 0x2058   # 📏 คาดว่าเป็น Caliber (0.016 หรือค่าใกล้เคียง)
+OFF_BULLET_CD       = 0x205C        # 💨 คาดว่าเป็น Drag Coeff (0.95)
 OFF_WEAPON_BARREL   = 0x480  # 🎯 ตัวคูณทิศทางลำกล้อง
 
 SIGHT_POINTER_CHAINS = [

@@ -355,12 +355,25 @@ def init_dynamic_offsets(scanner, base_address):
         top_pair = Counter(chains).most_common(1)[0][0]
         mul.OFF_VIEW_MATRIX = top_pair[0] # ตัวแรกคือ 0x1C0
         mul.OFF_UNIT_BBMIN = top_pair[1] + 0x60 # (ตัวอย่างลอจิก: ถ้า 0x1E0 คือตัวถัดไป)
-        
         print(f"  [+] ✅ DNA MATCH! Found Chain: {hex(top_pair[0])} -> {hex(top_pair[1])}")
         print(f"  [+] ✅ BINGO! VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)}")
     else:
         mul.OFF_VIEW_MATRIX = 0x1C0
         print("  [!] ⚠️ Chain Match ล้มเหลว! ใช้ค่า Fallback: 0x1C0")
+
+    # ---------------------------------------------------------
+    # 🎯 Phase 6: Movement Pointer
+    # ---------------------------------------------------------
+    print("[*] 🔍 6/6 ค้นหา Visual System (Triple-Chain DNA)...")
+    # 🎯 ล็อคเป้า Movement Pointer (0xD18)
+    # ลายเซ็นต์: การโหลด Pointer และตามด้วยการ Call Getter ที่ +0x48
+    move_dna = "4C 8B A3 ?? ?? 00 00 49 8B 04 24 4C 89 E7 FF 50 48"
+    move_offsets = scanner.find_visual_dna(move_dna)
+    
+    if move_offsets:
+        mul.OFF_AIR_MOVEMENT = Counter(move_offsets).most_common(1)[0][0]
+        mul.OFF_GROUND_MOVEMENT = mul.OFF_AIR_MOVEMENT # มักจะใช้ค่าเดียวกัน
+        print(f"  [+] ✅ DNA MATCH! MOVEMENT = {hex(mul.OFF_AIR_MOVEMENT)}")
 
     print("="*55 + "\n")
     return manager_ok and hero_ok
