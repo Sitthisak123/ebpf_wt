@@ -1,0 +1,34 @@
+=== WTM SCAN RESULTS (2026-03-28 15:44:24) ===
+Total Candidates: 31
+--------------------------------------------------
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0BE0 | Type: FLOAT
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0C20 | Type: FLOAT
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0C60 | Type: FLOAT
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0CA0 | Type: FLOAT
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0CE0 | Type: FLOAT
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0D20 | Type: FLOAT
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0D60 | Type: FLOAT
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0DA0 | Type: FLOAT
+Unit: 0x4f695220 | Move Ptr: 0x1B90 | Vel Offset: 0x0DE0 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x0318 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x0358 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x0398 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x03D8 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x0418 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x0458 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x0498 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x04D8 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0018 | Vel Offset: 0x0518 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x0D10 | Vel Offset: 0x0068 | Type: DOUBLE
+Unit: 0x52471800 | Move Ptr: 0x0D10 | Vel Offset: 0x00C0 | Type: DOUBLE
+Unit: 0x52471800 | Move Ptr: 0x0D10 | Vel Offset: 0x00C8 | Type: DOUBLE
+Unit: 0x52471800 | Move Ptr: 0x0D10 | Vel Offset: 0x00D0 | Type: DOUBLE
+Unit: 0x52471800 | Move Ptr: 0x0D18 | Vel Offset: 0x0068 | Type: DOUBLE
+Unit: 0x52471800 | Move Ptr: 0x0D18 | Vel Offset: 0x00C0 | Type: DOUBLE
+Unit: 0x52471800 | Move Ptr: 0x0D18 | Vel Offset: 0x00C8 | Type: DOUBLE
+Unit: 0x52471800 | Move Ptr: 0x0D18 | Vel Offset: 0x00D0 | Type: DOUBLE
+Unit: 0x52471800 | Move Ptr: 0x21B8 | Vel Offset: 0x0E50 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x21C0 | Vel Offset: 0x0D78 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x21C8 | Vel Offset: 0x0D78 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x22A8 | Vel Offset: 0x0E50 | Type: FLOAT
+Unit: 0x52471800 | Move Ptr: 0x22B0 | Vel Offset: 0x0E50 | Type: FLOAT

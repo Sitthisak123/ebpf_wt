@@ -23,4 +23,291 @@
 
 
 
+connect to ghidra mcp and update pattern in src/utils/scanner.py a pattern of these offset in mul.py 
+step1:
+"  OFF_GROUND_UNITS    = 0x358                                        
+   OFF_GROUND_MOVEMENT = 0xD18                                                  
+   OFF_GROUND_VEL      = 0x3C                                                   
+   OFF_GROUND_OMEGA    = 0 #not importan"
 
+step2:   
+"  OFF_AIR_UNITS       = 0x340                            
+   OFF_AIR_MOVEMENT    = 0x0AD8       # 🎯 The True Physics Object              
+   OFF_AIR_VEL         = 0x40        # 🎯 Velocity (DOUBLE Vector 24-byte)      
+   OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)"
+
+use ghidra find each step and make sure that are correct offset by check caller/etc. then make test offset then await test result from me
+
+============================================================================================================
+
+
+from log and esp overlays i can confirm
+-⚔️ Valid Targets: 12 targets are work
+-OFF_AIR_UNITS, OFF_GROUND_UNITS are work 
+-Bullet : Speed = 1120.0 m/s | Mass = 0.30 kg | Drag = 0.12 are work
+-🚀 Target : Vel(X:0.0, Y:0.0, Z:0.0) | Accel(X:0.0, Y:0.0, Z:0.0) not work
+-🚙 My Unit: Vel(X:0.0, Y:0.0, Z:0.0) not work
+-📏 Range  : 4434.1 m | Time of Flight (best_t): 4.507 s range are correct work
+📉 Drop   : Gravity (+99.58 m) | Zeroing (-0.00 m) unconfirm
+
+remake debug logs for more info and ez to analyze then re-scan to find these offset from ghidra mcp only you can read GEMINI.md then find where its look like movement calculation by search strings or by OFF_AIR_UNITS, OFF_GROUND_UNITS
+
+
+"
+(venv) xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py 
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] ✅ BINGO! CGame = 0x941b280 (โหวต 298 เสียง)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+[*] 🔍 6/6 ค้นหา Unit Arrays (Air & Ground)...
+  [+] ✅ BINGO! AIR_UNITS = 0x340
+  [+] ✅ BINGO! GROUND_UNITS = 0x358
+[*] 🔍 7/7 ค้นหา Physics/Movement Offsets...
+  [+] ✅ BINGO! AIR_MOVEMENT = 0xad8
+  [+] ✅ BINGO! GROUND_MOVEMENT = 0xd18
+=======================================================
+
+=============================================
+🖥️ FPS          : 86.7
+🎯 CGame Base   : 0x7c8b1a6e9280
+👁️ View Matrix  : ✅ OK
+🟢 My Unit      : ✅ FOUND
+📡 Total Units  : 13 units (ถ้าเป็น 0 แปลว่า OFF_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
+⚔️ Valid Targets: 12 targets
+=============================================
+
+--- 🎯 [DEBUG LEAD: C] ---
+🔫 Bullet : Speed = 1120.0 m/s | Mass = 0.30 kg | Drag = 0.12
+🚀 Target : Vel(X:0.0, Y:0.0, Z:0.0) | Accel(X:0.0, Y:0.0, Z:0.0)
+🚙 My Unit: Vel(X:0.0, Y:0.0, Z:0.0)
+📏 Range  : 4434.1 m | Time of Flight (best_t): 4.507 s
+📉 Drop   : Gravity (+99.58 m) | Zeroing (-0.00 m)
+----------------------------------------"
+
+==================================================================================
+"
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 83  | Units: 12
+================================================================
+🟢 [MY UNIT]  : 0x4b0b5b90
+📍 Position   : X:  2377.5 | Y:   216.8 | Z:  1833.7 work
+🚀 Velocity   :   81.8 km/h | V:( -0.02,   0.20,  22.71) not work 
+----------------------------------------------------------------
+🎯 [TARGET]   : C                            [LOCKED] 
+📏 Distance   : 2417.9 m      | Time of Flight:  2.265 s work
+🚀 Velocity   :    0.0 km/h | V:(  0.00,   0.00,   0.00) not work
+🌪️ Accel      :   0.00 m/s² | A:(  0.00,   0.00,   0.00) not work
+----------------------------------------------------------------
+📉 [BALLISTICS]
+🔫 Bullet     : Spd:1120 m/s | Mass:0.30 kg | Drag:0.12 work
+📉 Drop       : Gravity: +25.16 m | Zeroing: - 0.00 m
+================================================================"
+
+(venv) xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] ✅ BINGO! CGame = 0x941b280 (โหวต 298 เสียง)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+[*] 🔍 6/6 ค้นหา Unit Arrays (Air & Ground)...
+  [+] ✅ BINGO! AIR_UNITS = 0x340
+  [+] ✅ BINGO! GROUND_UNITS = 0x358
+[*] 🔍 7/7 ค้นหา Physics/Movement Offsets...
+  [+] ✅ BINGO! PHYSICS_PTR = 0x1040
+  [+] 🚀 VELOCITY_OFF = 0x6bc (FLOAT)
+=======================================================
+
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 82  | Units: 12
+================================================================
+🟢 [MY UNIT]  : 0x4b0b5b90
+📍 Position   : X:  2382.6 | Y:   217.0 | Z:  1833.8
+🚀 Velocity   :   43.2 km/h | V:( 12.00,   0.00,   0.00) fixe 43.2 no change value
+----------------------------------------------------------------
+🎯 [TARGET]   : C                            [LOCKED]
+📏 Distance   : 2356.2 m      | Time of Flight:  2.258 s
+🚀 Velocity   :    0.0 km/h | V:(  0.00,   0.00,   0.00) not work
+🌪️ Accel      :   0.00 m/s² | A:(  0.00,   0.00,   0.00) not work
+----------------------------------------------------------------
+📉 [BALLISTICS]
+🔫 Bullet     : Spd:1120 m/s | Mass:0.30 kg | Drag:0.12
+📉 Drop       : Gravity: +25.00 m | Zeroing: - 0.00 m
+================================================================
+
+============================================================================
+
+i found this 🚙 WTM TACTICAL: OMNI-UNIT VELOCITY SCANNER                            
+   ==================================================                                  
+   🎯 ผู้ต้องสงสัย (Candidates) ที่เหลืออยู่: 30 รายการ                                         
+   ==================================================                                  
+   [+] 📡 ยูนิตในแมป: 13 คัน | Tolerance: +- 2.0                                          
+   --------------------------------------------------                                  
+   [1] 🔍 สแกนครั้งแรก (First Scan)                                                      
+   [2] 🎯 สแกนคัดกรอง (Next Scan)                                                       
+   [3] 👀 เฝ้าระวังสด (Watch Live)                                                       
+   [4] ⚙️ ตั้งค่า Tolerance                                                               
+   [5] 🗑️ ล้างค่า (Reset)                                                                
+   [6] 💾 บันทึกผลลงไฟล์ (Log All Candidates)                                             
+   [0] ❌ ออกจากโปรแกรม                                                                
+   --------------------------------------------------                                  
+   👉 เลือกคำสั่ง: 2                                                                       
+      > ความเร็วใหม่ (km/h): 0                                                           
+   [+] เหลือ 3 รายการ                                                                   
+    -> Ptr: 0xD18 | Vel: 0x30 (FLOAT)                                                  
+    -> Ptr: 0xD18 | Vel: 0x68 (DOUBLE)                                                 
+    -> Ptr: 0x1DF8 | Vel: 0x54 (FLOAT)                                                 
+   Enter... by use my_ground_unit_velocity_scanner.py driving BMPT-72 
+
+============================================================================
+
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 83  | Units: 12
+================================================================
+🟢 [MY UNIT]  : 0x4b0b5b90
+📍 Position   : X:  2145.1 | Y:   217.4 | Z:  1825.4
+🚀 Velocity   :    1.5 km/h | V:( -0.01,  -0.41,   0.00) its work but its has issue not absolute zero when i stop 
+----------------------------------------------------------------
+🎯 [TARGET]   : C                            [LOCKED]
+📏 Distance   : 2026.2 m      | Time of Flight:  1.825 s
+🚀 Velocity   :    3.5 km/h | V:( -0.01,  -0.96,   0.00) its work but the value is so slowly update and its toggle from real velocity/1-5km/h
+🌪️ Accel      : 150.00 m/s² | A:(-149.82,  -1.17,  -7.18) its seem work but its maximun at 150 and so slowly update 
+----------------------------------------------------------------
+📉 [BALLISTICS]
+🔫 Bullet     : Spd:1120 m/s | Mass:0.30 kg | Drag:0.12
+📉 Drop       : Gravity: +16.33 m | Zeroing: - 0.00 m
+================================================================
+
+============================================================================
+
+tr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
+Ptr: 0x1B90 | Vel: 0x0C60 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
+Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
+
+--- MONITORING (31) ---
+Ptr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
+Ptr: 0x1B90 | Vel: 0x0C60 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
+Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
+
+--- MONITORING (31) ---
+Ptr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
+Ptr: 0x1B90 | Vel: 0x0C60 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
+Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
+
+--- MONITORING (31) ---
+Ptr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
+Ptr: 0x1B90 | Vel: 0x0C60 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
+Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
+
+--- MONITORING (31) ---
+Ptr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
+Ptr: 0x1B90 | Vel: 0x0C60 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
+Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
+
+--- MONITORING (31) ---
+Ptr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
+Ptr: 0x1B90 | Vel: 0x0C60 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
+Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
+
+--- MONITORING (31) ---
+Ptr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
+Ptr: 0x1B90 | Vel: 0x0C60 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
+Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
+
+
+============================================================================
+
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 101 | Units: 0 
+================================================================
+🟢 [MY UNIT]  : 0x52471800
+📍 Position   : X:-29175.8 | Y:  7544.5 | Z:-27835.4 not sure
+🚀 Velocity   :    1.7 km/h | V:(  0.02,  -0.48,  -0.00) work on ground unit and not work on air unit
+----------------------------------------------------------------
+🎯 [TARGET]   : NONE (Searching...) not work
+================================================================
+
+============================================================================
+
+
+
+============================================================================

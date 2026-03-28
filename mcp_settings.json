@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "httpServer": {
+      "httpUrl": "http://127.0.0.1:8080/mcp",
+      "timeout": 5000
+    }
+  }
+}
