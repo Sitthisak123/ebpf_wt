@@ -35,8 +35,8 @@ OFF_UNIT_RELOADING  = 0
 OFF_UNIT_RELOAD     = 0
 
 OFF_AIR_UNITS       = (0x340, True)
-OFF_AIR_MOVEMENT    = 0x0AD8      # 🎯 Validated from saved scan artifacts
-OFF_AIR_VEL         = 0x0040      # 🎯 Velocity (DOUBLE Vector 24-byte)
+OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kinematics dumpers
+OFF_AIR_VEL         = 0x0318      # 🎯 Velocity (FLOAT Vector 12-byte)
 OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)
 
 OFF_GROUND_UNITS    = (0x358, False)
@@ -69,7 +69,7 @@ VELOCITY_SPECS = {
         "label": "AIR",
         "mov_off": lambda: OFF_AIR_MOVEMENT,
         "vel_off": lambda: OFF_AIR_VEL,
-        "fmt": "ddd",
+        "fmt": "fff",
         "max_speed": 2500.0,
     },
     False: {
@@ -82,6 +82,7 @@ VELOCITY_SPECS = {
 }
 
 VELOCITY_FALLBACK_SPECS = [
+    {"label": "AIR_KIN", "mov_off": 0x0018, "vel_off": 0x0318, "fmt": "fff", "max_speed": 2500.0},
     {"label": "AIR_SCAN", "mov_off": 0x0AD8, "vel_off": 0x0040, "fmt": "ddd", "max_speed": 2500.0},
     {"label": "AIR_OLD", "mov_off": 0x1B90, "vel_off": 0x0BE0, "fmt": "fff", "max_speed": 2500.0},
     {"label": "GROUND_SCAN", "mov_off": 0x0D18, "vel_off": 0x003C, "fmt": "fff", "max_speed": 200.0},

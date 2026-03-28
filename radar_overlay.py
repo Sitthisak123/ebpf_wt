@@ -113,7 +113,7 @@ class ESPOverlay(QWidget):
 
         if cached and pos:
             dt = curr_t - cached['time']
-            if 0.02 <= dt <= 0.75:
+            if 0.005 <= dt <= 0.75:
                 dx = pos[0] - cached['pos'][0]
                 dy = pos[1] - cached['pos'][1]
                 dz = pos[2] - cached['pos'][2]
