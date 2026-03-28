@@ -2,6 +2,7 @@ import sys
 import math
 import time
 import struct
+import os
 
 try:
     import keyboard
@@ -525,17 +526,35 @@ class ESPOverlay(QWidget):
                     final_z -= (my_vz * best_t)
                     
                     # =========================================================
-                    # 🐞 [DEBUG LOG]: พิมพ์ข้อมูลเฉพาะเป้าหมายที่โดนล็อคอยู่
+                    # 📊 [STICKY DASHBOARD]: อัปเดตแบบ Real-time ทับบรรทัดเดิม
                     # =========================================================
-                    if u_ptr == active_target_ptr and curr_t - self.last_debug_log_time >= DEBUG_LOG_INTERVAL:
-                        self.last_debug_log_time = curr_t
-                        print(f"\n--- 🎯 [DEBUG LEAD: {clean_name.upper()}] ---")
-                        print(f"🔫 Bullet : Speed = {current_bullet_speed:.1f} m/s | Mass = {current_bullet_mass:.2f} kg | Drag = {current_bullet_cd:.2f}")
-                        print(f"🚀 Target : Vel(X:{vx:.1f}, Y:{vy:.1f}, Z:{vz:.1f}) | Accel(X:{ax:.1f}, Y:{ay:.1f}, Z:{az:.1f})")
-                        print(f"🚙 My Unit: Vel(X:{my_vx:.1f}, Y:{my_vy:.1f}, Z:{my_vz:.1f})")
-                        print(f"📏 Range  : {dist:.1f} m | Time of Flight (best_t): {best_t:.3f} s")
-                        print(f"📉 Drop   : Gravity (+{gravity_offset:.2f} m) | Zeroing (-{sight_drop_comp:.2f} m)")
-                        print(f"----------------------------------------")
+                    if u_ptr == active_target_ptr:
+                        # ใช้ ANSI Code ย้อน Cursor ไปบนสุด และล้างถึงท้ายหน้าจอ (\033[H\033[J)
+                        sys.stdout.write("\033[H")
+                        
+                        my_speed = math.sqrt(my_vx**2 + my_vy**2 + my_vz**2) * 3.6
+                        target_speed = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
+                        accel_mag = math.sqrt(ax**2 + ay**2 + az**2)
+                        
+                        out =  "================================================================\n"
+                        out += f"📊 WTM TACTICAL DASHBOARD | FPS: {int(self.current_fps):<3} | Units: {len(valid_targets):<2}\n"
+                        out += "================================================================\n"
+                        out += f"🟢 [MY UNIT]  : {hex(my_unit)}\n"
+                        out += f"🚀 Velocity   : {my_speed:>6.1f} km/h | V:({my_vx:>6.2f}, {my_vy:>6.2f}, {my_vz:>6.2f})\n"
+                        out += "-" * 64 + "\n"
+                        out += f"🎯 [TARGET]   : {clean_name.upper()} {'[LOCKED]':>35}\n"
+                        out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
+                        out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f})\n"
+                        out += f"🌪️ Accel      : {accel_mag:>6.2f} m/s² | A:({ax:>6.2f}, {ay:>6.2f}, {az:>6.2f})\n"
+                        out += "-" * 64 + "\n"
+                        out += f"📉 [BALLISTICS]\n"
+                        out += f"🔫 Bullet     : Spd:{current_bullet_speed:.0f} m/s | CD:{current_bullet_cd:.2f} | Mass:{current_bullet_mass:.2f}\n"
+                        out += f"📉 Drop       : Gravity: +{gravity_offset:>5.2f} m | Zeroing: -{sight_drop_comp:>5.2f} m\n"
+                        out += "================================================================\n"
+                        out += " [Q] Cycle Targets | [Ctrl+C] Exit"
+                        
+                        sys.stdout.write(out)
+                        sys.stdout.flush()
 
                     # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
                     if all(math.isfinite(c) for c in [final_x, final_y, final_z]):
