@@ -209,6 +209,7 @@ i found this 🚙 WTM TACTICAL: OMNI-UNIT VELOCITY SCANNER
 ================================================================
 
 ============================================================================
+Air Velocity 
 
 tr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
 Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
@@ -295,17 +296,29 @@ Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
 
 
 ============================================================================
+Ground Velocity 
+ -> Ptr: 0xD18 | Vel: 0x40 (FLOAT)
+ -> Ptr: 0xD18 | Vel: 0x44 (FLOAT)
+ -> Ptr: 0xD18 | Vel: 0x58 (DOUBLE)
+ -> Ptr: 0xD18 | Vel: 0x60 (DOUBLE)
+ -> Ptr: 0xD18 | Vel: 0x68 (DOUBLE)
+ -> Ptr: 0x1DF8 | Vel: 0x54 (FLOAT)
 
-================================================================
-📊 WTM TACTICAL DASHBOARD | FPS: 101 | Units: 0 
-================================================================
-🟢 [MY UNIT]  : 0x52471800
-📍 Position   : X:-29175.8 | Y:  7544.5 | Z:-27835.4 not sure
-🚀 Velocity   :    1.7 km/h | V:(  0.02,  -0.48,  -0.00) work on ground unit and not work on air unit
-----------------------------------------------------------------
-🎯 [TARGET]   : NONE (Searching...) not work
-================================================================
+--- MONITORING (8) ---
+Ptr: 0x0D18 | Vel: 0x0040 | Speed: 2.5 force? 
+Ptr: 0x0D18 | Vel: 0x0044 | Speed: 2.5 force?
+Ptr: 0x0D18 | Vel: 0x0058 | Speed: 0.0 not sure 
+Ptr: 0x0D18 | Vel: 0x0060 | Speed: 0.0 not sure
+Ptr: 0x0D18 | Vel: 0x0068 | Speed: 0.0 work its speed
+Ptr: 0x1DF8 | Vel: 0x0054 | Speed: 0.0 work its speed
 
+--- MONITORING (8) ---
+Ptr: 0x0D18 | Vel: 0x0040 | Speed: 8.3 force? 
+Ptr: 0x0D18 | Vel: 0x0044 | Speed: 8.3 force? 
+Ptr: 0x0D18 | Vel: 0x0058 | Speed: 6.8 ?
+Ptr: 0x0D18 | Vel: 0x0060 | Speed: 6.8 ?
+Ptr: 0x0D18 | Vel: 0x0068 | Speed: 8.2 real spd
+Ptr: 0x1DF8 | Vel: 0x0054 | Speed: 8.2 real spd
 ============================================================================
 
 

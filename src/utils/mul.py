@@ -335,39 +335,33 @@ def get_unit_status(scanner, u_ptr):
 def get_unit_velocity(scanner, u_ptr, is_air):
     if u_ptr == 0: return (0.0, 0.0, 0.0)
     try:
+        # 🎯 อัปเดตตามผลสแกนล่าสุด (2026 Verified)
         if is_air:
-            raw_move_ptr = scanner.read_mem(u_ptr + OFF_AIR_MOVEMENT, 8)
-            if not raw_move_ptr: return (0.0, 0.0, 0.0)
-            move_ptr = struct.unpack("<Q", raw_move_ptr)[0]
-            if not is_valid_ptr(move_ptr): return (0.0, 0.0, 0.0)
-            
-            vel_data = scanner.read_mem(move_ptr + OFF_AIR_VEL, 12)
-            if not vel_data or len(vel_data) < 12: return (0.0, 0.0, 0.0)
-            
-            # 🎯 FIX: เปลี่ยนจาก <ddd เป็น <fff เพราะพิกัดคือ Float 3 ตัว
-            vx, vy, vz = struct.unpack("<fff", vel_data) 
-            if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return (0.0, 0.0, 0.0)
-            return (vx, vy, vz)
+            candidates = [
+                (u_ptr + 0x1B90, 0x0BE0, "fff"), # Candidate 1: Air Real Spd
+                (u_ptr + 0x0018, 0x0318, "fff")  # Candidate 2: Air Real Spd
+            ]
         else:
-            raw_move_ptr = scanner.read_mem(u_ptr + OFF_GROUND_MOVEMENT, 8)
-            if not raw_move_ptr: return (0.0, 0.0, 0.0)
-            move_ptr = struct.unpack("<Q", raw_move_ptr)[0]
-            if not is_valid_ptr(move_ptr): return (0.0, 0.0, 0.0)
-            
-            vel_data = scanner.read_mem(move_ptr + OFF_GROUND_VEL, 12)
-            if not vel_data or len(vel_data) < 12: return (0.0, 0.0, 0.0)
-            
-            vx, vy, vz = struct.unpack("<fff", vel_data)
-            if not (math.isfinite(vx) and math.isfinite(vy) and math.isfinite(vz)): return (0.0, 0.0, 0.0)
-            
-            # 🎯 กรองความเร็วขยะของรถภาคพื้นดิน (ถ้าวิ่งเกิน 1000 m/s ถือว่าบั๊ก ให้เป็น 0)
-            if abs(vx) > 1000 or abs(vy) > 1000 or abs(vz) > 1000:
-                return (0.0, 0.0, 0.0)
-                
-            return (vx, vy, vz)
-    except Exception as e:
-        return (0.0, 0.0, 0.0)
+            candidates = [
+                (u_ptr + 0x0D18, 0x0068, "ddd"), # Candidate 1: Ground Real Spd (Double)
+                (u_ptr + 0x1DF8, 0x0054, "fff")  # Candidate 2: Ground Real Spd (Float)
+            ]
 
+        for ptr_addr, vel_off, fmt in candidates:
+            raw_ptr = scanner.read_mem(ptr_addr, 8)
+            if not raw_ptr: continue
+            base_ptr = struct.unpack("<Q", raw_ptr)[0]
+            if not is_valid_ptr(base_ptr): continue
+
+            v_size = 24 if fmt == "ddd" else 12
+            data = scanner.read_mem(base_ptr + vel_off, v_size)
+            if data and len(data) >= v_size:
+                v = struct.unpack("<" + fmt, data[:v_size])
+                vx, vy, vz = float(v[0]), float(v[1]), float(v[2])
+                if math.isfinite(vx) and (abs(vx) > 0.001 or abs(vy) > 0.001 or abs(vz) > 0.001):
+                    return (vx, vy, vz)
+        return (0.0, 0.0, 0.0)
+    except: return (0.0, 0.0, 0.0)
 # 🌪️ THE REAL OMEGA PULLER (0x3F8)
 def get_unit_omega(scanner, unit_ptr, is_air):
     if not is_air:
