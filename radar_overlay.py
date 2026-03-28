@@ -107,7 +107,10 @@ class ESPOverlay(QWidget):
         self.center_y = self.screen_height / 2
 
     def _stabilize_velocity(self, u_ptr, is_air, pos, curr_t):
-        raw_vel = get_unit_velocity(self.scanner, u_ptr, is_air) if u_ptr and pos else (0.0, 0.0, 0.0)
+        if u_ptr and pos:
+            raw_vel = get_air_velocity(self.scanner, u_ptr) if is_air else get_ground_velocity(self.scanner, u_ptr)
+        else:
+            raw_vel = (0.0, 0.0, 0.0)
         cached = self.velocity_cache.get(u_ptr)
         pos_vel = None
 

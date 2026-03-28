@@ -64,31 +64,39 @@ def is_valid_ptr(p):
     return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
 
 
-VELOCITY_SPECS = {
-    True: {
-        "label": "AIR",
-        "mov_off": lambda: OFF_AIR_MOVEMENT,
-        "vel_off": lambda: OFF_AIR_VEL,
-        "fmt": "fff",
-        "max_speed": 2500.0,
+VELOCITY_PROFILES = {
+    "air": {
+        "requested_label": "AIR",
+        "primary": {
+            "label": "AIR_PRIMARY",
+            "mov_off": lambda: OFF_AIR_MOVEMENT,
+            "vel_off": lambda: OFF_AIR_VEL,
+            "fmt": "fff",
+            "max_speed": 2500.0,
+        },
+        "fallbacks": [
+            {"label": "AIR_SCAN", "mov_off": 0x0AD8, "vel_off": 0x0040, "fmt": "ddd", "max_speed": 2500.0},
+            {"label": "AIR_OLD", "mov_off": 0x1B90, "vel_off": 0x0BE0, "fmt": "fff", "max_speed": 2500.0},
+            {"label": "GROUND_SCAN", "mov_off": 0x0D18, "vel_off": 0x003C, "fmt": "fff", "max_speed": 200.0},
+            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
+            {"label": "GROUND_ALT2", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
+        ],
     },
-    False: {
-        "label": "GROUND",
-        "mov_off": lambda: OFF_GROUND_MOVEMENT,
-        "vel_off": lambda: OFF_GROUND_VEL,
-        "fmt": "fff",
-        "max_speed": 200.0,
+    "ground": {
+        "requested_label": "GROUND",
+        "primary": {
+            "label": "GROUND_PRIMARY",
+            "mov_off": lambda: OFF_GROUND_MOVEMENT,
+            "vel_off": lambda: OFF_GROUND_VEL,
+            "fmt": "fff",
+            "max_speed": 200.0,
+        },
+        "fallbacks": [
+            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
+            {"label": "GROUND_ALT2", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
+        ],
     },
 }
-
-VELOCITY_FALLBACK_SPECS = [
-    {"label": "AIR_KIN", "mov_off": 0x0018, "vel_off": 0x0318, "fmt": "fff", "max_speed": 2500.0},
-    {"label": "AIR_SCAN", "mov_off": 0x0AD8, "vel_off": 0x0040, "fmt": "ddd", "max_speed": 2500.0},
-    {"label": "AIR_OLD", "mov_off": 0x1B90, "vel_off": 0x0BE0, "fmt": "fff", "max_speed": 2500.0},
-    {"label": "GROUND_SCAN", "mov_off": 0x0D18, "vel_off": 0x003C, "fmt": "fff", "max_speed": 200.0},
-    {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
-    {"label": "GROUND_ALT2", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
-]
 
 
 def _format_bytes_hex(data, max_len=24):
@@ -97,14 +105,6 @@ def _format_bytes_hex(data, max_len=24):
     trimmed = data[:max_len]
     suffix = " ..." if len(data) > max_len else ""
     return " ".join(f"{b:02X}" for b in trimmed) + suffix
-
-
-def _get_velocity_spec(is_air):
-    spec = VELOCITY_SPECS[bool(is_air)].copy()
-    spec["mov_off"] = spec["mov_off"]()
-    spec["vel_off"] = spec["vel_off"]()
-    spec["size"] = struct.calcsize("<" + spec["fmt"])
-    return spec
 
 
 def _normalize_velocity_spec(spec):
@@ -118,11 +118,16 @@ def _normalize_velocity_spec(spec):
     return normalized
 
 
-def _iter_velocity_specs(is_air):
-    primary = _get_velocity_spec(is_air)
+def _get_velocity_profile_name(is_air):
+    return "air" if is_air else "ground"
+
+
+def _iter_velocity_specs(profile_name):
+    profile = VELOCITY_PROFILES[profile_name]
+    primary = _normalize_velocity_spec(profile["primary"])
     specs = [primary]
     seen = {(primary["mov_off"], primary["vel_off"], primary["fmt"])}
-    for spec in VELOCITY_FALLBACK_SPECS:
+    for spec in profile["fallbacks"]:
         normalized = _normalize_velocity_spec(spec)
         key = (normalized["mov_off"], normalized["vel_off"], normalized["fmt"])
         if key in seen:
@@ -180,6 +185,50 @@ def _try_read_velocity(scanner, u_ptr, spec):
         return None, ("decoded implausible speed", raw_ptr, base_ptr, data, decoded)
 
     return decoded, None
+
+
+def _read_velocity_by_profile(scanner, u_ptr, profile_name):
+    if u_ptr == 0:
+        return (0.0, 0.0, 0.0)
+
+    profile = VELOCITY_PROFILES[profile_name]
+    requested_label = profile["requested_label"]
+    attempts = []
+
+    for idx, spec in enumerate(_iter_velocity_specs(profile_name)):
+        result, failure = _try_read_velocity(scanner, u_ptr, spec)
+        if result is not None:
+            if idx > 0:
+                dprint(
+                    "VEL FALLBACK HIT"
+                    f" | requested_type={requested_label}"
+                    f" | unit={hex(u_ptr)}"
+                    f" | using={spec['label']}"
+                    f" | mov_off={hex(spec['mov_off'])}"
+                    f" | vel_off={hex(spec['vel_off'])}"
+                    f" | fmt={spec['fmt']}"
+                    f" | decoded=({result[0]:.4f}, {result[1]:.4f}, {result[2]:.4f})",
+                    force=False,
+                )
+            return result
+        attempts.append((spec, failure))
+
+    if attempts:
+        spec, failure = attempts[0]
+        reason, raw_ptr, base_ptr, data, decoded = failure
+        _debug_velocity_failure(reason, u_ptr, spec, raw_ptr=raw_ptr, base_ptr=base_ptr, data=data, decoded=decoded)
+        dprint(
+            "VEL FALLBACKS EXHAUSTED"
+            f" | requested_type={requested_label}"
+            f" | unit={hex(u_ptr)}"
+            f" | tried="
+            + ", ".join(
+                f"{s['label']}@{hex(s['mov_off'])}/{hex(s['vel_off'])}:{s['fmt']}:{f[0]}"
+                for s, f in attempts
+            ),
+            force=False,
+        )
+    return (0.0, 0.0, 0.0)
 
 def get_cgame_base(scanner, base_addr):
     c_game_ptr_addr = base_addr + MANAGER_OFFSET
@@ -456,51 +505,29 @@ def get_unit_status(scanner, u_ptr):
     except: return None
     
 
-def get_unit_velocity(scanner, u_ptr, is_air):
-    if u_ptr == 0: return (0.0, 0.0, 0.0)
+# ==========================================
+# Velocity Helpers
+# ==========================================
+def get_air_velocity(scanner, u_ptr):
     try:
-        attempts = []
-        for idx, spec in enumerate(_iter_velocity_specs(is_air)):
-            result, failure = _try_read_velocity(scanner, u_ptr, spec)
-            if result is not None:
-                if idx > 0:
-                    dprint(
-                        "VEL FALLBACK HIT"
-                        f" | requested_type={'AIR' if is_air else 'GROUND'}"
-                        f" | unit={hex(u_ptr)}"
-                        f" | using={spec['label']}"
-                        f" | mov_off={hex(spec['mov_off'])}"
-                        f" | vel_off={hex(spec['vel_off'])}"
-                        f" | fmt={spec['fmt']}"
-                        f" | decoded=({result[0]:.4f}, {result[1]:.4f}, {result[2]:.4f})",
-                        force=False,
-                    )
-                return result
-            attempts.append((spec, failure))
-
-        if attempts:
-            spec, failure = attempts[0]
-            reason, raw_ptr, base_ptr, data, decoded = failure
-            _debug_velocity_failure(reason, u_ptr, spec, raw_ptr=raw_ptr, base_ptr=base_ptr, data=data, decoded=decoded)
-            dprint(
-                "VEL FALLBACKS EXHAUSTED"
-                f" | requested_type={'AIR' if is_air else 'GROUND'}"
-                f" | unit={hex(u_ptr)}"
-                f" | tried="
-                + ", ".join(
-                    f"{s['label']}@{hex(s['mov_off'])}/{hex(s['vel_off'])}:{s['fmt']}:{f[0]}"
-                    for s, f in attempts
-                ),
-                force=False,
-            )
-        return (0.0, 0.0, 0.0)
+        return _read_velocity_by_profile(scanner, u_ptr, "air")
     except Exception as e:
-        dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type={'AIR' if is_air else 'GROUND'} | error={e}", force=False)
+        dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=AIR | error={e}", force=False)
         return (0.0, 0.0, 0.0)
-# 🌪️ THE REAL OMEGA PULLER (0x3F8)
-def get_unit_omega(scanner, unit_ptr, is_air):
-    if not is_air:
-        return (0.0, 0.0, 0.0) 
+
+
+def get_ground_velocity(scanner, u_ptr):
+    try:
+        return _read_velocity_by_profile(scanner, u_ptr, "ground")
+    except Exception as e:
+        dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=GROUND | error={e}", force=False)
+        return (0.0, 0.0, 0.0)
+
+
+# ==========================================
+# Omega Helpers
+# ==========================================
+def get_air_omega(scanner, unit_ptr):
     try:
         mov_ptr_raw = scanner.read_mem(unit_ptr + OFF_AIR_MOVEMENT, 8)
         if not mov_ptr_raw: return (0.0, 0.0, 0.0)
@@ -513,9 +540,17 @@ def get_unit_omega(scanner, unit_ptr, is_air):
             if math.isfinite(wx) and math.isfinite(wy) and math.isfinite(wz):
                 return (wx, wy, wz)
     except Exception as e: 
-        print("get_unit_omega", e)
+        print("get_air_omega", e)
     return (0.0, 0.0, 0.0)
 
+
+def get_ground_omega(scanner, unit_ptr):
+    return (0.0, 0.0, 0.0)
+
+
+# ==========================================
+# Ballistics Helpers
+# ==========================================
 def get_bullet_speed(scanner, cgame_base):
     try:
         raw_weapon_ptr = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
