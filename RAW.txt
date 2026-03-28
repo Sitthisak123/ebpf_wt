@@ -274,13 +274,7 @@ Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
 Ptr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
 Ptr: 0x1B90 | Vel: 0x0C20 | Speed: 1189.8
 Ptr: 0x1B90 | Vel: 0x0C60 | Speed: 1189.5
-Ptr: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
-Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
-Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
-Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
-Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
-Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
-Ptr: 0x0018 | Vel: 0x0318 | Speed: 1189.7
+Ptr 0x0018 | Vel: 0x0318 | Speed: 1189.7
 
 --- MONITORING (31) ---
 Ptr: 0x1B90 | Vel: 0x0BE0 | Speed: 1189.7
@@ -320,7 +314,31 @@ Ptr: 0x0D18 | Vel: 0x0060 | Speed: 6.8 ?
 Ptr: 0x0D18 | Vel: 0x0068 | Speed: 8.2 real spd
 Ptr: 0x1DF8 | Vel: 0x0054 | Speed: 8.2 real spd
 ============================================================================
-
+: 0x1B90 | Vel: 0x0CA0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0CE0 | Speed: 1189.5
+Ptr: 0x1B90 | Vel: 0x0D20 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0D60 | Speed: 1189.6
+Ptr: 0x1B90 | Vel: 0x0DA0 | Speed: 1189.7
+Ptr: 0x1B90 | Vel: 0x0DE0 | Speed: 1189.7
+Ptr:
 
 
 ============================================================================
+
+==================================================================================================
+🛰️  WTM OMNI MONITOR | FPS: 67  | Units: 12 | MyTeam: 0
+==================================================================================================
+ADDR         | TYPE | NAME         | POS (X, Y, Z)        | SPEED      | VEL-SRC
+--------------------------------------------------------------------------------------------------
+0x383b5720   | AIR  |  ZSU-57-2    |   1800, 217,  1823   |    0.0 km/h | SKIP       
+0x383bccc0   | AIR  |  Pz.II C     |   1950, 217,  1784   |    0.0 km/h | SKIP       
+0x383c44f0   | AIR  |  Pz.IV C     |   2123, 217,  1804   |    0.0 km/h | SKIP       
+0x383cb810   | AIR  |  Panther D   |   2319, 217,  1833   |    0.0 km/h | SKIP       
+0x383d3480   | AIR  |  Ferdinand   |   2905, 233,  1935   |    0.0 km/h | SKIP       
+0x383da7a0   | AIR  |  Pz.IV C     |   1997, 218,  1291   |    0.0 km/h | SKIP       
+0x383e1ac0   | AIR  |  Tiger II    |   2514, 217,  1869   |    0.0 km/h | SKIP       
+0x383e8de0   | AIR  |  Jagdtiger   |   2021, 226,  1053   |    0.0 km/h | SKIP       
+0x383f1290   | AIR  |  Sd.Kfz. 6/  |   1822, 215,  1802   |    0.0 km/h | SKIP       
+0x383f8920   | AIR  |  He 111 H-6  |   2637, 582,   229   |    0.0 km/h | SKIP       
+0x384000c0   | AIR  |  Bf 110 C-7  |   5411, 793, -1295   |  291.3 km/h | 0018+318   [LOCKED]
+0x38407810   | AIR  |  Artillery   |   1158, 302,  -412   |    0.0 km/h | SKIP  

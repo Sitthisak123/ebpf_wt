@@ -2,11 +2,17 @@ import struct
 import math
 import os
 
+try:
+    from src.utils.debug import dprint
+except Exception:
+    def dprint(msg, force=False):
+        return
+
 # ===================================================
 # 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
 # ===================================================
-GHIDRA_BASE         = 0
-DAT_MANAGER         = 0
+GHIDRA_BASE         = 0x400000
+DAT_MANAGER         = 0x941b280
 MANAGER_OFFSET      = DAT_MANAGER - GHIDRA_BASE
 DAT_CONTROLLED_UNIT = 0x981dfc8
 
@@ -29,13 +35,13 @@ OFF_UNIT_RELOADING  = 0
 OFF_UNIT_RELOAD     = 0
 
 OFF_AIR_UNITS       = (0x340, True)
-OFF_AIR_MOVEMENT    = 0x0AD8       # 🎯 The True Physics Object
-OFF_AIR_VEL         = 0x40        # 🎯 Velocity (DOUBLE Vector 24-byte)
+OFF_AIR_MOVEMENT    = 0x0AD8      # 🎯 Validated from saved scan artifacts
+OFF_AIR_VEL         = 0x0040      # 🎯 Velocity (DOUBLE Vector 24-byte)
 OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)
 
 OFF_GROUND_UNITS    = (0x358, False)
-OFF_GROUND_MOVEMENT = 0xD18  
-OFF_GROUND_VEL      = 0x3C
+OFF_GROUND_MOVEMENT = 0x0D18  
+OFF_GROUND_VEL      = 0x003C
 OFF_GROUND_OMEGA    = 0
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก Deep Scan ล่าสุด)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
@@ -56,6 +62,123 @@ SIGHT_POINTER_CHAINS = [
 
 def is_valid_ptr(p): 
     return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
+
+
+VELOCITY_SPECS = {
+    True: {
+        "label": "AIR",
+        "mov_off": lambda: OFF_AIR_MOVEMENT,
+        "vel_off": lambda: OFF_AIR_VEL,
+        "fmt": "ddd",
+        "max_speed": 2500.0,
+    },
+    False: {
+        "label": "GROUND",
+        "mov_off": lambda: OFF_GROUND_MOVEMENT,
+        "vel_off": lambda: OFF_GROUND_VEL,
+        "fmt": "fff",
+        "max_speed": 200.0,
+    },
+}
+
+VELOCITY_FALLBACK_SPECS = [
+    {"label": "AIR_SCAN", "mov_off": 0x0AD8, "vel_off": 0x0040, "fmt": "ddd", "max_speed": 2500.0},
+    {"label": "AIR_OLD", "mov_off": 0x1B90, "vel_off": 0x0BE0, "fmt": "fff", "max_speed": 2500.0},
+    {"label": "GROUND_SCAN", "mov_off": 0x0D18, "vel_off": 0x003C, "fmt": "fff", "max_speed": 200.0},
+    {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
+    {"label": "GROUND_ALT2", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
+]
+
+
+def _format_bytes_hex(data, max_len=24):
+    if not data:
+        return "None"
+    trimmed = data[:max_len]
+    suffix = " ..." if len(data) > max_len else ""
+    return " ".join(f"{b:02X}" for b in trimmed) + suffix
+
+
+def _get_velocity_spec(is_air):
+    spec = VELOCITY_SPECS[bool(is_air)].copy()
+    spec["mov_off"] = spec["mov_off"]()
+    spec["vel_off"] = spec["vel_off"]()
+    spec["size"] = struct.calcsize("<" + spec["fmt"])
+    return spec
+
+
+def _normalize_velocity_spec(spec):
+    normalized = spec.copy()
+    if callable(normalized.get("mov_off")):
+        normalized["mov_off"] = normalized["mov_off"]()
+    if callable(normalized.get("vel_off")):
+        normalized["vel_off"] = normalized["vel_off"]()
+    normalized["size"] = struct.calcsize("<" + normalized["fmt"])
+    normalized.setdefault("max_speed", 2500.0)
+    return normalized
+
+
+def _iter_velocity_specs(is_air):
+    primary = _get_velocity_spec(is_air)
+    specs = [primary]
+    seen = {(primary["mov_off"], primary["vel_off"], primary["fmt"])}
+    for spec in VELOCITY_FALLBACK_SPECS:
+        normalized = _normalize_velocity_spec(spec)
+        key = (normalized["mov_off"], normalized["vel_off"], normalized["fmt"])
+        if key in seen:
+            continue
+        specs.append(normalized)
+        seen.add(key)
+    return specs
+
+
+def _debug_velocity_failure(reason, u_ptr, spec, raw_ptr=None, base_ptr=None, data=None, decoded=None):
+    decoded_str = "None"
+    if decoded is not None:
+        decoded_str = f"({decoded[0]:.4f}, {decoded[1]:.4f}, {decoded[2]:.4f})"
+    raw_ptr_hex = _format_bytes_hex(raw_ptr, 8)
+    data_hex = _format_bytes_hex(data, spec["size"])
+    base_ptr_str = hex(base_ptr) if isinstance(base_ptr, int) and base_ptr > 0 else str(base_ptr)
+    dprint(
+        "VEL READ FAIL"
+        f" | type={spec['label']}"
+        f" | unit={hex(u_ptr)}"
+        f" | mov_off={hex(spec['mov_off'])}"
+        f" | vel_off={hex(spec['vel_off'])}"
+        f" | fmt={spec['fmt']}"
+        f" | raw_ptr=[{raw_ptr_hex}]"
+        f" | mov_ptr={base_ptr_str}"
+        f" | raw_vel=[{data_hex}]"
+        f" | decoded={decoded_str}"
+        f" | reason={reason}",
+        force=False,
+    )
+
+
+def _try_read_velocity(scanner, u_ptr, spec):
+    raw_ptr = scanner.read_mem(u_ptr + spec["mov_off"], 8)
+    if not raw_ptr or len(raw_ptr) < 8:
+        return None, ("movement pointer unreadable", raw_ptr, None, None, None)
+
+    base_ptr = struct.unpack("<Q", raw_ptr)[0]
+    if not is_valid_ptr(base_ptr):
+        return None, ("movement pointer invalid", raw_ptr, base_ptr, None, None)
+
+    data = scanner.read_mem(base_ptr + spec["vel_off"], spec["size"])
+    if not data or len(data) < spec["size"]:
+        return None, ("velocity bytes unreadable", raw_ptr, base_ptr, data, None)
+
+    decoded = tuple(float(v) for v in struct.unpack("<" + spec["fmt"], data[:spec["size"]]))
+    if not all(math.isfinite(v) for v in decoded):
+        return None, ("decoded non-finite vector", raw_ptr, base_ptr, data, decoded)
+
+    if all(abs(v) <= 0.001 for v in decoded):
+        return None, ("decoded near-zero vector", raw_ptr, base_ptr, data, decoded)
+
+    speed = math.sqrt(decoded[0] ** 2 + decoded[1] ** 2 + decoded[2] ** 2)
+    if speed > spec["max_speed"]:
+        return None, ("decoded implausible speed", raw_ptr, base_ptr, data, decoded)
+
+    return decoded, None
 
 def get_cgame_base(scanner, base_addr):
     c_game_ptr_addr = base_addr + MANAGER_OFFSET
@@ -335,33 +458,44 @@ def get_unit_status(scanner, u_ptr):
 def get_unit_velocity(scanner, u_ptr, is_air):
     if u_ptr == 0: return (0.0, 0.0, 0.0)
     try:
-        # 🎯 อัปเดตตามผลสแกนล่าสุด (2026 Verified)
-        if is_air:
-            candidates = [
-                (u_ptr + 0x1B90, 0x0BE0, "fff"), # Candidate 1: Air Real Spd
-                (u_ptr + 0x0018, 0x0318, "fff")  # Candidate 2: Air Real Spd
-            ]
-        else:
-            candidates = [
-                (u_ptr + 0x0D18, 0x0068, "ddd"), # Candidate 1: Ground Real Spd (Double)
-                (u_ptr + 0x1DF8, 0x0054, "fff")  # Candidate 2: Ground Real Spd (Float)
-            ]
+        attempts = []
+        for idx, spec in enumerate(_iter_velocity_specs(is_air)):
+            result, failure = _try_read_velocity(scanner, u_ptr, spec)
+            if result is not None:
+                if idx > 0:
+                    dprint(
+                        "VEL FALLBACK HIT"
+                        f" | requested_type={'AIR' if is_air else 'GROUND'}"
+                        f" | unit={hex(u_ptr)}"
+                        f" | using={spec['label']}"
+                        f" | mov_off={hex(spec['mov_off'])}"
+                        f" | vel_off={hex(spec['vel_off'])}"
+                        f" | fmt={spec['fmt']}"
+                        f" | decoded=({result[0]:.4f}, {result[1]:.4f}, {result[2]:.4f})",
+                        force=False,
+                    )
+                return result
+            attempts.append((spec, failure))
 
-        for ptr_addr, vel_off, fmt in candidates:
-            raw_ptr = scanner.read_mem(ptr_addr, 8)
-            if not raw_ptr: continue
-            base_ptr = struct.unpack("<Q", raw_ptr)[0]
-            if not is_valid_ptr(base_ptr): continue
-
-            v_size = 24 if fmt == "ddd" else 12
-            data = scanner.read_mem(base_ptr + vel_off, v_size)
-            if data and len(data) >= v_size:
-                v = struct.unpack("<" + fmt, data[:v_size])
-                vx, vy, vz = float(v[0]), float(v[1]), float(v[2])
-                if math.isfinite(vx) and (abs(vx) > 0.001 or abs(vy) > 0.001 or abs(vz) > 0.001):
-                    return (vx, vy, vz)
+        if attempts:
+            spec, failure = attempts[0]
+            reason, raw_ptr, base_ptr, data, decoded = failure
+            _debug_velocity_failure(reason, u_ptr, spec, raw_ptr=raw_ptr, base_ptr=base_ptr, data=data, decoded=decoded)
+            dprint(
+                "VEL FALLBACKS EXHAUSTED"
+                f" | requested_type={'AIR' if is_air else 'GROUND'}"
+                f" | unit={hex(u_ptr)}"
+                f" | tried="
+                + ", ".join(
+                    f"{s['label']}@{hex(s['mov_off'])}/{hex(s['vel_off'])}:{s['fmt']}:{f[0]}"
+                    for s, f in attempts
+                ),
+                force=False,
+            )
         return (0.0, 0.0, 0.0)
-    except: return (0.0, 0.0, 0.0)
+    except Exception as e:
+        dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type={'AIR' if is_air else 'GROUND'} | error={e}", force=False)
+        return (0.0, 0.0, 0.0)
 # 🌪️ THE REAL OMEGA PULLER (0x3F8)
 def get_unit_omega(scanner, unit_ptr, is_air):
     if not is_air:

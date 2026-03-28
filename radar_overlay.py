@@ -74,9 +74,11 @@ class ESPOverlay(QWidget):
         self.max_reload_cache = {}
         self.last_my_unit = 0 
         self.vel_window = {} 
+        self.velocity_cache = {}
         self.last_frame_time = time.time()
         self.current_fps = 0.0
         self.cached_matrix_offset = 0x1C0
+        self.last_velocity_meta = {}
         
         # 🤖 AI Auto-Calibration for Maneuvers (6 Threads)
         self.ai_ghost_queue = []
@@ -103,6 +105,80 @@ class ESPOverlay(QWidget):
         self.screen_height = geometry.height()
         self.center_x = self.screen_width / 2
         self.center_y = self.screen_height / 2
+
+    def _stabilize_velocity(self, u_ptr, is_air, pos, curr_t):
+        raw_vel = get_unit_velocity(self.scanner, u_ptr, is_air) if u_ptr and pos else (0.0, 0.0, 0.0)
+        cached = self.velocity_cache.get(u_ptr)
+        pos_vel = None
+
+        if cached and pos:
+            dt = curr_t - cached['time']
+            if 0.02 <= dt <= 0.75:
+                dx = pos[0] - cached['pos'][0]
+                dy = pos[1] - cached['pos'][1]
+                dz = pos[2] - cached['pos'][2]
+                pos_vel = (dx / dt, dy / dt, dz / dt)
+
+        chosen_vel = raw_vel
+        source = "raw"
+
+        raw_mag = math.sqrt(raw_vel[0]**2 + raw_vel[1]**2 + raw_vel[2]**2)
+        pos_mag = math.sqrt(pos_vel[0]**2 + pos_vel[1]**2 + pos_vel[2]**2) if pos_vel else 0.0
+        max_jump = 90.0 if is_air else 12.0
+        min_air_speed = 35.0 if is_air else 0.0
+
+        if pos_vel:
+            diff_mag = math.sqrt(
+                (raw_vel[0] - pos_vel[0])**2 +
+                (raw_vel[1] - pos_vel[1])**2 +
+                (raw_vel[2] - pos_vel[2])**2
+            )
+
+            if raw_mag <= 0.001 and pos_mag > 0.001:
+                chosen_vel = pos_vel
+                source = "pos_only"
+            elif pos_mag > 0.001 and diff_mag > max_jump:
+                chosen_vel = pos_vel
+                source = "pos_reject_raw"
+            elif is_air and raw_mag < min_air_speed and pos_mag >= min_air_speed:
+                chosen_vel = pos_vel
+                source = "pos_air_floor"
+            elif raw_mag > 0.001:
+                chosen_vel = (
+                    (raw_vel[0] * 0.65) + (pos_vel[0] * 0.35),
+                    (raw_vel[1] * 0.65) + (pos_vel[1] * 0.35),
+                    (raw_vel[2] * 0.65) + (pos_vel[2] * 0.35),
+                )
+                source = "blended"
+
+        self.velocity_cache[u_ptr] = {
+            'time': curr_t,
+            'pos': pos,
+            'vel': chosen_vel,
+        }
+        self.last_velocity_meta[u_ptr] = {
+            'source': source,
+            'raw_vel': raw_vel,
+            'raw_mag': raw_mag,
+            'pos_vel': pos_vel,
+            'pos_mag': pos_mag,
+            'chosen_vel': chosen_vel,
+        }
+
+        if source != "raw" and u_ptr != 0:
+            msg = (
+                "VEL STABILIZED"
+                f" | unit={hex(u_ptr)}"
+                f" | type={'AIR' if is_air else 'GROUND'}"
+                f" | source={source}"
+                f" | raw=({raw_vel[0]:.2f}, {raw_vel[1]:.2f}, {raw_vel[2]:.2f})"
+            )
+            if pos_vel:
+                msg += f" | pos=({pos_vel[0]:.2f}, {pos_vel[1]:.2f}, {pos_vel[2]:.2f})"
+            msg += f" | chosen=({chosen_vel[0]:.2f}, {chosen_vel[1]:.2f}, {chosen_vel[2]:.2f})"
+            dprint(msg, force=False)
+
+        return chosen_vel
 
     def paintEvent(self, event):
         self._update_screen_metrics()
@@ -171,7 +247,7 @@ class ESPOverlay(QWidget):
                 if u_ptr == my_unit:
                     my_is_air = is_air; break
             
-            my_vel = get_unit_velocity(self.scanner, my_unit, my_is_air) if my_unit else (0.0, 0.0, 0.0)
+            my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t) if my_unit and my_pos else (0.0, 0.0, 0.0)
             if not my_vel: my_vel = (0.0, 0.0, 0.0)
             my_vx, my_vy, my_vz = my_vel
 
@@ -179,6 +255,8 @@ class ESPOverlay(QWidget):
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
                 self.max_reload_cache = {}
                 self.vel_window = {} 
+                self.velocity_cache = {}
+                self.last_velocity_meta = {}
                 self.ai_ghost_queue = [] 
                 self.last_my_unit = my_unit
 
@@ -325,7 +403,7 @@ class ESPOverlay(QWidget):
                     warning_level = 0 
                     
                     if physics_is_air and my_pos and dist > 10.0:
-                        vel = get_unit_velocity(self.scanner, u_ptr, physics_is_air)
+                        vel = self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
                         if vel:
                             v_mag = math.sqrt(vel[0]**2 + vel[1]**2 + vel[2]**2)
                             if v_mag > 5.0: 
@@ -384,7 +462,7 @@ class ESPOverlay(QWidget):
                     # ========================================================
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
-                    vel = get_unit_velocity(self.scanner, u_ptr, physics_is_air)
+                    vel = self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
                     is_turning = False 
                     
                     if not vel or current_bullet_speed <= 0 or not my_pos or dist <= 10.0: continue
@@ -529,6 +607,10 @@ class ESPOverlay(QWidget):
                     # 📊 [STICKY DASHBOARD]: อัปเดตแบบ Real-time ทับบรรทัดเดิม
                     # =========================================================
                     if u_ptr == active_target_ptr:
+                        vel_meta = self.last_velocity_meta.get(u_ptr, {})
+                        vel_source = vel_meta.get('source', 'raw')
+                        raw_mag = vel_meta.get('raw_mag', 0.0) * 3.6
+                        pos_mag = vel_meta.get('pos_mag', 0.0) * 3.6
                         # ใช้ ANSI Code ย้อน Cursor ไปบนสุด และล้างถึงท้ายหน้าจอ (\033[H\033[J)
                         sys.stdout.write("\033[H")
                         
@@ -544,7 +626,8 @@ class ESPOverlay(QWidget):
                         out += "-" * 64 + "\n"
                         out += f"🎯 [TARGET]   : {clean_name.upper()} {'[LOCKED]':>35}\n"
                         out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
-                        out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f})\n"
+                        out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f}) | SRC:{vel_source}\n"
+                        out += f"📡 Vel Check  : raw={raw_mag:>6.1f} km/h | pos={pos_mag:>6.1f} km/h | PTR:{hex(u_ptr)}\n"
                         out += f"🌪️ Accel      : {accel_mag:>6.2f} m/s² | A:({ax:>6.2f}, {ay:>6.2f}, {az:>6.2f})\n"
                         out += "-" * 64 + "\n"
                         out += f"📉 [BALLISTICS]\n"
