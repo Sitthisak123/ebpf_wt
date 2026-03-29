@@ -22,17 +22,18 @@ from src.utils.debug import *
 
 COLOR_INFO_TEXT      = (255, 228, 64, 255)   
 COLOR_BARREL_LINE    = (0, 255, 0, 255)      
-COLOR_BOX_TARGET     = (50, 200, 20, 200)     
-COLOR_TEXT_GROUND    = (0, 255, 255, 255)    
-COLOR_TEXT_AIR       = (255, 222, 66, 255)   
-COLOR_RELOAD_BG      = (0, 0, 0, 150)        
-COLOR_RELOAD_READY   = (0, 255, 0, 200)      
+COLOR_BOX_TARGET     = (255, 255, 0, 200)     
+COLOR_TEXT_GROUND    = (255, 196, 0, 255)    
+COLOR_TEXT_AIR       = (255, 196, 0, 255)   
+COLOR_RELOAD_BG      = (0, 0, 0, 180)        
+COLOR_RELOAD_READY   = (255, 0, 0, 200)      
 COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (255, 125, 90, 255)    
-COLOR_FLIGHT_PATH    = (255, 200, 0, 180)    
+COLOR_PREDICTION     = (50, 50, 255, 255)    
+COLOR_FLIGHT_PATH    = (255, 200, 0, 150)    
 COLOR_FPS_GOOD       = (0, 255, 0, 255)      
 
 BULLET_GRAVITY       = 9.80665   
+
 BOT_KEYWORDS = [
     "speaker", "water", "panzerzug", "windmill", "dummy", "dummy_plane",
     "unit_fulda_windmill", "airfield", "noground", "fortification",
