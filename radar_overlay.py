@@ -99,6 +99,7 @@ class ESPOverlay(QWidget):
         self.q_pressed_last = False
         self.last_debug_log_time = 0.0
         self.console_initialized = False
+        self.dead_unit_latch = set()
 
         self._update_screen_metrics()
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -258,6 +259,10 @@ class ESPOverlay(QWidget):
             painter.setPen(QColor(*COLOR_INFO_TEXT))
 
             all_units_data = get_all_units(self.scanner, cgame_base)
+            all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
+            if self.dead_unit_latch:
+                self.dead_unit_latch.intersection_update(all_unit_ptrs)
+
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
@@ -284,6 +289,7 @@ class ESPOverlay(QWidget):
                 self.velocity_cache = {}
                 self.last_velocity_meta = {}
                 self.ai_ghost_queue = [] 
+                self.dead_unit_latch = set()
                 self.last_my_unit = my_unit
 
             valid_targets = []
@@ -292,7 +298,12 @@ class ESPOverlay(QWidget):
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
                 u_team, u_state, unit_name, reload_val = status
-                if u_state >= 1 or u_team == 0 or (my_team != 0 and u_team == my_team): continue
+                if u_state >= 1:
+                    self.dead_unit_latch.add(u_ptr)
+                    continue
+                if u_ptr in self.dead_unit_latch:
+                    continue
+                if u_team == 0 or (my_team != 0 and u_team == my_team): continue
 
                 profile = get_unit_filter_profile(self.scanner, u_ptr)
                 if profile.get("skip"):
