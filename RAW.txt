@@ -4554,3 +4554,90 @@ GROUND     | unit=0x4562e060 | info_off=0x40   | text='ussr_122mm_m30' | name=''
  info+0x38   -> 'exp_aaa'
  info+0x40   -> 'germ_88mm_flak36_noground'
 (venv) xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ "
+
+==================================================================================
+
+bots: "xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py 
+[sudo] password for xda-7:         
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 83  | Units: 16=======
+================================================================
+🟢 [MY UNIT]  : 0x3a5b5a00=============================
+🚀 Velocity   :    0.7 km/h | V:(  0.19,   0.00,   0.00)
+----------------------------------------------------------------
+🎯 [TARGET]   : T_26_1940                            [LOCKED]
+📏 Distance   : 1393.3 m      | TOF:  1.917 ssยง)
+🚀 Velocity   :    0.0 km/h | V:(  0.00,   0.00,   0.00) | SRC:rawndedyct_rawonly
+📡 Vel Check  : raw=   0.0 km/h | pos=   0.0 km/h | PTR:0x3a59f0e010
+🌪️ Accel      :   0.00 m/s² | A:(  0.00,   0.00,   0.00)เสียง)
+----------------------------------------------------------------
+📉 [BALLISTICS] INFO = 0xfc0 (โหวต 144 เสียง)
+🔫 Bullet     : Spd:870 m/s | CD:0.35 | Mass:0.87
+📉 Drop       : Gravity: +18.02 m | Zeroing: - 0.00 m.00 m
+================================================================)
+ [Q] Cycle Targets | [Ctrl+C] Exit[🐞 DEBUG] VEL STABILIZED | unit=0x3a5b5a00 | type=GROUND | source=blended | raw=(0.30, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(0.19, 0.00, 0.00)0x3b365dc0 |
+ raw_vel=[00 00 00 00 00 00 00 00 00 00 00 00] | decoded=(0.0000, 0.0000, 0.0000) | reason=decoded near-zero vector0.01, -2.94) | chosen=(-1.17, 0.00, 2.46)
+  [+] ✅ REFINED! CGame = 0x941b280 (votes 298, score=4)
+=======================================================
+
+QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
+[🐞 DEBUG] VEL READ FAIL | type=GROUND_PRIMARY | unit=0x3a5b5a00 | mov_off=0xd18 | vel_off=0x3c | fmt=fff | raw_ptr=[A0 74 1B 3A 00 00 00 00] | mov_ptr=0x3a1b74a0 | raw_vel=[00 00 00 00 01 01 00 00 00 00 00 00] | decoded=(0.0000, 0.0000, 0.0000) | reason=decoded near-zero vector","
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py 
+[sudo] password for xda-7:         
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 83  | Units: 13=======
+================================================================
+🟢 [MY UNIT]  : 0x3a5b5a00=============================
+🚀 Velocity   :    0.7 km/h | V:(  0.19,   0.00,   0.00)
+----------------------------------------------------------------
+🎯 [TARGET]   : BT_7_M                            [LOCKED]ED]
+📏 Distance   : 1393.3 m      | TOF:  1.917 ssยง)
+🚀 Velocity   :    0.5 km/h | V:( -0.13,   0.00,   0.00) | SRC:blendedyct_rawonly
+📡 Vel Check  : raw=   0.7 km/h | pos=   0.0 km/h | PTR:0x3a5eda0010
+🌪️ Accel      :   0.00 m/s² | A:(  0.00,   0.00,   0.00)เสียง)
+----------------------------------------------------------------
+📉 [BALLISTICS] INFO = 0xfc0 (โหวต 144 เสียง)
+🔫 Bullet     : Spd:870 m/s | CD:0.35 | Mass:0.87
+📉 Drop       : Gravity: +18.02 m | Zeroing: - 0.00 m.00 m
+================================================================)
+ [Q] Cycle Targets | [Ctrl+C] Exit[🐞 DEBUG] VEL STABILIZED | unit=0x3a5b5a00 | type=GROUND | source=blended | raw=(0.30, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(0.19, 0.00, 0.00)0x2acad6d0 |
+ raw_vel=[00 00 00 00 00 00 00 00 00 00 00 00] | decoded=(0.0000, 0.0000, 0.0000) | reason=decoded near-zero vector: 0x77c84f8d8430hosen=(-1.17, 0.00, 2.46)
+👁️ View Matrix  : ✅ OKe = 0x941b280 (votes 298, score=4)
+🟢 My Unit      : ✅ FOUND=============================
+📡 Total Units  : 69 units (ถ้าเป็น 0 แปลว่า OFF_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
+⚔️ Valid Targets: 16 targets_DIR not set, defaulting to '/tmp/runtime-root'
+=============================================Y | unit=0x3a5b5a00 | mov_off=0xd18 | vel_off=0x3c | f
+mt=fff | raw_ptr=[A0 74 1B 3A 00 00 00 00] | mov_ptr=0x3a1b74a0 | raw_vel=[00 00 00 00 01 01 00 00 00 00 00 00] | decoded=(0.0000, 0.0000, 0.0000) | reason=decoded near-zero vector",
+"(venv) xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py 
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x9426380 (votes 45, score=6)
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 83  | Units: 13)
+================================================================
+🟢 [MY UNIT]  : 0x3a5b5a00xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+🚀 Velocity   :    0.7 km/h | V:(  0.19,   0.00,   0.00)สียง)
+----------------------------------------------------------------
+🎯 [TARGET]   : TYPE_97_CHI_HA                            [LOCKED]
+📏 Distance   : 1393.3 m      | TOF:  1.917 s
+🚀 Velocity   :    0.0 km/h | V:(  0.00,   0.00,   0.00) | SRC:rawnded
+📡 Vel Check  : raw=   0.0 km/h | pos=   0.0 km/h | PTR:0x41bee340
+🌪️ Accel      :   0.00 m/s² | A:(  0.00,   0.00,   0.00)
+----------------------------------------------------------------
+📉 [BALLISTICS]TCH! Found Chain: 0x1c0 -> 0x101
+🔫 Bullet     : Spd:870 m/s | CD:0.35 | Mass:0.87
+📉 Drop       : Gravity: +18.02 m | Zeroing: - 0.00 mm4)
+================================================================
+ [Q] Cycle Targets | [Ctrl+C] Exit[🐞 DEBUG] VEL STABILIZED | unit=0x3a5b5a00 | type=GROUND | source=blended | raw=(0.30, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(0.19, 0.00, 0.00)0)4184dcc0 |
+🖥️ FPS          : 82.6 00 00 00 00 00 00 00 00] | decoded=(0.0000, 0.0000, 0.0000) | reason=decoded 
+🎯 CGame Base   : 0x77c84f8d8430=============
+👁️ View Matrix  : ✅ OK
+🟢 My Unit      : ✅ FOUND8d8430
+📡 Total Units  : 111 units (ถ้าเป็น 0 แปลว่า OFF_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
+⚔️ Valid Targets: 13 targets
+=============================================F_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
+⚔️ Valid Targets: 15 targets
+============================================="

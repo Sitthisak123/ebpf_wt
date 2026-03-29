@@ -1,0 +1,6988 @@
+{
+  "meta": {
+    "pid": 2380,
+    "base_addr": "0x400000",
+    "cgame_base": "0x77c84f8d8430",
+    "my_unit": "0x3a5b5a00",
+    "my_team": 1,
+    "row_count": 70,
+    "timestamp": "2026-03-29 16:12:53"
+  },
+  "rows": [
+    {
+      "u_ptr": 978228496,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "dummy",
+      "info_ptr": 715584800,
+      "pos": [
+        1000.0,
+        233.0,
+        0.0
+      ],
+      "dist_m": 1701.5360166013033,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_structure",
+      "tag": "exp_structure",
+      "path": "gameData/units/structures/dummy.blk",
+      "unit_key": "dummy",
+      "info_s10": "structures/dummy",
+      "info_s18": "gameData/units/structures/dummy.blk",
+      "info_s38": "exp_structure",
+      "info_s40": "dummy"
+    },
+    {
+      "u_ptr": 978259264,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        4907.927734375,
+        209.2578125,
+        3253.3349609375
+      ],
+      "dist_m": 6729.1452773892515,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978288736,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        5131.61962890625,
+        209.2578125,
+        3011.996337890625
+      ],
+      "dist_m": 6732.296859176918,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978320592,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        5395.17138671875,
+        209.2578125,
+        3153.634033203125
+      ],
+      "dist_m": 7024.471860308888,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978350064,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        5077.6318359375,
+        209.2578125,
+        3490.485107421875
+      ],
+      "dist_m": 7015.772609619593,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978379536,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        5752.20947265625,
+        209.2578125,
+        3511.94287109375
+      ],
+      "dist_m": 7528.521255048217,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978409888,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        5489.55078125,
+        209.2578125,
+        3834.752197265625
+      ],
+      "dist_m": 7551.089882445408,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978444736,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_88mm_flak36",
+      "info_ptr": 715598624,
+      "pos": [
+        5769.95947265625,
+        209.2578125,
+        4098.26953125
+      ],
+      "dist_m": 7935.766834464761,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "unit_key": "germ_88mm_flak36",
+      "info_s10": "air_defence/germ_88mm_flak36",
+      "info_s18": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_88mm_flak36"
+    },
+    {
+      "u_ptr": 978475088,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_88mm_flak36",
+      "info_ptr": 715598624,
+      "pos": [
+        5958.63232421875,
+        209.2578125,
+        3719.49853515625
+      ],
+      "dist_m": 7820.304207721903,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "unit_key": "germ_88mm_flak36",
+      "info_s10": "air_defence/germ_88mm_flak36",
+      "info_s18": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_88mm_flak36"
+    },
+    {
+      "u_ptr": 978505440,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_88mm_flak36",
+      "info_ptr": 715598624,
+      "pos": [
+        5958.89013671875,
+        209.2578125,
+        4291.61181640625
+      ],
+      "dist_m": 8205.887663822215,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "unit_key": "germ_88mm_flak36",
+      "info_s10": "air_defence/germ_88mm_flak36",
+      "info_s18": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_88mm_flak36"
+    },
+    {
+      "u_ptr": 978536144,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_88mm_flak36",
+      "info_ptr": 715598624,
+      "pos": [
+        6201.859375,
+        209.2578125,
+        3962.69140625
+      ],
+      "dist_m": 8163.2994078451775,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "unit_key": "germ_88mm_flak36",
+      "info_s10": "air_defence/germ_88mm_flak36",
+      "info_s18": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_88mm_flak36"
+    },
+    {
+      "u_ptr": 978567376,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        -4449.6259765625,
+        160.2236328125,
+        -7541.36962890625
+      ],
+      "dist_m": 7616.513667149116,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978598080,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        -4683.63671875,
+        160.2236328125,
+        -7310.00439453125
+      ],
+      "dist_m": 7574.751461670147,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978628784,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        -5281.8251953125,
+        160.2236328125,
+        -7836.55859375
+      ],
+      "dist_m": 8360.547532335208,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978659488,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        -5005.34765625,
+        160.2236328125,
+        -8147.591796875
+      ],
+      "dist_m": 8434.233668511775,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978698656,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_88mm_flak36",
+      "info_ptr": 715598624,
+      "pos": [
+        -5273.98046875,
+        160.2236328125,
+        -8423.1083984375
+      ],
+      "dist_m": 8815.841179529982,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "unit_key": "germ_88mm_flak36",
+      "info_s10": "air_defence/germ_88mm_flak36",
+      "info_s18": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_88mm_flak36"
+    },
+    {
+      "u_ptr": 978728128,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_88mm_flak36",
+      "info_ptr": 715598624,
+      "pos": [
+        -5478.99560546875,
+        160.2236328125,
+        -8052.92041015625
+      ],
+      "dist_m": 8652.907944549212,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "unit_key": "germ_88mm_flak36",
+      "info_s10": "air_defence/germ_88mm_flak36",
+      "info_s18": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_88mm_flak36"
+    },
+    {
+      "u_ptr": 978758480,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_88mm_flak36",
+      "info_ptr": 715598624,
+      "pos": [
+        -5454.29345703125,
+        160.2236328125,
+        -8624.501953125
+      ],
+      "dist_m": 9085.234279297854,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "unit_key": "germ_88mm_flak36",
+      "info_s10": "air_defence/germ_88mm_flak36",
+      "info_s18": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_88mm_flak36"
+    },
+    {
+      "u_ptr": 978788832,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        -4940.75146484375,
+        160.2236328125,
+        -7463.00634765625
+      ],
+      "dist_m": 7855.43051698776,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978819376,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_37mm_flak43_airfield",
+      "info_ptr": 715586816,
+      "pos": [
+        -4608.82666015625,
+        160.2236328125,
+        -7785.6953125
+      ],
+      "dist_m": 7907.6875681393685,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "unit_key": "germ_37mm_flak43_airfield",
+      "info_s10": "air_defence/germ_37mm_flak43_airfield",
+      "info_s18": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_37mm_flak43_airfield"
+    },
+    {
+      "u_ptr": 978850080,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_88mm_flak36",
+      "info_ptr": 715598624,
+      "pos": [
+        -5711.37353515625,
+        160.2236328125,
+        -8306.4814453125
+      ],
+      "dist_m": 8996.400846627384,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_aaa",
+      "tag": "exp_aaa",
+      "path": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "unit_key": "germ_88mm_flak36",
+      "info_s10": "air_defence/germ_88mm_flak36",
+      "info_s18": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "info_s38": "exp_aaa",
+      "info_s40": "germ_88mm_flak36"
+    },
+    {
+      "u_ptr": 978880784,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_bt_7_m",
+      "info_ptr": 976510560,
+      "pos": [
+        278.41510009765625,
+        30.881317138671875,
+        -2204.890625
+      ],
+      "dist_m": 845.9928757480333,
+      "vel": [
+        -0.5024104118347168,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 1.8086774826049805,
+      "mov_ptr": 975390176,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/ussr_bt_7_m.blk",
+      "unit_key": "ussr_bt_7_m",
+      "info_s10": "tankModels/ussr_bt_7_m",
+      "info_s18": "gameData/units/tankModels/ussr_bt_7_m.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "ussr_bt_7_m"
+    },
+    {
+      "u_ptr": 979065344,
+      "is_air": false,
+      "label": "MY_GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "us_m2a4_1st_armor_div",
+      "info_ptr": 1031238096,
+      "pos": [
+        42.9973258972168,
+        30.922687530517578,
+        -1392.31298828125
+      ],
+      "dist_m": 0.0,
+      "vel": [
+        0.29722192883491516,
+        3.60133705331478e-43,
+        0.0
+      ],
+      "speed_kmh": 1.0699989438056947,
+      "mov_ptr": 974877856,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/us_m2a4_1st_armor_div.blk",
+      "unit_key": "us_m2a4_1st_armor_div",
+      "info_s10": "tankModels/us_m2a4_1st_armor_div",
+      "info_s18": "gameData/units/tankModels/us_m2a4_1st_armor_div.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "us_m2a4_1st_armor_div"
+    },
+    {
+      "u_ptr": 979234352,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "sw_stormpjas_fm43_44",
+      "info_ptr": 976439296,
+      "pos": [
+        357.6164855957031,
+        34.8742790222168,
+        -2084.267333984375
+      ],
+      "dist_m": 760.1326510959378,
+      "vel": [
+        0.10289968550205231,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.37043886780738833,
+      "mov_ptr": 718528624,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank_destroyer",
+      "path": "gameData/units/tankModels/sw_stormpjas_fm43_44.blk",
+      "unit_key": "sw_stormpjas_fm43_44",
+      "info_s10": "tankModels/sw_stormpjas_fm43_44",
+      "info_s18": "gameData/units/tankModels/sw_stormpjas_fm43_44.blk",
+      "info_s38": "exp_tank_destroyer",
+      "info_s40": "sw_stormpjas_fm43_44"
+    },
+    {
+      "u_ptr": 979417536,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_t_26_1940",
+      "info_ptr": 754430352,
+      "pos": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dist_m": 1393.319934535886,
+      "vel": [
+        0.03405189514160156,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.12258682250976563,
+      "mov_ptr": 718623584,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/ussr_t_26_1940.blk",
+      "unit_key": "ussr_t_26_1940",
+      "info_s10": "tankModels/ussr_t_26_1940",
+      "info_s18": "gameData/units/tankModels/ussr_t_26_1940.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "ussr_t_26_1940"
+    },
+    {
+      "u_ptr": 979478944,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_sdkfz_222",
+      "info_ptr": 1065473792,
+      "pos": [
+        -100.60602569580078,
+        41.11845397949219,
+        -1881.90234375
+      ],
+      "dist_m": 510.31716924921886,
+      "vel": [
+        -0.31037643551826477,
+        3.587324068671532e-43,
+        0.0
+      ],
+      "speed_kmh": 1.1173551678657532,
+      "mov_ptr": 717976352,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_SPAA",
+      "path": "gameData/units/tankModels/germ_sdkfz_222.blk",
+      "unit_key": "germ_sdkfz_222",
+      "info_s10": "tankModels/germ_sdkfz_222",
+      "info_s18": "gameData/units/tankModels/germ_sdkfz_222.blk",
+      "info_s38": "exp_SPAA",
+      "info_s40": "germ_sdkfz_222"
+    },
+    {
+      "u_ptr": 979693872,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "sw_ikv_72",
+      "info_ptr": 976333056,
+      "pos": [
+        28639.5,
+        182.78530883789062,
+        28971.30078125
+      ],
+      "dist_m": 41710.09552363775,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 976070432,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank_destroyer",
+      "path": "gameData/units/tankModels/sw_ikv_72.blk",
+      "unit_key": "sw_ikv_72",
+      "info_s10": "tankModels/sw_ikv_72",
+      "info_s18": "gameData/units/tankModels/sw_ikv_72.blk",
+      "info_s38": "exp_tank_destroyer",
+      "info_s40": "sw_ikv_72"
+    },
+    {
+      "u_ptr": 974453040,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_pzkpfw_38t_Aufklarungspanzer",
+      "info_ptr": 994568720,
+      "pos": [
+        158.45204162597656,
+        38.93141174316406,
+        -2109.589599609375
+      ],
+      "dist_m": 726.5532796745749,
+      "vel": [
+        -0.307449609041214,
+        3.587324068671532e-43,
+        0.0
+      ],
+      "speed_kmh": 1.1068185925483705,
+      "mov_ptr": 1081548528,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/germ_pzkpfw_38t_Aufklarungspanzer.blk",
+      "unit_key": "germ_pzkpfw_38t_Aufklarungspanzer",
+      "info_s10": "tankModels/germ_pzkpfw_38t_Aufklarungspanzer",
+      "info_s18": "gameData/units/tankModels/germ_pzkpfw_38t_Aufklarungspanzer.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "germ_pzkpfw_38t_Aufklarungspanzer"
+    },
+    {
+      "u_ptr": 871193088,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 978198384,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988321792,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988292320,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988351264,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988439680,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988410208,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988233376,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988262848,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988380736,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988203904,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 988174432,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1081369408,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1082045552,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 718076592,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1091083152,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1096339216,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1096461808,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "us_lvt_a_1",
+      "info_ptr": 1095996400,
+      "pos": [
+        190.33197021484375,
+        40.318572998046875,
+        -1943.365234375
+      ],
+      "dist_m": 570.4860717010428,
+      "vel": [
+        0.6212276220321655,
+        3.587324068671532e-43,
+        0.0
+      ],
+      "speed_kmh": 2.236419439315796,
+      "mov_ptr": 1090924832,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/us_lvt_a_1.blk",
+      "unit_key": "us_lvt_a_1",
+      "info_s10": "tankModels/us_lvt_a_1",
+      "info_s18": "gameData/units/tankModels/us_lvt_a_1.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "us_lvt_a_1"
+    },
+    {
+      "u_ptr": 1098864752,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1099305568,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_pzkpfw_IV_ausf_E",
+      "info_ptr": 1100929792,
+      "pos": [
+        -202.21377563476562,
+        40.633033752441406,
+        -1557.6676025390625
+      ],
+      "dist_m": 295.91370971049616,
+      "vel": [
+        0.5463114380836487,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 1.9667211771011353,
+      "mov_ptr": 1099335040,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/germ_pzkpfw_IV_ausf_E.blk",
+      "unit_key": "germ_pzkpfw_IV_ausf_E",
+      "info_s10": "tankModels/germ_pzkpfw_IV_ausf_E",
+      "info_s18": "gameData/units/tankModels/germ_pzkpfw_IV_ausf_E.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "u_ptr": 1100863648,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1099554320,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_t_28",
+      "info_ptr": 1032794640,
+      "pos": [
+        -160.4261474609375,
+        36.77229309082031,
+        -2098.431640625
+      ],
+      "dist_m": 734.8597679734961,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 1100511088,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/ussr_t_28.blk",
+      "unit_key": "ussr_t_28",
+      "info_s10": "tankModels/ussr_t_28",
+      "info_s18": "gameData/units/tankModels/ussr_t_28.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "ussr_t_28"
+    },
+    {
+      "u_ptr": 1101265424,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_pzkpfw_IV_ausf_E",
+      "info_ptr": 1100929792,
+      "pos": [
+        -400.3869934082031,
+        31.30092430114746,
+        -1621.82421875
+      ],
+      "dist_m": 499.2646618580819,
+      "vel": [
+        -0.6256403923034668,
+        3.587324068671532e-43,
+        0.0
+      ],
+      "speed_kmh": 2.2523054122924804,
+      "mov_ptr": 1096290320,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/germ_pzkpfw_IV_ausf_E.blk",
+      "unit_key": "germ_pzkpfw_IV_ausf_E",
+      "info_s10": "tankModels/germ_pzkpfw_IV_ausf_E",
+      "info_s18": "gameData/units/tankModels/germ_pzkpfw_IV_ausf_E.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "u_ptr": 1102161600,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1102457968,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1103029056,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "cn_type_97_chi_ha",
+      "info_ptr": 1090723104,
+      "pos": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dist_m": 1393.319934535886,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 1103058528,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/cn_type_97_chi_ha.blk",
+      "unit_key": "cn_type_97_chi_ha",
+      "info_s10": "tankModels/cn_type_97_chi_ha",
+      "info_s18": "gameData/units/tankModels/cn_type_97_chi_ha.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "cn_type_97_chi_ha"
+    },
+    {
+      "u_ptr": 1105166416,
+      "is_air": true,
+      "label": "AIR",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "c",
+      "model_name": "ki-27_otsu",
+      "info_ptr": 1105312512,
+      "pos": [
+        -465.1211853027344,
+        185.1944580078125,
+        -2607.614501953125
+      ],
+      "dist_m": 1326.251096030991,
+      "vel": [
+        -36.11843490600586,
+        8.11650276184082,
+        -96.85478210449219
+      ],
+      "speed_kmh": 373.2779532017892,
+      "mov_ptr": 1105183048,
+      "kind": "air",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_fighter",
+      "path": "gameData/flightModels/ki-27_otsu.blk",
+      "unit_key": "ki-27_otsu",
+      "info_s10": "ki-27_otsu",
+      "info_s18": "gameData/flightModels/ki-27_otsu.blk",
+      "info_s38": "exp_fighter",
+      "info_s40": "ki-27_otsu"
+    },
+    {
+      "u_ptr": 1104565984,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1104595456,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_t_28",
+      "info_ptr": 1032794640,
+      "pos": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dist_m": 1393.319934535886,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 1104624928,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/ussr_t_28.blk",
+      "unit_key": "ussr_t_28",
+      "info_s10": "tankModels/ussr_t_28",
+      "info_s18": "gameData/units/tankModels/ussr_t_28.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "ussr_t_28"
+    },
+    {
+      "u_ptr": 1082675344,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "us_m2a4_1st_armor_div",
+      "info_ptr": 1031238096,
+      "pos": [
+        177.90411376953125,
+        41.16044998168945,
+        -1641.48828125
+      ],
+      "dist_m": 283.5365581721247,
+      "vel": [
+        -0.6913055181503296,
+        3.587324068671532e-43,
+        0.0
+      ],
+      "speed_kmh": 2.4886998653411867,
+      "mov_ptr": 1099675536,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/us_m2a4_1st_armor_div.blk",
+      "unit_key": "us_m2a4_1st_armor_div",
+      "info_s10": "tankModels/us_m2a4_1st_armor_div",
+      "info_s18": "gameData/units/tankModels/us_m2a4_1st_armor_div.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "us_m2a4_1st_armor_div"
+    },
+    {
+      "u_ptr": 1040981360,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "jp_halftrack_m16",
+      "info_ptr": 1101041088,
+      "pos": [
+        -499.1806945800781,
+        30.765926361083984,
+        -1701.98876953125
+      ],
+      "dist_m": 624.3845929837956,
+      "vel": [
+        -0.5796126127243042,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 2.086605405807495,
+      "mov_ptr": 1099226304,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_SPAA",
+      "path": "gameData/units/tankModels/jp_halftrack_m16.blk",
+      "unit_key": "jp_halftrack_m16",
+      "info_s10": "tankModels/jp_halftrack_m16",
+      "info_s18": "gameData/units/tankModels/jp_halftrack_m16.blk",
+      "info_s38": "exp_SPAA",
+      "info_s40": "jp_halftrack_m16"
+    },
+    {
+      "u_ptr": 1044974256,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_sdkfz_251_9",
+      "info_ptr": 720487296,
+      "pos": [
+        -304.16455078125,
+        30.937280654907227,
+        -1362.5303955078125
+      ],
+      "dist_m": 348.4370411770004,
+      "vel": [
+        0.16853761672973633,
+        3.587324068671532e-43,
+        0.0
+      ],
+      "speed_kmh": 0.6067354202270508,
+      "mov_ptr": 995833440,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank_destroyer",
+      "path": "gameData/units/tankModels/germ_sdkfz_251_9.blk",
+      "unit_key": "germ_sdkfz_251_9",
+      "info_s10": "tankModels/germ_sdkfz_251_9",
+      "info_s18": "gameData/units/tankModels/germ_sdkfz_251_9.blk",
+      "info_s38": "exp_tank_destroyer",
+      "info_s40": "germ_sdkfz_251_9"
+    },
+    {
+      "u_ptr": 1101295472,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 995864528,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_gaz_4m",
+      "info_ptr": 1082170624,
+      "pos": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dist_m": 1393.319934535886,
+      "vel": [
+        0.9404606819152832,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 3.3856584548950197,
+      "mov_ptr": 1104728816,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_SPAA",
+      "path": "gameData/units/tankModels/ussr_gaz_4m.blk",
+      "unit_key": "ussr_gaz_4m",
+      "info_s10": "tankModels/ussr_gaz_4m",
+      "info_s18": "gameData/units/tankModels/ussr_gaz_4m.blk",
+      "info_s38": "exp_SPAA",
+      "info_s40": "ussr_gaz_4m"
+    },
+    {
+      "u_ptr": 1075572000,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "jp_type_94",
+      "info_ptr": 1031757488,
+      "pos": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dist_m": 1393.319934535886,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 1103200352,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_SPAA",
+      "path": "gameData/units/tankModels/jp_type_94.blk",
+      "unit_key": "jp_type_94",
+      "info_s10": "tankModels/jp_type_94",
+      "info_s18": "gameData/units/tankModels/jp_type_94.blk",
+      "info_s38": "exp_SPAA",
+      "info_s40": "jp_type_94"
+    },
+    {
+      "u_ptr": 1091724064,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "germ_pzkpfw_III_ausf_B",
+      "info_ptr": 1041045456,
+      "pos": [
+        253.3387908935547,
+        40.60947036743164,
+        -1704.91845703125
+      ],
+      "dist_m": 376.90787302859883,
+      "vel": [
+        -0.31760329008102417,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 1.1433718442916871,
+      "mov_ptr": 1102398848,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/germ_pzkpfw_III_ausf_B.blk",
+      "unit_key": "germ_pzkpfw_III_ausf_B",
+      "info_s10": "tankModels/germ_pzkpfw_III_ausf_B",
+      "info_s18": "gameData/units/tankModels/germ_pzkpfw_III_ausf_B.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "germ_pzkpfw_III_ausf_B"
+    },
+    {
+      "u_ptr": 1091664000,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1091693472,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 1,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1077329488,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_bt_7_1937",
+      "info_ptr": 1090267072,
+      "pos": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dist_m": 1393.319934535886,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 1104678560,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/ussr_bt_7_1937.blk",
+      "unit_key": "ussr_bt_7_1937",
+      "info_s10": "tankModels/ussr_bt_7_1937",
+      "info_s18": "gameData/units/tankModels/ussr_bt_7_1937.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "ussr_bt_7_1937"
+    },
+    {
+      "u_ptr": 1101813376,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_122mm_m30",
+      "info_ptr": 1061856064,
+      "pos": [
+        0.0,
+        8.045541763305664,
+        0.0
+      ],
+      "dist_m": 1393.1645958641893,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 0,
+      "kind": "ground",
+      "skip": true,
+      "reason": "tag:exp_fortification",
+      "tag": "exp_fortification",
+      "path": "gameData/units/structures/ussr_122mm_m30.blk",
+      "unit_key": "ussr_122mm_m30",
+      "info_s10": "structures/ussr_122mm_m30",
+      "info_s18": "gameData/units/structures/ussr_122mm_m30.blk",
+      "info_s38": "exp_fortification",
+      "info_s40": "ussr_122mm_m30"
+    },
+    {
+      "u_ptr": 1097321328,
+      "is_air": true,
+      "label": "AIR",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "c",
+      "model_name": "il_2_1941",
+      "info_ptr": 1103095712,
+      "pos": [
+        -2083.474365234375,
+        949.39306640625,
+        -5703.8447265625
+      ],
+      "dist_m": 4894.361615191783,
+      "vel": [
+        38.574180603027344,
+        1.1393218040466309,
+        73.67539978027344
+      ],
+      "speed_kmh": 299.41375511175227,
+      "mov_ptr": 1097337960,
+      "kind": "air",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_assault",
+      "path": "gameData/flightModels/il_2_1941.blk",
+      "unit_key": "il_2_1941",
+      "info_s10": "il_2_1941",
+      "info_s18": "gameData/flightModels/il_2_1941.blk",
+      "info_s38": "exp_assault",
+      "info_s40": "il_2_1941"
+    },
+    {
+      "u_ptr": 1105656784,
+      "is_air": false,
+      "label": "GROUND",
+      "team": 2,
+      "state": 0,
+      "reload": 80508272,
+      "name": "",
+      "model_name": "ussr_t_26_1940",
+      "info_ptr": 754430352,
+      "pos": [
+        -119.70872497558594,
+        42.14094543457031,
+        -1905.6304931640625
+      ],
+      "dist_m": 538.6037217845242,
+      "vel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "speed_kmh": 0.0,
+      "mov_ptr": 1097382112,
+      "kind": "ground",
+      "skip": false,
+      "reason": "",
+      "tag": "exp_tank",
+      "path": "gameData/units/tankModels/ussr_t_26_1940.blk",
+      "unit_key": "ussr_t_26_1940",
+      "info_s10": "tankModels/ussr_t_26_1940",
+      "info_s18": "gameData/units/tankModels/ussr_t_26_1940.blk",
+      "info_s38": "exp_tank",
+      "info_s40": "ussr_t_26_1940"
+    }
+  ],
+  "pointer_string_summaries": [
+    {
+      "offset": 496,
+      "coverage": 9,
+      "unique_count": 8,
+      "player_like_count": 3,
+      "examples": [
+        "0(\nw",
+        "@aOw",
+        "PoAw",
+        "Q\u001cw",
+        "cJw",
+        "o\u0010w",
+        "oew",
+        "pTw"
+      ],
+      "player_examples": [
+        "PoAw",
+        "cJw",
+        "pTw"
+      ],
+      "score": 41
+    },
+    {
+      "offset": 456,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "isAlternativeShotFreq"
+      ],
+      "player_examples": [
+        "isAlternativeShotFreq"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2048,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "brokenTurretDriveJammedTime"
+      ],
+      "player_examples": [
+        "brokenTurretDriveJammedTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2088,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "brokenTurretDriveSpeed"
+      ],
+      "player_examples": [
+        "brokenTurretDriveSpeed"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2128,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "brokenTurretDriveMult"
+      ],
+      "player_examples": [
+        "brokenTurretDriveMult"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2168,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "isBreechDamaged"
+      ],
+      "player_examples": [
+        "isBreechDamaged"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2208,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "hasModuleEffectsToRepair"
+      ],
+      "player_examples": [
+        "hasModuleEffectsToRepair"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2248,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "moduleEffectsRepairAtTime"
+      ],
+      "player_examples": [
+        "moduleEffectsRepairAtTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2320,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "curNightVisionMode"
+      ],
+      "player_examples": [
+        "curNightVisionMode"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2576,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "supportPlanesCount"
+      ],
+      "player_examples": [
+        "supportPlanesCount"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2672,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "lastBuildingTime"
+      ],
+      "player_examples": [
+        "lastBuildingTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2712,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "visualReloadProgress"
+      ],
+      "player_examples": [
+        "visualReloadProgress"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2752,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "briefMalfunctionState"
+      ],
+      "player_examples": [
+        "briefMalfunctionState"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2792,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "bombDelayExplosion"
+      ],
+      "player_examples": [
+        "bombDelayExplosion"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2832,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "delayWithFlightTime"
+      ],
+      "player_examples": [
+        "delayWithFlightTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2872,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "rocketFuseDist"
+      ],
+      "player_examples": [
+        "rocketFuseDist"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 2912,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "torpedoDiveDepth"
+      ],
+      "player_examples": [
+        "torpedoDiveDepth"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3024,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "lastContactFrom"
+      ],
+      "player_examples": [
+        "lastContactFrom"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3072,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "lastContactTo"
+      ],
+      "player_examples": [
+        "lastContactTo"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3120,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "lastContactTime"
+      ],
+      "player_examples": [
+        "lastContactTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3160,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "lastContactTimeRel"
+      ],
+      "player_examples": [
+        "lastContactTimeRel"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3200,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "allowBailout"
+      ],
+      "player_examples": [
+        "allowBailout"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3384,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "repairAssistee"
+      ],
+      "player_examples": [
+        "repairAssistee"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3432,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "repairAssistant"
+      ],
+      "player_examples": [
+        "repairAssistant"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3480,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "extinguishAssistee"
+      ],
+      "player_examples": [
+        "extinguishAssistee"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3528,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "extinguishAssistant"
+      ],
+      "player_examples": [
+        "extinguishAssistant"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3688,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "enableGunners"
+      ],
+      "player_examples": [
+        "enableGunners"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3736,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "vulnerableByUnitUId"
+      ],
+      "player_examples": [
+        "vulnerableByUnitUId"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3824,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "lowRateUnitFlags"
+      ],
+      "player_examples": [
+        "lowRateUnitFlags"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3864,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "unitState"
+      ],
+      "player_examples": [
+        "unitState"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3928,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "farthestExitZoneId"
+      ],
+      "player_examples": [
+        "farthestExitZoneId"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 3992,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "unitArmyNo"
+      ],
+      "player_examples": [
+        "unitArmyNo"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 4088,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "stealthRadiusSq"
+      ],
+      "player_examples": [
+        "stealthRadiusSq"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 4128,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "stealthArmyMask"
+      ],
+      "player_examples": [
+        "stealthArmyMask"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 4536,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "scoutStartTime"
+      ],
+      "player_examples": [
+        "scoutStartTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 4576,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "scoutCooldown"
+      ],
+      "player_examples": [
+        "scoutCooldown"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 5376,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "prepareRepairAssisteeTime"
+      ],
+      "player_examples": [
+        "prepareRepairAssisteeTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 5416,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "prepareRepairAssistantTime"
+      ],
+      "player_examples": [
+        "prepareRepairAssistantTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 5568,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "nextUseArtilleryTime"
+      ],
+      "player_examples": [
+        "nextUseArtilleryTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 5760,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 1,
+      "examples": [
+        "prepareRepairCooldownsTime"
+      ],
+      "player_examples": [
+        "prepareRepairCooldownsTime"
+      ],
+      "score": 39
+    },
+    {
+      "offset": 5040,
+      "coverage": 37,
+      "unique_count": 37,
+      "player_like_count": 1,
+      "examples": [
+        "\u0001e:",
+        "\b6@",
+        "\bV:",
+        "\biR:",
+        "\u0018#A",
+        "\u0018O:",
+        "\u0018i:",
+        "!X:"
+      ],
+      "player_examples": [
+        "8gA"
+      ],
+      "score": 68
+    },
+    {
+      "offset": 4040,
+      "coverage": 34,
+      "unique_count": 14,
+      "player_like_count": 1,
+      "examples": [
+        "\u0001\"w",
+        "\bkw",
+        "\u000e!w",
+        "\u0010!w",
+        "\u0011\"w",
+        ")iw",
+        "1\u0001w",
+        "@\"w"
+      ],
+      "player_examples": [
+        "Pshw"
+      ],
+      "score": 52
+    },
+    {
+      "offset": 296,
+      "coverage": 26,
+      "unique_count": 26,
+      "player_like_count": 1,
+      "examples": [
+        "\u0010ZA",
+        "\u0010qP:",
+        ")U:",
+        "0N:",
+        "0P:",
+        "0X:",
+        "0XA",
+        "0߉A"
+      ],
+      "player_examples": [
+        "0XA"
+      ],
+      "score": 60
+    },
+    {
+      "offset": 5008,
+      "coverage": 11,
+      "unique_count": 11,
+      "player_like_count": 1,
+      "examples": [
+        ",rA",
+        "4|A",
+        "<XA",
+        "Kw@",
+        "L\u001b:",
+        "L;A",
+        "]\u0006A",
+        "c[;"
+      ],
+      "player_examples": [
+        "phA"
+      ],
+      "score": 30
+    },
+    {
+      "offset": 288,
+      "coverage": 9,
+      "unique_count": 9,
+      "player_like_count": 1,
+      "examples": [
+        "\u0002Y:",
+        "\u00103A",
+        "0XA",
+        "@je:",
+        "YA",
+        "`dt@",
+        "`hA",
+        "p6@"
+      ],
+      "player_examples": [
+        "0XA"
+      ],
+      "score": 26
+    },
+    {
+      "offset": 5000,
+      "coverage": 9,
+      "unique_count": 9,
+      "player_like_count": 1,
+      "examples": [
+        "\u0010\u0010XA",
+        "1\u0006A",
+        ">hA",
+        "E#:",
+        "`6[;",
+        "`S*",
+        "`VA",
+        "pwA"
+      ],
+      "player_examples": [
+        "pwA"
+      ],
+      "score": 26
+    },
+    {
+      "offset": 4056,
+      "coverage": 70,
+      "unique_count": 70,
+      "player_like_count": 0,
+      "examples": [
+        "defense_air_spawn_structure",
+        "t1_airfield_aaa_big_01",
+        "t1_airfield_aaa_big_02",
+        "t1_airfield_aaa_big_03",
+        "t1_airfield_aaa_big_04",
+        "t1_airfield_aaa_small_01",
+        "t1_airfield_aaa_small_02",
+        "t1_airfield_aaa_small_03"
+      ],
+      "player_examples": [],
+      "score": 60
+    },
+    {
+      "offset": 304,
+      "coverage": 70,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "PZ\u001chw",
+        "{\u001chw"
+      ],
+      "player_examples": [],
+      "score": 32
+    },
+    {
+      "offset": 464,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAUATSHH(ud~"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2056,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUATISHH(D\u000fv\u0004AN\u0007EAA\u0003\u000ff\u0006"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2096,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2136,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2176,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAUATSHH(ud~"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2216,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAUATSHH(ud~"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2256,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2328,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUATISHH(D\u000fn\u0004A\u001fwKEEt!A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2368,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "dummyVarForCrewLayout"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2376,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UAHIHATIH\bLLeDHL8\u001cf.\u000f"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2408,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "dummyVarForMissionAddText"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2416,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUIATISH(t%\u0001\u000f\\\u0002"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2584,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUATISHH(D\u000fn\u0004A\u001fwKEEt!A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2616,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "supportPlaneCatapultsFuseMask"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2624,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHHSHH\u0018t;A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2680,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2720,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHHSHH\u0018t;A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2760,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHHATSHH\u0010t9A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2800,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2840,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAUATSHH(ud~"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2880,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2920,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2968,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "dummyForDeathInfo"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2976,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHATISHH\u0010t\u001b\u0001\u000f2\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3032,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUATISHH(D\u000fv\u0004AN\u0007EAA\u0003\u000ff\u0006"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3080,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUATISHH(D\u000fv\u0004AN\u0007EAA\u0003\u000ff\u0006"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3128,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3168,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3208,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAUATSHH(ud~"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3392,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUATISHH8\u000f\u0011\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3440,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUATISHH8\u000f\u0011\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3488,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUATISHH8\u000f\u0011\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3536,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUATISHH8\u000f\u0011\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3648,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "invulnerable"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3656,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAUATSHH(ud~"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3696,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHHSHH\u0018t;A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3744,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUATISHH(D\u000fn\u0004A\u001fwKEEt!A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3784,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "dummyForUnitFlags"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3792,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHHSHH\u0018t\u001bA\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3832,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUATISHH(D\u000fn\u0004A\u001fwKEEt!A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3872,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHHATSHH\u0010t9A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 3936,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUATISHH(D\u000fn\u0004A\u001fwKEEt!A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 4000,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHHSHH\u0018t;A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 4096,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 4136,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHHSHH\u0018t;A\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 4160,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "\b4\u0007"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 4200,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "@d\u0007"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 4544,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 4584,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5016,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "\u0010F\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5384,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5424,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5456,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "prepareExtinguishAssistantTime"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5464,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5576,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5768,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UIHAWAVAUIATISH(D\u000fv\u0004\u000fF\u0002fE\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5856,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "killer"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 5864,
+      "coverage": 70,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVLv AUATISHH(t!\u0001\u000fx\u0002"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 664,
+      "coverage": 69,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        ";z'> >\u0001(\u0006\u001aXCA$(\u0006`&?5W=g>\u000fbG\u0013G>V?4>T>\u000fs?װ1>\u0001(\u0006VCAĽ!?"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 40,
+      "coverage": 68,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "@d\u0007"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 56,
+      "coverage": 68,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "@d\u0007"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 48,
+      "coverage": 49,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "\b4\u0007"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 64,
+      "coverage": 49,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "\b4\u0007"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 2112,
+      "coverage": 49,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        ";z'> >\u0001(\u0006\u001aXCA$(\u0006`&?5W=g>\u000fbG\u0013G>V?4>T>\u000fs?װ1>\u0001(\u0006VCAĽ!?"
+      ],
+      "player_examples": [],
+      "score": 31
+    },
+    {
+      "offset": 208,
+      "coverage": 42,
+      "unique_count": 41,
+      "player_like_count": 0,
+      "examples": [
+        "\u0003tw",
+        "\u0004#w",
+        "\u0010\"w",
+        "\u00109!w",
+        "\u0010Tq\"w",
+        "\u0010t\"w",
+        "\u0011!w",
+        "% w"
+      ],
+      "player_examples": [],
+      "score": 60
+    },
+    {
+      "offset": 400,
+      "coverage": 27,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "\u000f8\u0010"
+      ],
+      "player_examples": [],
+      "score": 28
+    },
+    {
+      "offset": 1984,
+      "coverage": 23,
+      "unique_count": 19,
+      "player_like_count": 0,
+      "examples": [
+        "germ_pzkpfw_38t_Aufklarungspanzer_default",
+        "germ_pzkpfw_III_ausf_B_default",
+        "germ_pzkpfw_IV_ausf_E_default",
+        "germ_sdkfz_222_default",
+        "germ_sdkfz_251_9_default",
+        "il_2_1941_2xfab250",
+        "jp_type_94_default",
+        "jp_type_97_chi_ha_default"
+      ],
+      "player_examples": [],
+      "score": 42
+    },
+    {
+      "offset": 4032,
+      "coverage": 21,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "\u0018V\u0007"
+      ],
+      "player_examples": [],
+      "score": 22
+    },
+    {
+      "offset": 560,
+      "coverage": 16,
+      "unique_count": 16,
+      "player_like_count": 0,
+      "examples": [
+        "\u0010Lx!w",
+        "\u0012#w",
+        "&!w",
+        "0!w",
+        "0SK\"w",
+        "0|#w",
+        ";#w",
+        "@N#w"
+      ],
+      "player_examples": [],
+      "score": 32
+    },
+    {
+      "offset": 4208,
+      "coverage": 11,
+      "unique_count": 11,
+      "player_like_count": 0,
+      "examples": [
+        "\u0001>H.)\u0004B\u0001",
+        "\u0010St(",
+        "\u00152\u0005",
+        "'7'\r\n  width-base:t='0';\r\n  size",
+        "9",
+        "԰԰԰԰԰԰԰԰԰԰԰հհհհհ",
+        "׵}\rճ\u0010<k\u001f֯\u0014",
+        "ذưаưٰٰٰٰٰٰٰ\u0018ݰذ"
+      ],
+      "player_examples": [],
+      "score": 22
+    },
+    {
+      "offset": 4216,
+      "coverage": 11,
+      "unique_count": 11,
+      "player_like_count": 0,
+      "examples": [
+        "\u0001>H.)\u0004B\u0001",
+        "\u0010St(",
+        "\u00152\u0005",
+        "'7'\r\n  width-base:t='0';\r\n  size",
+        "9",
+        "԰԰԰԰԰԰԰԰԰԰԰հհհհհ",
+        "׵}\rճ\u0010<k\u001f֯\u0014",
+        "ذưаưٰٰٰٰٰٰٰ\u0018ݰذ"
+      ],
+      "player_examples": [],
+      "score": 22
+    },
+    {
+      "offset": 4240,
+      "coverage": 11,
+      "unique_count": 11,
+      "player_like_count": 0,
+      "examples": [
+        "\u0001>H.)\u0004B\u0001",
+        "\u0010St(",
+        "\u00152\u0005",
+        "'7'\r\n  width-base:t='0';\r\n  size",
+        "9",
+        "԰԰԰԰԰԰԰԰԰԰԰հհհհհ",
+        "׵}\rճ\u0010<k\u001f֯\u0014",
+        "ذưаưٰٰٰٰٰٰٰ\u0018ݰذ"
+      ],
+      "player_examples": [],
+      "score": 22
+    },
+    {
+      "offset": 3848,
+      "coverage": 11,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "UHAWAVAUATISH(H7u\u0015H([A\\A]A^A_]f\u000f\u001fD",
+        "]A^A_]=e\u0005\u000f\u001fD",
+        "e\u0005\b}\tH!e\u0005HHe\u0005Hx2{}\tH",
+        "{}\t8Hx\u0018HtoH\btbIF@LHE{}\tHE\nf\u000f\u000f)MHx\u0018IH\u000f\u0001"
+      ],
+      "player_examples": [],
+      "score": 15
+    },
+    {
+      "offset": 1032,
+      "coverage": 10,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\u00101G\u0001",
+        "{H\bH\u0003"
+      ],
+      "player_examples": [],
+      "score": 12
+    },
+    {
+      "offset": 1936,
+      "coverage": 10,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\u00101G\u0001",
+        "pilot_luftwaffe_head_c*?q0-3-3na16"
+      ],
+      "player_examples": [],
+      "score": 12
+    },
+    {
+      "offset": 4696,
+      "coverage": 10,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "structures/ussr_122mm_m30"
+      ],
+      "player_examples": [],
+      "score": 11
+    },
+    {
+      "offset": 4704,
+      "coverage": 10,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "artillery"
+      ],
+      "player_examples": [],
+      "score": 11
+    },
+    {
+      "offset": 4168,
+      "coverage": 9,
+      "unique_count": 9,
+      "player_like_count": 0,
+      "examples": [
+        "\u00104A",
+        "0G=",
+        "1\u0001=",
+        "PR=",
+        "X2:",
+        "`\u000f3",
+        "p$:",
+        "vX;"
+      ],
+      "player_examples": [],
+      "score": 18
+    },
+    {
+      "offset": 472,
+      "coverage": 9,
+      "unique_count": 8,
+      "player_like_count": 0,
+      "examples": [
+        "6\u0014\u0001",
+        "6\u0017\u0001",
+        "61\u0001",
+        "6;\u0001",
+        "6_\u0001",
+        "6b\u0001",
+        "6p\u0001",
+        "6z\u0001"
+      ],
+      "player_examples": [],
+      "score": 17
+    },
+    {
+      "offset": 5704,
+      "coverage": 8,
+      "unique_count": 8,
+      "player_like_count": 0,
+      "examples": [
+        "\u0003#w",
+        "P#w",
+        "R#w",
+        "X!w",
+        "iN\"w",
+        "p #w",
+        "px\"w",
+        "И!w"
+      ],
+      "player_examples": [],
+      "score": 16
+    },
+    {
+      "offset": 2064,
+      "coverage": 8,
+      "unique_count": 6,
+      "player_like_count": 0,
+      "examples": [
+        "7\u0014\u0001",
+        "7\u0017\u0001",
+        "7'\u0001",
+        "7I\u0001",
+        "7c\u0001",
+        "7l\u0001"
+      ],
+      "player_examples": [],
+      "score": 14
+    },
+    {
+      "offset": 2424,
+      "coverage": 7,
+      "unique_count": 7,
+      "player_like_count": 0,
+      "examples": [
+        "1\u0005!",
+        "1\u0013!",
+        "1\u0017!",
+        "1\u0018!",
+        "11!",
+        "1F!",
+        "1o!"
+      ],
+      "player_examples": [],
+      "score": 14
+    },
+    {
+      "offset": 3944,
+      "coverage": 7,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "\u00171!",
+        "\u00175!",
+        "\u0017O!"
+      ],
+      "player_examples": [],
+      "score": 10
+    },
+    {
+      "offset": 136,
+      "coverage": 6,
+      "unique_count": 6,
+      "player_like_count": 0,
+      "examples": [
+        "\u0010E#w",
+        "0p#w",
+        "P\"w",
+        "Pc!w",
+        "`M!w",
+        "``!w"
+      ],
+      "player_examples": [],
+      "score": 12
+    },
+    {
+      "offset": 2592,
+      "coverage": 6,
+      "unique_count": 6,
+      "player_like_count": 0,
+      "examples": [
+        "2\u0017\u0001",
+        "21\u0001",
+        "25\u0001",
+        "2b\u0001",
+        "2i\u0001",
+        "2r\u0001"
+      ],
+      "player_examples": [],
+      "score": 12
+    },
+    {
+      "offset": 2184,
+      "coverage": 6,
+      "unique_count": 5,
+      "player_like_count": 0,
+      "examples": [
+        ":1\u0001",
+        ":9\u0001",
+        ":I\u0001",
+        ":f\u0001",
+        ":n\u0001"
+      ],
+      "player_examples": [],
+      "score": 11
+    },
+    {
+      "offset": 5064,
+      "coverage": 6,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "\u0005e;"
+      ],
+      "player_examples": [],
+      "score": 7
+    },
+    {
+      "offset": 2144,
+      "coverage": 5,
+      "unique_count": 5,
+      "player_like_count": 0,
+      "examples": [
+        "9\u0005\u0001",
+        "9\r\u0001",
+        "9\u0017\u0001",
+        "91\u0001",
+        "9p\u0001"
+      ],
+      "player_examples": [],
+      "score": 10
+    },
+    {
+      "offset": 2224,
+      "coverage": 5,
+      "unique_count": 5,
+      "player_like_count": 0,
+      "examples": [
+        ";E\u0001",
+        ";a\u0001",
+        ";c\u0001",
+        ";n\u0001",
+        ";x\u0001"
+      ],
+      "player_examples": [],
+      "score": 10
+    },
+    {
+      "offset": 3544,
+      "coverage": 5,
+      "unique_count": 5,
+      "player_like_count": 0,
+      "examples": [
+        "\u00111\u0001",
+        "\u00116\u0001",
+        "\u0011S\u0001",
+        "\u0011X\u0001",
+        "\u0011r\u0001"
+      ],
+      "player_examples": [],
+      "score": 10
+    },
+    {
+      "offset": 3664,
+      "coverage": 5,
+      "unique_count": 5,
+      "player_like_count": 0,
+      "examples": [
+        "\u0012F!",
+        "\u0012G!",
+        "\u0012T!",
+        "\u0012i!",
+        "\u0012u!"
+      ],
+      "player_examples": [],
+      "score": 10
+    },
+    {
+      "offset": 3800,
+      "coverage": 5,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "\u00150\u0001",
+        "\u00151\u0001",
+        "\u0015i\u0001",
+        "\u0015s\u0001"
+      ],
+      "player_examples": [],
+      "score": 9
+    },
+    {
+      "offset": 2032,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "\u0001H@XH}qHEcH@H@\u0002H@H@`H|\u000eH\rpH\u0001LH\u0003H듋",
+        "\u00113\u0015#\u001167\u0014\u0017\u0004\u0005\u0001!\u0015!\u0002\u0004\\>b\f\u000e\nHR\u000e\u0012 \u0005fr,>\u00010\\U\u0005\"\u0002䂊\u0004~\u0003\u001c\u0003\b\u0003Ք^nV \u001ab\u0003.$",
+        "283 mm/54,5 SK C/34 cannon",
+        "PX\u0001t\u000bǄ$0\u0001"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 2104,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "8\u0017\u0001",
+        "8\u0018\u0001",
+        "8a\u0001",
+        "8u\u0001"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 3704,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "\u00132\u0001",
+        "\u0013c\u0001",
+        "\u0013m\u0001",
+        "\u0013r\u0001"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 3752,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "\u00142\u0001",
+        "\u0014X\u0001",
+        "\u0014e\u0001",
+        "\u0014o\u0001"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 3840,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "\u00161!",
+        "\u0016X!",
+        "\u0016i!",
+        "\u0016l!"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 3880,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "<2\u0001",
+        "<i\u0001",
+        "<j\u0001",
+        "<r\u0001"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 4008,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "\u00182\u0001",
+        "\u0018G\u0001",
+        "\u0018X\u0001",
+        "\u0018Y\u0001"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 4552,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "\u001b5\u0001",
+        "\u001bQ\u0001",
+        "\u001bq\u0001",
+        "\u001bs\u0001"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 5392,
+      "coverage": 4,
+      "unique_count": 4,
+      "player_like_count": 0,
+      "examples": [
+        "#B\u0001",
+        "#H\u0001",
+        "#f\u0001",
+        "#o\u0001"
+      ],
+      "player_examples": [],
+      "score": 8
+    },
+    {
+      "offset": 2888,
+      "coverage": 4,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        ",1\u0001",
+        ",d\u0001",
+        ",m\u0001"
+      ],
+      "player_examples": [],
+      "score": 7
+    },
+    {
+      "offset": 16,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "!d!",
+        "!m!",
+        "!x!"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 1440,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "\b(&/%&/\u001fd\u0010A/%WtA/\u001ffe\u001bz)\tnN^Ҕ+j\b0\bJ\u001225ybh\bk\u0010\u001fkT\u0011R\u0010:ZфV-ہ#\u0002",
+        "&J{A",
+        "ELF\u0002\u0001\u0001\u0003"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 2384,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "\u00051!",
+        "\u00058!",
+        "\u0005k!"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 2632,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        ">d\u0001",
+        ">s\u0001",
+        ">t\u0001"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 2728,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "\u0007E\u0001",
+        "\u0007U\u0001",
+        "\u0007e\u0001"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 3136,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "\u000e1\u0001",
+        "\u000eN\u0001",
+        "\u000ec\u0001"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 3216,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "\u000fb!",
+        "\u000fh!",
+        "\u000fn!"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 3240,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "cat_xbox_alias_en",
+        "dq:",
+        "u~h>\fX#@=c'\u0014I\u001b2A% \u00123\u0018?C~"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 3712,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "\u0015WA",
+        "?P\u0018@",
+        "L?*b"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 4632,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "/?l2f",
+        ":w",
+        "[C?%I3\u0013"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 5872,
+      "coverage": 3,
+      "unique_count": 3,
+      "player_like_count": 0,
+      "examples": [
+        "\"3\u0001",
+        "\"e\u0001",
+        "\"w\u0001"
+      ],
+      "player_examples": [],
+      "score": 6
+    },
+    {
+      "offset": 1280,
+      "coverage": 3,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "A\u000f\u0010$\u0001"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 112,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\btw",
+        "m#w"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 184,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "6_us༿!w",
+        "\"w"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 616,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "Y@g\u001d(??\u001b>",
+        "qIm\u0004?;\u0006?׀\u000e?74L?0In\u000eB"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 952,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\u0010q6",
+        "{H\bH\u0003"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 1624,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\u0002I|$@\u000foCpLchIŃGL\u0001H",
+        "B(^"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 2336,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\u0002j!",
+        "\u0002u!"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 2688,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\u0006Z\u0001",
+        "\u0006c\u0001"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 2768,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\b3\u0001",
+        "\be\u0001"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 3176,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "+F\u0001",
+        "+s\u0001"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 3496,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        ".e!",
+        ".s!"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 4896,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\u0007ID\u001eID\u001fLH)H\f\u0003H)H\u0003H-H8螾\u0002H8HH(\u0002H}",
+        "A\u000f\u0010$\u0001"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 5632,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "HoA",
+        "Pp)"
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 6040,
+      "coverage": 2,
+      "unique_count": 2,
+      "player_like_count": 0,
+      "examples": [
+        "\u00101G\u0001",
+        "p\t("
+      ],
+      "player_examples": [],
+      "score": 4
+    },
+    {
+      "offset": 0,
+      "coverage": 2,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "0k\u0001"
+      ],
+      "player_examples": [],
+      "score": 3
+    },
+    {
+      "offset": 240,
+      "coverage": 2,
+      "unique_count": 1,
+      "player_like_count": 0,
+      "examples": [
+        "\u0002l\u0001"
+      ],
+      "player_examples": [],
+      "score": 3
+    }
+  ],
+  "player_name_candidate_offsets": [
+    "0x1f0"
+  ],
+  "info_strings": [
+    {
+      "label": "GROUND",
+      "unit_ptr": 978228496,
+      "info_ptr": 715584800,
+      "info_off": 56,
+      "text": "exp_structure",
+      "model": "dummy"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978259264,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978259264,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978259264,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978259264,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978288736,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978288736,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978288736,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978288736,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978320592,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978320592,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978320592,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978320592,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978350064,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978350064,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978350064,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978350064,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978379536,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978379536,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978379536,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978379536,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978409888,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978409888,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978409888,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978409888,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978444736,
+      "info_ptr": 715598624,
+      "info_off": 16,
+      "text": "air_defence/germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978444736,
+      "info_ptr": 715598624,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978444736,
+      "info_ptr": 715598624,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978444736,
+      "info_ptr": 715598624,
+      "info_off": 64,
+      "text": "germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978475088,
+      "info_ptr": 715598624,
+      "info_off": 16,
+      "text": "air_defence/germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978475088,
+      "info_ptr": 715598624,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978475088,
+      "info_ptr": 715598624,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978475088,
+      "info_ptr": 715598624,
+      "info_off": 64,
+      "text": "germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978505440,
+      "info_ptr": 715598624,
+      "info_off": 16,
+      "text": "air_defence/germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978505440,
+      "info_ptr": 715598624,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978505440,
+      "info_ptr": 715598624,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978505440,
+      "info_ptr": 715598624,
+      "info_off": 64,
+      "text": "germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978536144,
+      "info_ptr": 715598624,
+      "info_off": 16,
+      "text": "air_defence/germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978536144,
+      "info_ptr": 715598624,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978536144,
+      "info_ptr": 715598624,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978536144,
+      "info_ptr": 715598624,
+      "info_off": 64,
+      "text": "germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978567376,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978567376,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978567376,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978567376,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978598080,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978598080,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978598080,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978598080,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978628784,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978628784,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978628784,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978628784,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978659488,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978659488,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978659488,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978659488,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978698656,
+      "info_ptr": 715598624,
+      "info_off": 16,
+      "text": "air_defence/germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978698656,
+      "info_ptr": 715598624,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978698656,
+      "info_ptr": 715598624,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978698656,
+      "info_ptr": 715598624,
+      "info_off": 64,
+      "text": "germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978728128,
+      "info_ptr": 715598624,
+      "info_off": 16,
+      "text": "air_defence/germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978728128,
+      "info_ptr": 715598624,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978728128,
+      "info_ptr": 715598624,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978728128,
+      "info_ptr": 715598624,
+      "info_off": 64,
+      "text": "germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978758480,
+      "info_ptr": 715598624,
+      "info_off": 16,
+      "text": "air_defence/germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978758480,
+      "info_ptr": 715598624,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978758480,
+      "info_ptr": 715598624,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978758480,
+      "info_ptr": 715598624,
+      "info_off": 64,
+      "text": "germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978788832,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978788832,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978788832,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978788832,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978819376,
+      "info_ptr": 715586816,
+      "info_off": 16,
+      "text": "air_defence/germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978819376,
+      "info_ptr": 715586816,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_37mm_flak43_airfield.blk",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978819376,
+      "info_ptr": 715586816,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978819376,
+      "info_ptr": 715586816,
+      "info_off": 64,
+      "text": "germ_37mm_flak43_airfield",
+      "model": "germ_37mm_flak43_airfield"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978850080,
+      "info_ptr": 715598624,
+      "info_off": 16,
+      "text": "air_defence/germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978850080,
+      "info_ptr": 715598624,
+      "info_off": 24,
+      "text": "gameData/units/air_defence/germ_88mm_flak36.blk",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978850080,
+      "info_ptr": 715598624,
+      "info_off": 56,
+      "text": "exp_aaa",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978850080,
+      "info_ptr": 715598624,
+      "info_off": 64,
+      "text": "germ_88mm_flak36",
+      "model": "germ_88mm_flak36"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978880784,
+      "info_ptr": 976510560,
+      "info_off": 16,
+      "text": "tankModels/ussr_bt_7_m",
+      "model": "ussr_bt_7_m"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978880784,
+      "info_ptr": 976510560,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/ussr_bt_7_m.blk",
+      "model": "ussr_bt_7_m"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978880784,
+      "info_ptr": 976510560,
+      "info_off": 48,
+      "text": "Light tank",
+      "model": "ussr_bt_7_m"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978880784,
+      "info_ptr": 976510560,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "ussr_bt_7_m"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978880784,
+      "info_ptr": 976510560,
+      "info_off": 64,
+      "text": "ussr_bt_7_m",
+      "model": "ussr_bt_7_m"
+    },
+    {
+      "label": "MY_GROUND",
+      "unit_ptr": 979065344,
+      "info_ptr": 1031238096,
+      "info_off": 16,
+      "text": "tankModels/us_m2a4_1st_armor_div",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "MY_GROUND",
+      "unit_ptr": 979065344,
+      "info_ptr": 1031238096,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/us_m2a4_1st_armor_div.blk",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "MY_GROUND",
+      "unit_ptr": 979065344,
+      "info_ptr": 1031238096,
+      "info_off": 48,
+      "text": "Light tank",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "MY_GROUND",
+      "unit_ptr": 979065344,
+      "info_ptr": 1031238096,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "MY_GROUND",
+      "unit_ptr": 979065344,
+      "info_ptr": 1031238096,
+      "info_off": 64,
+      "text": "us_m2a4_1st_armor_div",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979234352,
+      "info_ptr": 976439296,
+      "info_off": 16,
+      "text": "tankModels/sw_stormpjas_fm43_44",
+      "model": "sw_stormpjas_fm43_44"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979234352,
+      "info_ptr": 976439296,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/sw_stormpjas_fm43_44.blk",
+      "model": "sw_stormpjas_fm43_44"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979234352,
+      "info_ptr": 976439296,
+      "info_off": 56,
+      "text": "exp_tank_destroyer",
+      "model": "sw_stormpjas_fm43_44"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979234352,
+      "info_ptr": 976439296,
+      "info_off": 64,
+      "text": "sw_stormpjas_fm43_44",
+      "model": "sw_stormpjas_fm43_44"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979417536,
+      "info_ptr": 754430352,
+      "info_off": 16,
+      "text": "tankModels/ussr_t_26_1940",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979417536,
+      "info_ptr": 754430352,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/ussr_t_26_1940.blk",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979417536,
+      "info_ptr": 754430352,
+      "info_off": 48,
+      "text": "Light tank",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979417536,
+      "info_ptr": 754430352,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979417536,
+      "info_ptr": 754430352,
+      "info_off": 64,
+      "text": "ussr_t_26_1940",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979478944,
+      "info_ptr": 1065473792,
+      "info_off": 16,
+      "text": "tankModels/germ_sdkfz_222",
+      "model": "germ_sdkfz_222"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979478944,
+      "info_ptr": 1065473792,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/germ_sdkfz_222.blk",
+      "model": "germ_sdkfz_222"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979478944,
+      "info_ptr": 1065473792,
+      "info_off": 56,
+      "text": "exp_SPAA",
+      "model": "germ_sdkfz_222"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979478944,
+      "info_ptr": 1065473792,
+      "info_off": 64,
+      "text": "germ_sdkfz_222",
+      "model": "germ_sdkfz_222"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979693872,
+      "info_ptr": 976333056,
+      "info_off": 16,
+      "text": "tankModels/sw_ikv_72",
+      "model": "sw_ikv_72"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979693872,
+      "info_ptr": 976333056,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/sw_ikv_72.blk",
+      "model": "sw_ikv_72"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979693872,
+      "info_ptr": 976333056,
+      "info_off": 56,
+      "text": "exp_tank_destroyer",
+      "model": "sw_ikv_72"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 979693872,
+      "info_ptr": 976333056,
+      "info_off": 64,
+      "text": "sw_ikv_72",
+      "model": "sw_ikv_72"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 974453040,
+      "info_ptr": 994568720,
+      "info_off": 16,
+      "text": "tankModels/germ_pzkpfw_38t_Aufklarungspanzer",
+      "model": "germ_pzkpfw_38t_Aufklarungspanzer"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 974453040,
+      "info_ptr": 994568720,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/germ_pzkpfw_38t_Aufklarungspanzer.blk",
+      "model": "germ_pzkpfw_38t_Aufklarungspanzer"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 974453040,
+      "info_ptr": 994568720,
+      "info_off": 48,
+      "text": "Light tank",
+      "model": "germ_pzkpfw_38t_Aufklarungspanzer"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 974453040,
+      "info_ptr": 994568720,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "germ_pzkpfw_38t_Aufklarungspanzer"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 974453040,
+      "info_ptr": 994568720,
+      "info_off": 64,
+      "text": "germ_pzkpfw_38t_Aufklarungspanzer",
+      "model": "germ_pzkpfw_38t_Aufklarungspanzer"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 871193088,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 871193088,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 871193088,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 871193088,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978198384,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978198384,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978198384,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 978198384,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988321792,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988321792,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988321792,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988321792,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988292320,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988292320,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988292320,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988292320,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988351264,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988351264,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988351264,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988351264,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988439680,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988439680,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988439680,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988439680,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988410208,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988410208,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988410208,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988410208,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988233376,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988233376,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988233376,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988233376,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988262848,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988262848,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988262848,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988262848,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988380736,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988380736,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988380736,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988380736,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988203904,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988203904,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988203904,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988203904,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988174432,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988174432,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988174432,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 988174432,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1081369408,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1081369408,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1081369408,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1081369408,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082045552,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082045552,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082045552,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082045552,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 718076592,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 718076592,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 718076592,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 718076592,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091083152,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091083152,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091083152,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091083152,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096339216,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096339216,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096339216,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096339216,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096461808,
+      "info_ptr": 1095996400,
+      "info_off": 16,
+      "text": "tankModels/us_lvt_a_1",
+      "model": "us_lvt_a_1"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096461808,
+      "info_ptr": 1095996400,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/us_lvt_a_1.blk",
+      "model": "us_lvt_a_1"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096461808,
+      "info_ptr": 1095996400,
+      "info_off": 48,
+      "text": "Light tank",
+      "model": "us_lvt_a_1"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096461808,
+      "info_ptr": 1095996400,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "us_lvt_a_1"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1096461808,
+      "info_ptr": 1095996400,
+      "info_off": 64,
+      "text": "us_lvt_a_1",
+      "model": "us_lvt_a_1"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1098864752,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1098864752,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1098864752,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1098864752,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099305568,
+      "info_ptr": 1100929792,
+      "info_off": 16,
+      "text": "tankModels/germ_pzkpfw_IV_ausf_E",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099305568,
+      "info_ptr": 1100929792,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/germ_pzkpfw_IV_ausf_E.blk",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099305568,
+      "info_ptr": 1100929792,
+      "info_off": 48,
+      "text": "Medium tank",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099305568,
+      "info_ptr": 1100929792,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099305568,
+      "info_ptr": 1100929792,
+      "info_off": 64,
+      "text": "germ_pzkpfw_IV_ausf_E",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1100863648,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1100863648,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1100863648,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1100863648,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099554320,
+      "info_ptr": 1032794640,
+      "info_off": 16,
+      "text": "tankModels/ussr_t_28",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099554320,
+      "info_ptr": 1032794640,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/ussr_t_28.blk",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099554320,
+      "info_ptr": 1032794640,
+      "info_off": 48,
+      "text": "Medium tank",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099554320,
+      "info_ptr": 1032794640,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1099554320,
+      "info_ptr": 1032794640,
+      "info_off": 64,
+      "text": "ussr_t_28",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101265424,
+      "info_ptr": 1100929792,
+      "info_off": 16,
+      "text": "tankModels/germ_pzkpfw_IV_ausf_E",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101265424,
+      "info_ptr": 1100929792,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/germ_pzkpfw_IV_ausf_E.blk",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101265424,
+      "info_ptr": 1100929792,
+      "info_off": 48,
+      "text": "Medium tank",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101265424,
+      "info_ptr": 1100929792,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101265424,
+      "info_ptr": 1100929792,
+      "info_off": 64,
+      "text": "germ_pzkpfw_IV_ausf_E",
+      "model": "germ_pzkpfw_IV_ausf_E"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1102161600,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1102161600,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1102161600,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1102161600,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1102457968,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1102457968,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1102457968,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1102457968,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1103029056,
+      "info_ptr": 1090723104,
+      "info_off": 16,
+      "text": "tankModels/cn_type_97_chi_ha",
+      "model": "cn_type_97_chi_ha"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1103029056,
+      "info_ptr": 1090723104,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/cn_type_97_chi_ha.blk",
+      "model": "cn_type_97_chi_ha"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1103029056,
+      "info_ptr": 1090723104,
+      "info_off": 48,
+      "text": "Medium tank",
+      "model": "cn_type_97_chi_ha"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1103029056,
+      "info_ptr": 1090723104,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "cn_type_97_chi_ha"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1103029056,
+      "info_ptr": 1090723104,
+      "info_off": 64,
+      "text": "cn_type_97_chi_ha",
+      "model": "cn_type_97_chi_ha"
+    },
+    {
+      "label": "AIR",
+      "unit_ptr": 1105166416,
+      "info_ptr": 1105312512,
+      "info_off": 56,
+      "text": "exp_fighter",
+      "model": "ki-27_otsu"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104565984,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104565984,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104565984,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104565984,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104595456,
+      "info_ptr": 1032794640,
+      "info_off": 16,
+      "text": "tankModels/ussr_t_28",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104595456,
+      "info_ptr": 1032794640,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/ussr_t_28.blk",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104595456,
+      "info_ptr": 1032794640,
+      "info_off": 48,
+      "text": "Medium tank",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104595456,
+      "info_ptr": 1032794640,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1104595456,
+      "info_ptr": 1032794640,
+      "info_off": 64,
+      "text": "ussr_t_28",
+      "model": "ussr_t_28"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082675344,
+      "info_ptr": 1031238096,
+      "info_off": 16,
+      "text": "tankModels/us_m2a4_1st_armor_div",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082675344,
+      "info_ptr": 1031238096,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/us_m2a4_1st_armor_div.blk",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082675344,
+      "info_ptr": 1031238096,
+      "info_off": 48,
+      "text": "Light tank",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082675344,
+      "info_ptr": 1031238096,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1082675344,
+      "info_ptr": 1031238096,
+      "info_off": 64,
+      "text": "us_m2a4_1st_armor_div",
+      "model": "us_m2a4_1st_armor_div"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1040981360,
+      "info_ptr": 1101041088,
+      "info_off": 16,
+      "text": "tankModels/jp_halftrack_m16",
+      "model": "jp_halftrack_m16"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1040981360,
+      "info_ptr": 1101041088,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/jp_halftrack_m16.blk",
+      "model": "jp_halftrack_m16"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1040981360,
+      "info_ptr": 1101041088,
+      "info_off": 56,
+      "text": "exp_SPAA",
+      "model": "jp_halftrack_m16"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1040981360,
+      "info_ptr": 1101041088,
+      "info_off": 64,
+      "text": "jp_halftrack_m16",
+      "model": "jp_halftrack_m16"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1044974256,
+      "info_ptr": 720487296,
+      "info_off": 16,
+      "text": "tankModels/germ_sdkfz_251_9",
+      "model": "germ_sdkfz_251_9"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1044974256,
+      "info_ptr": 720487296,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/germ_sdkfz_251_9.blk",
+      "model": "germ_sdkfz_251_9"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1044974256,
+      "info_ptr": 720487296,
+      "info_off": 56,
+      "text": "exp_tank_destroyer",
+      "model": "germ_sdkfz_251_9"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1044974256,
+      "info_ptr": 720487296,
+      "info_off": 64,
+      "text": "germ_sdkfz_251_9",
+      "model": "germ_sdkfz_251_9"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101295472,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101295472,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101295472,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101295472,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 995864528,
+      "info_ptr": 1082170624,
+      "info_off": 16,
+      "text": "tankModels/ussr_gaz_4m",
+      "model": "ussr_gaz_4m"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 995864528,
+      "info_ptr": 1082170624,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/ussr_gaz_4m.blk",
+      "model": "ussr_gaz_4m"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 995864528,
+      "info_ptr": 1082170624,
+      "info_off": 56,
+      "text": "exp_SPAA",
+      "model": "ussr_gaz_4m"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 995864528,
+      "info_ptr": 1082170624,
+      "info_off": 64,
+      "text": "ussr_gaz_4m",
+      "model": "ussr_gaz_4m"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1075572000,
+      "info_ptr": 1031757488,
+      "info_off": 16,
+      "text": "tankModels/jp_type_94",
+      "model": "jp_type_94"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1075572000,
+      "info_ptr": 1031757488,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/jp_type_94.blk",
+      "model": "jp_type_94"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1075572000,
+      "info_ptr": 1031757488,
+      "info_off": 56,
+      "text": "exp_SPAA",
+      "model": "jp_type_94"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1075572000,
+      "info_ptr": 1031757488,
+      "info_off": 64,
+      "text": "jp_type_94",
+      "model": "jp_type_94"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091724064,
+      "info_ptr": 1041045456,
+      "info_off": 16,
+      "text": "tankModels/germ_pzkpfw_III_ausf_B",
+      "model": "germ_pzkpfw_III_ausf_B"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091724064,
+      "info_ptr": 1041045456,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/germ_pzkpfw_III_ausf_B.blk",
+      "model": "germ_pzkpfw_III_ausf_B"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091724064,
+      "info_ptr": 1041045456,
+      "info_off": 48,
+      "text": "Medium tank",
+      "model": "germ_pzkpfw_III_ausf_B"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091724064,
+      "info_ptr": 1041045456,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "germ_pzkpfw_III_ausf_B"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091724064,
+      "info_ptr": 1041045456,
+      "info_off": 64,
+      "text": "germ_pzkpfw_III_ausf_B",
+      "model": "germ_pzkpfw_III_ausf_B"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091664000,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091664000,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091664000,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091664000,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091693472,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091693472,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091693472,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1091693472,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1077329488,
+      "info_ptr": 1090267072,
+      "info_off": 16,
+      "text": "tankModels/ussr_bt_7_1937",
+      "model": "ussr_bt_7_1937"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1077329488,
+      "info_ptr": 1090267072,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/ussr_bt_7_1937.blk",
+      "model": "ussr_bt_7_1937"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1077329488,
+      "info_ptr": 1090267072,
+      "info_off": 48,
+      "text": "Light tank",
+      "model": "ussr_bt_7_1937"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1077329488,
+      "info_ptr": 1090267072,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "ussr_bt_7_1937"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1077329488,
+      "info_ptr": 1090267072,
+      "info_off": 64,
+      "text": "ussr_bt_7_1937",
+      "model": "ussr_bt_7_1937"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101813376,
+      "info_ptr": 1061856064,
+      "info_off": 16,
+      "text": "structures/ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101813376,
+      "info_ptr": 1061856064,
+      "info_off": 24,
+      "text": "gameData/units/structures/ussr_122mm_m30.blk",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101813376,
+      "info_ptr": 1061856064,
+      "info_off": 56,
+      "text": "exp_fortification",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1101813376,
+      "info_ptr": 1061856064,
+      "info_off": 64,
+      "text": "ussr_122mm_m30",
+      "model": "ussr_122mm_m30"
+    },
+    {
+      "label": "AIR",
+      "unit_ptr": 1097321328,
+      "info_ptr": 1103095712,
+      "info_off": 8,
+      "text": "il_2_1941",
+      "model": "il_2_1941"
+    },
+    {
+      "label": "AIR",
+      "unit_ptr": 1097321328,
+      "info_ptr": 1103095712,
+      "info_off": 16,
+      "text": "il_2_1941",
+      "model": "il_2_1941"
+    },
+    {
+      "label": "AIR",
+      "unit_ptr": 1097321328,
+      "info_ptr": 1103095712,
+      "info_off": 24,
+      "text": "gameData/flightModels/il_2_1941.blk",
+      "model": "il_2_1941"
+    },
+    {
+      "label": "AIR",
+      "unit_ptr": 1097321328,
+      "info_ptr": 1103095712,
+      "info_off": 56,
+      "text": "exp_assault",
+      "model": "il_2_1941"
+    },
+    {
+      "label": "AIR",
+      "unit_ptr": 1097321328,
+      "info_ptr": 1103095712,
+      "info_off": 64,
+      "text": "il_2_1941",
+      "model": "il_2_1941"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1105656784,
+      "info_ptr": 754430352,
+      "info_off": 16,
+      "text": "tankModels/ussr_t_26_1940",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1105656784,
+      "info_ptr": 754430352,
+      "info_off": 24,
+      "text": "gameData/units/tankModels/ussr_t_26_1940.blk",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1105656784,
+      "info_ptr": 754430352,
+      "info_off": 48,
+      "text": "Light tank",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1105656784,
+      "info_ptr": 754430352,
+      "info_off": 56,
+      "text": "exp_tank",
+      "model": "ussr_t_26_1940"
+    },
+    {
+      "label": "GROUND",
+      "unit_ptr": 1105656784,
+      "info_ptr": 754430352,
+      "info_off": 64,
+      "text": "ussr_t_26_1940",
+      "model": "ussr_t_26_1940"
+    }
+  ]
+}

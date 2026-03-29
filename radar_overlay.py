@@ -42,6 +42,8 @@ BOT_KEYWORDS = [
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
 MAX_GROUND_TARGET_DISTANCE = 7000.0
 MAX_AIR_TARGET_DISTANCE = 18000.0
+ORIGIN_GHOST_RADIUS = 35.0
+ORIGIN_GHOST_MY_DIST_MIN = 250.0
 
 # 🎯 TURN BOOST: ตัวคูณช่วยดึงเป้าไปทางที่เลี้ยว
 # 1.0 = ปกติ (ตามที่ AI คำนวณ)
@@ -76,6 +78,7 @@ def is_ground_threat(barrel_base, barrel_tip, target_pos):
 class ESPOverlay(QWidget):
     def __init__(self, scanner, base_address):
         super().__init__()
+        set_dashboard_mode(True)
         self.scanner = scanner
         self.base_address = base_address
         self.max_reload_cache = {}
@@ -95,6 +98,7 @@ class ESPOverlay(QWidget):
         self.target_cycle_index = 0
         self.q_pressed_last = False
         self.last_debug_log_time = 0.0
+        self.console_initialized = False
 
         self._update_screen_metrics()
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -320,18 +324,32 @@ class ESPOverlay(QWidget):
                 unit_name_lower = resolved_name.lower()
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
 
-                if my_pos:
-                    pos = get_unit_pos(self.scanner, u_ptr)
-                    if pos:
-                        dx = pos[0] - my_pos[0]
-                        dy = pos[1] - my_pos[1]
-                        dz = pos[2] - my_pos[2]
-                        dist_to_me = math.sqrt(dx * dx + dy * dy + dz * dz)
-                        max_dist = MAX_AIR_TARGET_DISTANCE if resolved_is_air else MAX_GROUND_TARGET_DISTANCE
-                        if dist_to_me > max_dist:
-                            continue
+                pos = get_unit_pos(self.scanner, u_ptr)
+                if not pos:
+                    continue
 
-                valid_targets.append((u_ptr, resolved_name, reload_val, resolved_is_air))
+                # ตัดยูนิตผี/ดัมมีที่ตำแหน่งค้างใกล้ origin (0,0,0)
+                pos_origin_dist = math.sqrt(pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2])
+                if pos_origin_dist <= ORIGIN_GHOST_RADIUS:
+                    my_origin_dist = 0.0
+                    if my_pos:
+                        my_origin_dist = math.sqrt(
+                            my_pos[0] * my_pos[0] + my_pos[1] * my_pos[1] + my_pos[2] * my_pos[2]
+                        )
+                    if my_origin_dist >= ORIGIN_GHOST_MY_DIST_MIN:
+                        continue
+
+                dist_to_me = 0.0
+                if my_pos:
+                    dx = pos[0] - my_pos[0]
+                    dy = pos[1] - my_pos[1]
+                    dz = pos[2] - my_pos[2]
+                    dist_to_me = math.sqrt(dx * dx + dy * dy + dz * dz)
+                    max_dist = MAX_AIR_TARGET_DISTANCE if resolved_is_air else MAX_GROUND_TARGET_DISTANCE
+                    if dist_to_me > max_dist:
+                        continue
+
+                valid_targets.append((u_ptr, resolved_name, reload_val, resolved_is_air, pos, dist_to_me))
             
             dprint_frame_stats(
                 self.current_fps, 
@@ -344,9 +362,7 @@ class ESPOverlay(QWidget):
 
             # 🎯 เลือกเป้าหมายจากลิสต์ที่มองเห็น โดยให้ Q วนเป้าได้จริง
             visible_targets = []
-            for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
-                pos = get_unit_pos(self.scanner, u_ptr)
-                if not pos: continue
+            for u_ptr, raw_name, reload_val, is_air_target, pos, dist_to_me in valid_targets:
                 res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
                 if res_pos and res_pos[2] > 0:
                     dist_crosshair = math.hypot(res_pos[0] - self.center_x, res_pos[1] - self.center_y)
@@ -388,14 +404,14 @@ class ESPOverlay(QWidget):
             # ========================================================
             # 🎯 MAIN PROCESSING LOOP
             # ========================================================
-            for u_ptr, raw_name, reload_val, is_air_target in valid_targets:
+            for u_ptr, raw_name, reload_val, is_air_target, pos, dist_to_me in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
                 try:
                     box_data = get_unit_3d_box_data(self.scanner, u_ptr)
-                    pos = box_data[0] if box_data else get_unit_pos(self.scanner, u_ptr)
+                    pos = box_data[0] if box_data else pos
                     if not pos: continue
                     
-                    dist = math.sqrt((pos[0]-my_pos[0])**2 + (pos[1]-my_pos[1])**2 + (pos[2]-my_pos[2])**2) if my_pos else 0
+                    dist = dist_to_me if my_pos else 0
                     
                     # 💥 เพิ่มตัวแปรสำหรับวาดเส้นปืน (Barrel) และแจ้งเตือนภัยคุกคาม
                     barrel_base_2d = None
@@ -672,8 +688,27 @@ class ESPOverlay(QWidget):
                         vel_source = vel_meta.get('source', 'raw')
                         raw_mag = vel_meta.get('raw_mag', 0.0) * 3.6
                         pos_mag = vel_meta.get('pos_mag', 0.0) * 3.6
+                        info_ptr = 0
+                        mov_ptr = 0
+                        mov_off = OFF_AIR_MOVEMENT if physics_is_air else OFF_GROUND_MOVEMENT
+                        try:
+                            info_raw = self.scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8)
+                            if info_raw and len(info_raw) == 8:
+                                info_ptr = struct.unpack("<Q", info_raw)[0]
+                        except:
+                            info_ptr = 0
+                        try:
+                            mov_raw = self.scanner.read_mem(u_ptr + mov_off, 8)
+                            if mov_raw and len(mov_raw) == 8:
+                                mov_ptr = struct.unpack("<Q", mov_raw)[0]
+                        except:
+                            mov_ptr = 0
                         # ใช้ ANSI Code ย้อน Cursor ไปบนสุด และล้างถึงท้ายหน้าจอ (\033[H\033[J)
-                        sys.stdout.write("\033[H")
+                        if not self.console_initialized:
+                            sys.stdout.write("\033[2J\033[H")
+                            self.console_initialized = True
+                        else:
+                            sys.stdout.write("\033[H\033[J")
                         
                         my_speed = math.sqrt(my_vx**2 + my_vy**2 + my_vz**2) * 3.6
                         target_speed = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
@@ -686,6 +721,7 @@ class ESPOverlay(QWidget):
                         out += f"🚀 Velocity   : {my_speed:>6.1f} km/h | V:({my_vx:>6.2f}, {my_vy:>6.2f}, {my_vz:>6.2f})\n"
                         out += "-" * 64 + "\n"
                         out += f"🎯 [TARGET]   : {clean_name.upper()} {'[LOCKED]':>35}\n"
+                        out += f"🧷 Ptr/Off    : UNIT:{hex(u_ptr)} | INFO:{hex(info_ptr) if info_ptr else '0x0'} | MOV:{hex(mov_ptr) if mov_ptr else '0x0'} @ {hex(mov_off)}\n"
                         out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
                         out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f}) | SRC:{vel_source}\n"
                         out += f"📡 Vel Check  : raw={raw_mag:>6.1f} km/h | pos={pos_mag:>6.1f} km/h | PTR:{hex(u_ptr)}\n"
@@ -695,7 +731,7 @@ class ESPOverlay(QWidget):
                         out += f"🔫 Bullet     : Spd:{current_bullet_speed:.0f} m/s | CD:{current_bullet_cd:.2f} | Mass:{current_bullet_mass:.2f}\n"
                         out += f"📉 Drop       : Gravity: +{gravity_offset:>5.2f} m | Zeroing: -{sight_drop_comp:>5.2f} m\n"
                         out += "================================================================\n"
-                        out += " [Q] Cycle Targets | [Ctrl+C] Exit"
+                        out += " [Q] Cycle Targets | [Ctrl+C] Exit\n"
                         
                         sys.stdout.write(out)
                         sys.stdout.flush()
