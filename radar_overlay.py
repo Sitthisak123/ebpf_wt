@@ -129,7 +129,9 @@ class ESPOverlay(QWidget):
 
         if cached and pos:
             dt = curr_t - cached['time']
-            if 0.005 <= dt <= 0.75:
+            min_dt = 0.005 if is_air else 0.03
+            max_dt = 0.75 if is_air else 0.60
+            if min_dt <= dt <= max_dt:
                 dx = pos[0] - cached['pos'][0]
                 dy = pos[1] - cached['pos'][1]
                 dz = pos[2] - cached['pos'][2]
@@ -166,6 +168,14 @@ class ESPOverlay(QWidget):
                     (raw_vel[2] * 0.65) + (pos_vel[2] * 0.35),
                 )
                 source = "blended"
+
+        if not is_air:
+            # Ground units often have tiny noisy vectors around zero.
+            idle_speed = 0.22  # m/s (~0.8 km/h)
+            if raw_mag <= idle_speed and (pos_vel is None or pos_mag <= idle_speed):
+                chosen_vel = (0.0, 0.0, 0.0)
+                source = "ground_idle"
+            chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
 
         self.velocity_cache[u_ptr] = {
             'time': curr_t,

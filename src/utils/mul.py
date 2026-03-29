@@ -423,7 +423,8 @@ def _try_read_velocity(scanner, u_ptr, spec):
         return None, ("decoded non-finite vector", raw_ptr, base_ptr, data, decoded)
 
     if all(abs(v) <= 0.001 for v in decoded):
-        return None, ("decoded near-zero vector", raw_ptr, base_ptr, data, decoded)
+        # Near-zero velocity is valid for idle/stopped units.
+        return (0.0, 0.0, 0.0), None
 
     speed = math.sqrt(decoded[0] ** 2 + decoded[1] ** 2 + decoded[2] ** 2)
     if speed > spec["max_speed"]:
