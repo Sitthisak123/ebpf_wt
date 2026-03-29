@@ -1,0 +1,273 @@
+// Generated via Saturn Python SDK Dumper (Dynamic Type Inference)
+#pragma once
+#include <cstdint>
+
+namespace offsets
+{
+inline constexpr uintptr_t cgame_offset = 0x6c108b8; // uintptr_t
+inline constexpr uintptr_t localplayer_offset = 0x6beda30; // uintptr_t
+inline constexpr uintptr_t hud_offset = 0x6c0fea8; // uintptr_t
+inline constexpr uintptr_t yaw_offset = 0x6c13c78; // float
+inline constexpr uintptr_t alllistdata_offset = 0x6e32478; // bool
+inline constexpr uintptr_t view_matrix_offset = 0x6c73df0; // Matrix4x4
+inline constexpr uintptr_t c_optics_offset = 0x6c12320; // uintptr_t
+inline constexpr uintptr_t game_time_offset = 0x-7ff61f540000; // float
+inline constexpr uintptr_t yaw_offset_y = 0x6c13c7c; // float
+inline constexpr uintptr_t entity_manager_offset = 0x6e1cb60; // uintptr_t
+inline constexpr uintptr_t g_rockets_index = 0x6bf1920; // uint32_t
+inline constexpr uintptr_t g_bombs_index = 0x6bf04d8; // uint32_t
+inline constexpr uintptr_t g_bullets_index = 0x6be9c80; // uint32_t
+namespace cgame_offsets
+{
+inline constexpr uintptr_t ballistics_offset = 0xf0; // bool
+inline constexpr uintptr_t camera_offset = 0x670; // uintptr_t
+inline constexpr uintptr_t unitlist_offset = 0x340; // bool
+inline constexpr uintptr_t unitcount_offset = 0xd0; // uint32_t
+}
+namespace localplayer_offsets
+{
+inline constexpr uintptr_t yubluff_offset = 0xf38; // uintptr_t
+inline constexpr uintptr_t invitedNickName_offset = 0x138; // char*
+inline constexpr uintptr_t nickLocKey_offset = 0x160; // char*
+inline constexpr uintptr_t clanTag_offset = 0x188; // char*
+inline constexpr uintptr_t publicFlags_offset = 0x1d8; // uint32_t
+inline constexpr uintptr_t decals_offset = 0x200; // uintptr_t
+inline constexpr uintptr_t countryId_offset = 0x250; // uint32_t
+inline constexpr uintptr_t memberId_offset = 0x278; // uint32_t
+inline constexpr uintptr_t customState_offset = 0x2b0; // uint32_t
+inline constexpr uintptr_t dummyForSupportPlanes_offset = 0x440; // vec3_t
+inline constexpr uintptr_t dummyForCrewUnitsList_offset = 0x510; // bool
+inline constexpr uintptr_t disabledByMatchingSlots_offset = 0x540; // bool
+inline constexpr uintptr_t brokenSlots_offset = 0x570; // uintptr_t
+inline constexpr uintptr_t wasReadySlots_offset = 0x598; // uintptr_t
+inline constexpr uintptr_t spareAircraftInSlots_offset = 0x5c0; // uintptr_t
+inline constexpr uintptr_t ownedSlots_offset = 0x5e8; // uintptr_t
+inline constexpr uintptr_t classinessMark_offset = 0x610; // uint32_t
+inline constexpr uintptr_t timeToRespawn_offset = 0x640; // float
+inline constexpr uintptr_t timeToRespawnInCoop_offset = 0x668; // float
+inline constexpr uintptr_t forcedRespawn_offset = 0x690; // uintptr_t
+inline constexpr uintptr_t timeToKick_offset = 0x6b8; // float
+inline constexpr uintptr_t guiState_offset = 0x6e0; // uint32_t
+inline constexpr uintptr_t spectatedModel_offset = 0x708; // uintptr_t
+inline constexpr uintptr_t dummyForCountUsedSlots_offset = 0x750; // uint32_t
+inline constexpr uintptr_t dummyForSpawnCosts_offset = 0x790; // uintptr_t
+inline constexpr uintptr_t dummyForSpawnDelayTimes_offset = 0x7d0; // float
+inline constexpr uintptr_t stateRefl_offset = 0x818; // uint32_t
+inline constexpr uintptr_t dummyForKillStreaksProgress_offset = 0x860; // float
+inline constexpr uintptr_t squadScore_offset = 0x890; // uintptr_t
+inline constexpr uintptr_t ownedUnitRef_offset = 0x8e8; // uintptr_t
+inline constexpr uintptr_t controlledUnitRef_offset = 0x918; // uintptr_t
+inline constexpr uintptr_t supportUnitRef_offset = 0x958; // vec3_t
+inline constexpr uintptr_t wreckedPartShipUnitRef_offset = 0x988; // uintptr_t
+inline constexpr uintptr_t dummyForRoundScore_offset = 0xa60; // uintptr_t
+inline constexpr uintptr_t dummyForPlayerStat_offset = 0xac0; // uintptr_t
+inline constexpr uintptr_t dummyForFootballStat_offset = 0xaf0; // uintptr_t
+inline constexpr uintptr_t realNick_offset = 0xb18; // char*
+inline constexpr uintptr_t squadronId_offset = 0xb40; // uint32_t
+inline constexpr uintptr_t forceLockTarget_offset = 0xb68; // uintptr_t
+inline constexpr uintptr_t cachedIsAutoSquad_offset = 0xb90; // bool
+inline constexpr uintptr_t nickFrame_offset = 0xbb8; // char*
+inline constexpr uintptr_t missionSupportUnitRef_offset = 0xbe0; // vec3_t
+inline constexpr uintptr_t missionSupportUnitEnabled_offset = 0xc10; // vec3_t
+inline constexpr uintptr_t rageTokens_offset = 0xc38; // uintptr_t
+inline constexpr uintptr_t numFreeSpareUsed_offset = 0xc60; // uint32_t
+inline constexpr uintptr_t soldier_offset = 0x3228; // uintptr_t
+inline constexpr uintptr_t localunit_offset = 0x8e8; // uintptr_t
+}
+namespace unit_offsets
+{
+inline constexpr uintptr_t isAlternativeShotFreq_offset = 0x1e8; // bool
+inline constexpr uintptr_t isInRespawnWnd_offset = 0x200; // bool
+inline constexpr uintptr_t brokenTurretDriveJammedTime_offset = 0x820; // float
+inline constexpr uintptr_t brokenTurretDriveSpeed_offset = 0x848; // float
+inline constexpr uintptr_t brokenTurretDriveMult_offset = 0x870; // float
+inline constexpr uintptr_t isBreechDamaged_offset = 0x898; // bool
+inline constexpr uintptr_t hasModuleEffectsToRepair_offset = 0x8c0; // bool
+inline constexpr uintptr_t moduleEffectsRepairAtTime_offset = 0x8e8; // float
+inline constexpr uintptr_t curNightVisionMode_offset = 0x930; // bool
+inline constexpr uintptr_t dummyVarForCrewLayout_offset = 0x960; // uintptr_t
+inline constexpr uintptr_t dummyVarForMissionAddText_offset = 0x988; // bool
+inline constexpr uintptr_t supportPlanesCount_offset = 0xa30; // vec3_t
+inline constexpr uintptr_t supportPlaneCatapultsFuseMask_offset = 0xa58; // vec3_t
+inline constexpr uintptr_t lastBuildingTime_offset = 0xa90; // float
+inline constexpr uintptr_t visualReloadProgress_offset = 0xab8; // float
+inline constexpr uintptr_t briefMalfunctionState_offset = 0xae0; // uint32_t
+inline constexpr uintptr_t bombDelayExplosion_offset = 0xb08; // uintptr_t
+inline constexpr uintptr_t delayWithFlightTime_offset = 0xb30; // float
+inline constexpr uintptr_t rocketFuseDist_offset = 0xb58; // float
+inline constexpr uintptr_t torpedoDiveDepth_offset = 0xb80; // uintptr_t
+inline constexpr uintptr_t dummyForDeathInfo_offset = 0xbb8; // uintptr_t
+inline constexpr uintptr_t lastContactFrom_offset = 0xbf0; // uintptr_t
+inline constexpr uintptr_t lastContactTo_offset = 0xc20; // uintptr_t
+inline constexpr uintptr_t lastContactTime_offset = 0xc50; // float
+inline constexpr uintptr_t lastContactTimeRel_offset = 0xc78; // float
+inline constexpr uintptr_t allowBailout_offset = 0xca0; // bool
+inline constexpr uintptr_t repairAssistee_offset = 0xd58; // bool
+inline constexpr uintptr_t repairAssistant_offset = 0xd88; // bool
+inline constexpr uintptr_t extinguishAssistee_offset = 0xdb8; // bool
+inline constexpr uintptr_t extinguishAssistant_offset = 0xde8; // bool
+inline constexpr uintptr_t invulnerable_offset = 0xe60; // bool
+inline constexpr uintptr_t enableGunners_offset = 0xe88; // bool
+inline constexpr uintptr_t vulnerableByUnitUId_offset = 0xeb8; // uint32_t
+inline constexpr uintptr_t dummyForUnitFlags_offset = 0xee8; // uint32_t
+inline constexpr uintptr_t lowRateUnitFlags_offset = 0xf10; // uint32_t
+inline constexpr uintptr_t unitState_offset = 0xf38; // uint32_t
+inline constexpr uintptr_t farthestExitZoneId_offset = 0xf78; // uint32_t
+inline constexpr uintptr_t unitArmyNo_offset = 0xfb8; // uintptr_t
+inline constexpr uintptr_t stealthRadiusSq_offset = 0x1018; // uintptr_t
+inline constexpr uintptr_t stealthArmyMask_offset = 0x1040; // uintptr_t
+inline constexpr uintptr_t scoutStartTime_offset = 0x11d8; // float
+inline constexpr uintptr_t scoutCooldown_offset = 0x1200; // uintptr_t
+inline constexpr uintptr_t prepareRepairAssisteeTime_offset = 0x1520; // float
+inline constexpr uintptr_t prepareRepairAssistantTime_offset = 0x1548; // float
+inline constexpr uintptr_t prepareExtinguishAssistantTime_offset = 0x1570; // float
+inline constexpr uintptr_t nextUseArtilleryTime_offset = 0x15e0; // float
+inline constexpr uintptr_t prepareRepairCooldownsTime_offset = 0x16a0; // float
+inline constexpr uintptr_t killer_offset = 0x1700; // uintptr_t
+inline constexpr uintptr_t isNeedRepairHelp_offset = 0x1848; // bool
+inline constexpr uintptr_t isNeedExtinguishHelp_offset = 0x1878; // bool
+inline constexpr uintptr_t repairCooldowns_offset = 0x18a8; // uintptr_t
+inline constexpr uintptr_t maskingFactor_offset = 0x18f8; // uintptr_t
+inline constexpr uintptr_t fuseModeIndex_offset = 0x1958; // uint32_t
+inline constexpr uintptr_t timeToNextSmokeScreen_offset = 0x19a8; // float
+inline constexpr uintptr_t smokeScreenCount_offset = 0x19d0; // uint32_t
+inline constexpr uintptr_t smokeScreenActived_offset = 0x19f8; // uintptr_t
+inline constexpr uintptr_t crewStatMult_offset = 0x1a20; // float
+inline constexpr uintptr_t timeRepair_offset = 0x1da8; // float
+inline constexpr uintptr_t repairTimer_offset = 0x1dd0; // float
+inline constexpr uintptr_t timeToRearm_offset = 0x1df8; // float
+inline constexpr uintptr_t default_offset = 0x1ee0; // uintptr_t
+inline constexpr uintptr_t persistentAerobaticsSmoke_offset = 0x31c8; // bool
+inline constexpr uintptr_t persistentAerobaticsSmokeId_offset = 0x31f0; // uint32_t
+inline constexpr uintptr_t brokenPropFlags_offset = 0x3218; // uint32_t
+inline constexpr uintptr_t wingBreakRnd_offset = 0x3240; // uintptr_t
+inline constexpr uintptr_t isOnAirfieldAndCanRearmedVal_offset = 0x38e0; // bool
+inline constexpr uintptr_t bbmin_offset = 0x240; // vec3_t
+inline constexpr uintptr_t bbmax_offset = 0x24c; // vec3_t
+inline constexpr uintptr_t position_offset = 0xd08; // vec3_t
+inline constexpr uintptr_t rotation_matrix_offset = 0xce4; // Matrix3x3
+inline constexpr uintptr_t info_offset = 0xfc8; // uintptr_t
+inline constexpr uintptr_t turret_offset = 0x1070; // uintptr_t
+inline constexpr uintptr_t airmovement_offset = 0xd18; // uintptr_t
+}
+}
+namespace _CGame
+{
+inline constexpr uintptr_t unit_list3 = 0x340; // bool
+inline constexpr uintptr_t unit_count3 = 0x350; // uint32_t
+inline constexpr uintptr_t local_camera = 0x670; // uintptr_t
+inline constexpr uintptr_t report_system[] = { 0x3e0, 0x8b0 }; // uintptr_t array
+}
+namespace _CReportSystem
+{
+inline constexpr uintptr_t reports_count = 0x458; // uint32_t
+inline constexpr uintptr_t reports_list = 0x448; // bool
+}
+namespace _CPredictionEngine
+{
+inline constexpr uintptr_t velocity = 0x2048; // vec3_t
+inline constexpr uintptr_t currently_selected_unit = 0x6b0; // uintptr_t
+inline constexpr uintptr_t mass = 0x2054; // float
+inline constexpr uintptr_t caliber = 0x2058; // float
+inline constexpr uintptr_t length = 0x205c; // float
+inline constexpr uintptr_t max_dist = 0x2060; // vec3_t
+inline constexpr uintptr_t bomb_impact_point = 0x1c14; // vec3_t
+inline constexpr uintptr_t ballistics_ptr = 0x3f0; // bool
+inline constexpr uintptr_t ingame_ballistics = 0x2460; // bool
+inline constexpr uintptr_t telecontrol = 0xcb0; // uintptr_t
+}
+namespace _Telecontrol
+{
+inline constexpr uintptr_t gameUi = 0x7e8; // uintptr_t
+inline constexpr uintptr_t mousePos = 0x810; // vec3_t
+inline constexpr uintptr_t mousePos2 = 0x898; // vec3_t
+}
+namespace _CPlayer
+{
+inline constexpr uintptr_t player_unit = 0x8e8; // uintptr_t
+inline constexpr uintptr_t gui_state = 0x6e0; // uint32_t
+inline constexpr uintptr_t name = 0xc0; // char*
+}
+namespace _CUnitInfo
+{
+inline constexpr uintptr_t tank_info_vehicle_name[] = { 0x20, 0x0 }; // char* array
+inline constexpr uintptr_t unit_type = 0x38; // uint32_t
+}
+namespace _CCamera
+{
+inline constexpr uintptr_t camera_position = 0x58; // vec3_t
+inline constexpr uintptr_t camera_viewmatrix = 0x1c0; // Matrix4x4
+}
+namespace _CUnit
+{
+inline constexpr uintptr_t position = 0xd08; // vec3_t
+inline constexpr uintptr_t boundsmin = 0x240; // vec3_t
+inline constexpr uintptr_t boundsmax = 0x24c; // vec3_t
+inline constexpr uintptr_t rotation_matrix = 0xce4; // Matrix3x3
+inline constexpr uintptr_t unit_info = 0xfc8; // uintptr_t
+inline constexpr uintptr_t reload_progress = 0xab8; // float
+inline constexpr uintptr_t unit_state = 0xf38; // uint32_t
+inline constexpr uintptr_t player_ptr = 0xf40; // uintptr_t
+inline constexpr uintptr_t team_num = 0xfb8; // uint32_t
+inline constexpr uintptr_t invul_state = 0xe60; // uint32_t
+inline constexpr uintptr_t ground_velocity_ptr = 0x1e00; // vec3_t
+inline constexpr uintptr_t ground_velocity_offset = 0x54; // vec3_t
+inline constexpr uintptr_t air_velocity_ptr = 0xd18; // vec3_t
+inline constexpr uintptr_t air_velocity_offset = 0x15a8; // vec3_t
+inline constexpr uintptr_t air_acceleration_offset = 0x15b0; // vec3_t
+inline constexpr uintptr_t id = 0x8; // uint32_t
+inline constexpr uintptr_t flags = 0x90; // uint32_t
+}
+namespace entity_manager
+{
+inline constexpr uintptr_t list_index_data_ptr = 0x5e8; // uint32_t
+inline constexpr uintptr_t list_data_ptr = 0x178; // bool
+namespace list_index_data
+{
+inline constexpr uintptr_t count_offset = 0x2; // uint32_t
+inline constexpr uintptr_t list_ptr_offset = 0x4; // bool
+inline constexpr uintptr_t list_ptr_indirect = 0x8; // bool
+inline constexpr uintptr_t extra_info_offset = 0x18; // uintptr_t
+}
+namespace list_data
+{
+// inline constexpr uintptr_t list_ptr = 0x0; // bool (FAILED TO GRAB)
+inline constexpr uintptr_t extra_info_offset = 0xc; // uintptr_t
+inline constexpr uintptr_t list_count = 0x10; // uint32_t
+}
+}
+namespace shell
+{
+inline constexpr uintptr_t position = 0x190; // vec3_t
+inline constexpr uintptr_t velocity = 0x1ac; // vec3_t
+namespace bomb
+{
+inline constexpr uintptr_t name_offsets[] = { 0x670, 0x10, 0x0 }; // char* array
+}
+namespace rocket
+{
+inline constexpr uintptr_t name_offsets[] = { 0x678, 0x50, 0x0 }; // char* array
+}
+}
+namespace _CDamageModel
+{
+inline constexpr uintptr_t damage_model_ptrs[] = { 0x1048, 0x58, 0xa0 }; // uintptr_t array
+inline constexpr uintptr_t damage_model_count[] = { 0x1048, 0x58, 0xb0 }; // uint32_t array
+inline constexpr uintptr_t damage_model_transform_info[] = { 0x238, 0x0 }; // uintptr_t array
+inline constexpr uintptr_t transform_matrix_offset = 0x40; // Matrix4x4
+inline constexpr uintptr_t next_damage_model = 0x8; // uintptr_t
+inline constexpr uintptr_t transform_index = 0x4; // uint32_t
+inline constexpr uintptr_t forward = 0x10; // vec3_t
+inline constexpr uintptr_t up = 0x1c; // vec3_t
+inline constexpr uintptr_t left = 0x28; // vec3_t
+inline constexpr uintptr_t position = 0x34; // vec3_t
+inline constexpr uintptr_t bbmin = 0x40; // vec3_t
+inline constexpr uintptr_t bbmax = 0x4c; // vec3_t
+inline constexpr uintptr_t vertices_ptr = 0x80; // uintptr_t
+inline constexpr uintptr_t vertices_count = 0x88; // uint32_t
+inline constexpr uintptr_t indices_ptr = 0x90; // uintptr_t
+inline constexpr uintptr_t indices_count = 0x98; // uint32_t
+inline constexpr uintptr_t index = 0xbc; // uint32_t
+inline constexpr uintptr_t name = 0xc0; // char*
+inline constexpr uintptr_t struct_size = 0xd0; // uint32_t
+}

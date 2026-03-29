@@ -4,7 +4,7 @@ import sys
 from collections import Counter, defaultdict
 
 from main import MemoryScanner, get_game_pid, get_game_base_address
-from src.utils.mul import *
+import src.utils.mul as mul
 from src.utils.scanner import init_dynamic_offsets
 
 
@@ -26,7 +26,7 @@ MAX_CANDIDATES_PER_GROUP = 20
 
 
 def safe_read_c_string(scanner, ptr, max_len=96):
-    if not is_valid_ptr(ptr):
+    if not mul.is_valid_ptr(ptr):
         return None
     data = scanner.read_mem(ptr, max_len)
     if not data:
@@ -49,11 +49,11 @@ def get_unit_name_and_info(scanner, u_ptr):
     unit_name = "UNKNOWN"
     info_ptr = 0
     try:
-        info_raw = scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8)
+        info_raw = scanner.read_mem(u_ptr + mul.OFF_UNIT_INFO, 8)
         if info_raw and len(info_raw) == 8:
             info_ptr = struct.unpack("<Q", info_raw)[0]
-            if is_valid_ptr(info_ptr):
-                name_ptr_raw = scanner.read_mem(info_ptr + OFF_UNIT_NAME_PTR, 8)
+            if mul.is_valid_ptr(info_ptr):
+                name_ptr_raw = scanner.read_mem(info_ptr + mul.OFF_UNIT_NAME_PTR, 8)
                 if name_ptr_raw and len(name_ptr_raw) == 8:
                     name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
                     text = safe_read_c_string(scanner, name_ptr, 64)
@@ -71,17 +71,17 @@ def get_local_label(u_ptr, my_unit, provisional_is_air):
 
 
 def collect_units(scanner, base_addr):
-    cgame_base = get_cgame_base(scanner, base_addr)
+    cgame_base = mul.get_cgame_base(scanner, base_addr)
     if cgame_base == 0:
         print("[-] ไม่พบ CGame")
         sys.exit(1)
 
-    all_units = get_all_units(scanner, cgame_base)
-    my_unit, my_team = get_local_team(scanner, base_addr)
+    all_units = mul.get_all_units(scanner, cgame_base)
+    my_unit, my_team = mul.get_local_team(scanner, base_addr)
 
     rows = []
     for u_ptr, provisional_is_air in all_units:
-        status = get_unit_status(scanner, u_ptr)
+        status = mul.get_unit_status(scanner, u_ptr)
         if not status:
             continue
         team, state, unit_name, reload_val = status
@@ -93,7 +93,7 @@ def collect_units(scanner, base_addr):
         else:
             _, info_ptr = get_unit_name_and_info(scanner, u_ptr)
 
-        pos = get_unit_pos(scanner, u_ptr)
+        pos = mul.get_unit_pos(scanner, u_ptr)
         rows.append({
             "u_ptr": u_ptr,
             "is_air": provisional_is_air,
@@ -179,7 +179,7 @@ def scan_info_strings(scanner, rows):
 
     for row in rows:
         info_ptr = row["info_ptr"]
-        if not is_valid_ptr(info_ptr):
+        if not mul.is_valid_ptr(info_ptr):
             continue
         for off in INFO_STRING_OFFSETS:
             raw = scanner.read_mem(info_ptr + off, 8)
@@ -224,8 +224,8 @@ def dump_selected_units(scanner, rows):
     for row in interesting:
         print(f"\n[{row['label']}] unit={hex(row['u_ptr'])} | info={hex(row['info_ptr']) if row['info_ptr'] else '-'} | name='{row['name']}'")
 
-        for off in [0x18, 0x1C, 0x20, 0x340, 0x358, 0xD10, 0xD18, OFF_UNIT_STATE, OFF_UNIT_TEAM, OFF_UNIT_INFO]:
-            size = 8 if off in (0x18, 0x20, 0x340, 0x358, 0xD10, 0xD18, OFF_UNIT_INFO) else 4
+        for off in [0x18, 0x1C, 0x20, 0x340, 0x358, 0xD10, 0xD18, mul.OFF_UNIT_STATE, mul.OFF_UNIT_TEAM, mul.OFF_UNIT_INFO]:
+            size = 8 if off in (0x18, 0x20, 0x340, 0x358, 0xD10, 0xD18, mul.OFF_UNIT_INFO) else 4
             data = scanner.read_mem(row["u_ptr"] + off, size)
             if not data or len(data) < size:
                 continue
@@ -239,7 +239,7 @@ def dump_selected_units(scanner, rows):
                 val_text = data.hex()
             print(f" unit+{hex(off):<6} = {val_text}")
 
-        if is_valid_ptr(row["info_ptr"]):
+        if mul.is_valid_ptr(row["info_ptr"]):
             for off in INFO_STRING_OFFSETS:
                 raw = scanner.read_mem(row["info_ptr"] + off, 8)
                 if not raw or len(raw) < 8:

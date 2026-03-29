@@ -64,6 +64,76 @@ def is_valid_ptr(p):
     return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
 
 
+UNIT_KIND_CACHE = {}
+
+
+def _read_ptr(scanner, addr):
+    raw = scanner.read_mem(addr, 8)
+    if not raw or len(raw) < 8:
+        return 0
+    return struct.unpack("<Q", raw)[0]
+
+
+def _read_c_string(scanner, ptr, max_len=96):
+    if not is_valid_ptr(ptr):
+        return None
+    data = scanner.read_mem(ptr, max_len)
+    if not data:
+        return None
+    raw = data.split(b"\x00")[0]
+    if len(raw) < 3:
+        return None
+    try:
+        text = raw.decode("utf-8", errors="ignore").strip()
+    except Exception:
+        return None
+    if len(text) < 3:
+        return None
+    if not any(ch.isalnum() for ch in text):
+        return None
+    return text
+
+
+def _read_info_string(scanner, info_ptr, off, max_len=96):
+    ptr = _read_ptr(scanner, info_ptr + off)
+    if not is_valid_ptr(ptr):
+        return None
+    return _read_c_string(scanner, ptr, max_len)
+
+
+def get_unit_kind_from_info(scanner, u_ptr):
+    if OFF_UNIT_INFO == 0:
+        return None
+    info_ptr = _read_ptr(scanner, u_ptr + OFF_UNIT_INFO)
+    if not is_valid_ptr(info_ptr):
+        return None
+    cached = UNIT_KIND_CACHE.get(info_ptr)
+    if cached:
+        return cached
+
+    kind = None
+    tag = _read_info_string(scanner, info_ptr, 0x38, 64)
+    if tag:
+        label = tag.lower()
+        if any(k in label for k in ("fighter", "bomber", "helicopter", "attacker", "jet", "air")):
+            kind = "air"
+        elif any(k in label for k in ("tank", "spaa", "destroyer", "fortification", "ship", "boat")):
+            kind = "ground"
+
+    if not kind:
+        path = _read_info_string(scanner, info_ptr, 0x10, 96) or _read_info_string(scanner, info_ptr, 0x18, 96)
+        if path:
+            p = path.replace("\\", "/").lower()
+            if "tankmodels/" in p or "/tankmodels/" in p:
+                kind = "ground"
+            elif "helicopter" in p or "aircraft" in p or "plane" in p:
+                kind = "air"
+
+    if kind:
+        UNIT_KIND_CACHE[info_ptr] = kind
+    return kind
+
+
 VELOCITY_PROFILES = {
     "air": {
         "requested_label": "AIR",
@@ -266,11 +336,20 @@ def get_all_units(scanner, cgame_base):
             if 0 < count < 250 and is_valid_ptr(array_ptr):
                 ptr_data = scanner.read_mem(array_ptr, count * 8)
                 if ptr_data:
-                    for i in range(count):
-                        u_ptr = struct.unpack_from("<Q", ptr_data, i * 8)[0]
-                        if is_valid_ptr(u_ptr):
-                            units.append((u_ptr, is_air))
-    return list({u[0]: u for u in units}.values())
+                      for i in range(count):
+                          u_ptr = struct.unpack_from("<Q", ptr_data, i * 8)[0]
+                          if is_valid_ptr(u_ptr):
+                              units.append((u_ptr, is_air))
+    deduped = list({u[0]: u for u in units}.values())
+    refined = []
+    for u_ptr, is_air in deduped:
+        kind = get_unit_kind_from_info(scanner, u_ptr)
+        if kind == "air":
+            is_air = True
+        elif kind == "ground":
+            is_air = False
+        refined.append((u_ptr, is_air))
+    return refined
 
 def get_unit_3d_box_data(scanner, u_ptr):
     if u_ptr == 0: return None
