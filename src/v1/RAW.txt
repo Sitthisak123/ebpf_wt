@@ -4641,3 +4641,101 @@ mt=fff | raw_ptr=[A0 74 1B 3A 00 00 00 00] | mov_ptr=0x3a1b74a0 | raw_vel=[00 00
 =============================================F_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
 ⚔️ Valid Targets: 15 targets
 ============================================="
+
+
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python unit_kind_dumper.py
+[*] 🚀 เริ่ม UNIT KIND DUMPER (extended)...
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x947b8e0 (votes 5, score=6)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+  [+] ✅ REFINED! CGame = 0x941b280 (votes 298, score=4)
+=======================================================
+
+[-] ไม่พบยูนิตให้วิเคราะห์
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python unit_player_name_dumper.py 
+[*] PLAYER NAME DUMPER
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x947b8e0 (votes 5, score=6)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+  [+] ✅ REFINED! CGame = 0x941b280 (votes 298, score=4)
+=======================================================
+
+[-] no playable units
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ 
+
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py sudo venv/bin/python radar_overlay.py sudo venv/bin/python radar_overlay.py sudo venv/bin/python radar_overlay.py 
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x947b8e0 (votes 5, score=6)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+  [+] ✅ REFINED! CGame = 0x941b280 (votes 298, score=4)
+=======================================================
+
+QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+[DEBUG] VEL STABILIZED | unit=0x63d1edc0 | type=GROUND | source=blended | raw=(-0.61, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(-0.40, 0.00, 0.00)
+^CTraceback (most recent call last):
+  File "/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt/radar_overlay.py", line 198, in paintEvent
+    def paintEvent(self, event):
+
+KeyboardInterrupt
+Aborted
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ 
