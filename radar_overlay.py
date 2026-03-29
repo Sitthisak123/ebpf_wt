@@ -293,6 +293,14 @@ class ESPOverlay(QWidget):
                 profile = get_unit_filter_profile(self.scanner, u_ptr)
                 if profile.get("skip"):
                     continue
+                profile_tag = (profile.get("tag") or "").lower()
+                profile_path = (profile.get("path") or "").lower()
+                if profile_tag in ("exp_aaa", "exp_fortification", "exp_structure", "exp_zero"):
+                    continue
+                if ("air_defence/" in profile_path) or ("structures/" in profile_path) or ("dummy_plane" in profile_path):
+                    continue
+                if (not profile_tag) and (not profile_path):
+                    continue
 
                 resolved_is_air = is_air
                 if profile.get("kind") == "air":

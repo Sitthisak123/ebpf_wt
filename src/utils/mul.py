@@ -114,6 +114,14 @@ NON_PLAYABLE_NAME_HINTS = (
     "_noground",
 )
 
+NON_PLAYABLE_PATH_BLOCKLIST = (
+    "air_defence/",
+    "/air_defence/",
+    "structures/",
+    "/structures/",
+    "dummy_plane",
+)
+
 
 def reset_runtime_caches(clear_view=False):
     global LAST_CGAME_PTR, LAST_VIEW_MATRIX
@@ -267,6 +275,18 @@ def get_unit_filter_profile(scanner, u_ptr):
         skip = True
         reason = "name_hint"
 
+    # Defensive rule: if blocklist path is visible, always skip.
+    if not skip and any(h in path_l for h in NON_PLAYABLE_PATH_BLOCKLIST):
+        skip = True
+        reason = "path_block"
+
+    # Extra guard for static/non-combat objects that may occasionally bypass tag/path parsing.
+    if not skip and kind == "ground":
+        mov_ptr = _read_ptr(scanner, u_ptr + OFF_GROUND_MOVEMENT)
+        if not is_valid_ptr(mov_ptr):
+            skip = True
+            reason = "no_ground_mov"
+
     display_name = unit_key or _name_from_path(path)
     profile = {
         "skip": skip,
@@ -280,7 +300,7 @@ def get_unit_filter_profile(scanner, u_ptr):
 
     # Cache only when enough source data is readable. This avoids poisoning cache
     # with transient empty reads during map/match transitions.
-    cacheable = bool(tag or path or unit_key or skip or kind)
+    cacheable = bool(tag or path or unit_key or skip or kind) and reason != "no_ground_mov"
     if cacheable:
         UNIT_FILTER_CACHE[info_ptr] = {"sig": info_sig, "profile": profile.copy()}
     else:
