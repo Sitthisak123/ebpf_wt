@@ -1953,3 +1953,1927 @@ AIR        | unit=0x418452d0 | info_off=0x38   | text='exp_fighter' | name='c'
 xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ 
 "
 
+=================================================================================
+
+Real game match: "
+(venv) xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python unit_kind_dumper.py
+[*] 🚀 เริ่ม UNIT KIND DUMPER...
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x9484560 (votes 15, score=6)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+  [+] ✅ REFINED! CGame = 0x941b280 (votes 298, score=4)
+=======================================================
+
+[*] MY_UNIT = 0x710c1d40 | MY_TEAM = 1
+========================================================================================================================
+🧬 UNIT KIND DUMPER
+========================================================================================================================
+Label      | Unit Ptr     | Info Ptr     | Team | Name
+------------------------------------------------------------------------------------------------------------------------
+AIR        | 0x70ff4f00   | 0x62abdb20   | 2    | 
+GROUND     | 0x70ffc730   | 0x62abe030   | 1    | 
+GROUND     | 0x71003dc0   | 0x62abc5f0   | 1    | 
+GROUND     | 0x7100bda0   | 0x7820a2d0   | 1    | 
+GROUND     | 0x710130c0   | 0x7820a2d0   | 1    | 
+GROUND     | 0x7101a750   | 0x7820a2d0   | 1    | 
+GROUND     | 0x71021de0   | 0x7820a2d0   | 1    | 
+GROUND     | 0x7102a600   | 0x62abc5f0   | 1    | 
+GROUND     | 0x71031920   | 0x62abc5f0   | 1    | 
+GROUND     | 0x71039220   | 0x62abc5f0   | 1    | 
+GROUND     | 0x71040a10   | 0x62abc5f0   | 1    | 
+GROUND     | 0x71048410   | 0x783953a0   | 2    | 
+GROUND     | 0x7104fc00   | 0x783953a0   | 2    | 
+GROUND     | 0x710573f0   | 0x783953a0   | 2    | 
+GROUND     | 0x7105ebe0   | 0x783953a0   | 2    | 
+GROUND     | 0x710684e0   | 0x62abe030   | 2    | 
+GROUND     | 0x7106f800   | 0x62abe030   | 2    | 
+GROUND     | 0x71076e90   | 0x62abe030   | 2    | 
+GROUND     | 0x7107e520   | 0x62abe030   | 2    | 
+GROUND     | 0x71085c70   | 0x62abe030   | 2    | 
+GROUND     | 0x7108d460   | 0x62abe030   | 2    | 
+GROUND     | 0x71094c50   | 0x77d3c350   | 2    | 
+GROUND     | 0x7109c440   | 0x6e423670   | 2    | 
+GROUND     | 0x710a3c30   | 0x734f6f00   | 2    | 
+GROUND     | 0x710ab420   | 0x734f6f00   | 2    | 
+GROUND     | 0x710b2d60   | 0x6e507f20   | 1    | 
+GROUND     | 0x710ba550   | 0x629bf8f0   | 1    | 
+MY_GROUND  | 0x710c1d40   | 0x6263a140   | 1    | 
+AIR        | 0x710c9530   | 0x711fd3e0   | 1    | c
+GROUND     | 0x710d0d20   | 0x6e423670   | 2    | 
+GROUND     | 0x710d8510   | 0x6e507f20   | 1    | 
+GROUND     | 0x710e3e50   | 0x70c341b0   | 2    | 
+GROUND     | 0x710eb170   | 0x77b92590   | 1    | 
+GROUND     | 0x710f2550   | 0x73d380c0   | 2    | 
+GROUND     | 0x710f9d40   | 0x6e507f20   | 1    | 
+GROUND     | 0x71101530   | 0x72728c80   | 2    | 
+GROUND     | 0x71108d20   | 0x6e507f20   | 1    | 
+GROUND     | 0x71110510   | 0x6263a140   | 1    | 
+GROUND     | 0x71117d00   | 0x70c341b0   | 2    | 
+GROUND     | 0x7111f4f0   | 0x66a2b260   | 1    | 
+GROUND     | 0x71126ce0   | 0x6e507f20   | 1    | 
+GROUND     | 0x7112e4d0   | 0x78332410   | 2    | 
+GROUND     | 0x71135cc0   | 0x62a94630   | 2    | 
+GROUND     | 0x7113d4b0   | 0x6c57bf70   | 2    | 
+GROUND     | 0x71144ca0   | 0x76106270   | 1    | 
+GROUND     | 0x7114c490   | 0x78021760   | 2    | 
+GROUND     | 0x71153c80   | 0x726a9fa0   | 1    | 
+GROUND     | 0x7115b470   | 0x78021760   | 2    | 
+GROUND     | 0x71162c60   | 0x6e507f20   | 1    | 
+GROUND     | 0x7116a450   | 0x77f96d80   | 2    | 
+AIR        | 0x71171c40   | 0x711fd3e0   | 1    | c
+AIR        | 0x718a8800   | 0x711fd3e0   | 2    | c
+GROUND     | 0x70c7c0f0   | 0x6c574e70   | 1    | 
+AIR        | 0x70fed960   | 0x77ece4c0   | 0    | 
+AIR        | 0x77a45fa0   | 0x77ece4c0   | 0    | 
+AIR        | 0x7426d0e0   | 0x77ece4c0   | 0    | 
+AIR        | 0x7186e490   | 0x77ece4c0   | 0    | 
+AIR        | 0x6c67e430   | 0x77ece4c0   | 0    | 
+AIR        | 0x77dcebe0   | 0x77ece4c0   | 0    | 
+GROUND     | 0x77ee8cd0   | 0x7368cee0   | 1    | 
+GROUND     | 0x718cc7a0   | 0x7368cee0   | 1    | 
+GROUND     | 0x70c715d0   | 0x7368cee0   | 2    | 
+GROUND     | 0x718afb20   | 0x7368cee0   | 2    | 
+GROUND     | 0x718d3ac0   | 0x7368cee0   | 2    | 
+GROUND     | 0x718dade0   | 0x7368cee0   | 1    | 
+GROUND     | 0x70c83410   | 0x7368cee0   | 2    | 
+GROUND     | 0x718b6e40   | 0x7368cee0   | 1    | 
+GROUND     | 0x718be160   | 0x7368cee0   | 1    | 
+GROUND     | 0x718e2100   | 0x7368cee0   | 1    | 
+GROUND     | 0x718c5480   | 0x7368cee0   | 2    | 
+GROUND     | 0x6c6df9e0   | 0x7368cee0   | 1    | 
+GROUND     | 0x739850f0   | 0x7368cee0   | 2    | 
+------------------------------------------------------------------------------------------------------------------------
+
+📌 Candidate Flag Offsets (เทียบจากกลุ่มที่ unit array บอกว่าเป็น air/ground)
+------------------------------------------------------------------------------------------------------------------------
+Offset     | Type   | Air Values               | Ground Values            | Note
+------------------------------------------------------------------------------------------------------------------------
+0xd03      | byte   | 0x44, 0x46               | 0x0, 0xc3, 0xc4, 0xc5    | disjoint split
+0x138      | byte   | 0x5, 0x7, 0x25, 0x26, 0x46, 0x5c | 0x0, 0xe, 0x11, 0x1a, 0x2a, 0x36 | disjoint split
+0xd07      | byte   | 0x41, 0x43               | 0x0, 0x3f, 0x40, 0x42    | disjoint split
+0x26a      | byte   | 0x12, 0xa6, 0xb9         | 0x19, 0x1e, 0x22, 0x29, 0x2a, 0x2b | disjoint split
+0x269      | byte   | 0x6e, 0xa5, 0xa7         | 0x22, 0x26, 0x2e, 0x40, 0x54, 0x59 | disjoint split
+0x268      | byte   | 0x22, 0xbe, 0xdb         | 0x2, 0x4, 0x34, 0x37, 0x62, 0x6b | disjoint split
+0x256      | byte   | 0x0, 0x8b, 0xfe          | 0x27, 0x2a, 0x30, 0x3c, 0x4c, 0x6e | disjoint split
+0x23e      | byte   | 0x0, 0x8b, 0xfe          | 0x27, 0x2a, 0x30, 0x3c, 0x4c, 0x6e | disjoint split
+0x1fc      | byte   | 0x12, 0x1c, 0xe5         | 0x3, 0x4, 0x18, 0x2c, 0x39, 0x51 | disjoint split
+0xfca      | byte   | 0x67, 0x79, 0xdb         | 0x12, 0x1b, 0x28, 0x4b, 0x4d, 0x61 | disjoint split
+0xfc9      | byte   | 0xbf, 0xc5, 0xee         | 0x9, 0xd, 0x13, 0x14, 0x18, 0x19 | disjoint split
+0xfc1      | byte   | 0xd3, 0xdb, 0xe4         | 0x17, 0x24, 0x25, 0x36, 0x41, 0x46 | disjoint split
+0x266      | byte   | 0x39, 0xab, 0xb7         | 0x71, 0x77, 0x82, 0x87, 0x8a, 0x8c | disjoint split
+0x265      | byte   | 0x38, 0x6f, 0xac         | 0x4, 0x36, 0x37, 0x4b, 0x7c, 0x83 | disjoint split
+0x262      | byte   | 0x50, 0x86, 0xd0         | 0x9, 0xa, 0xe, 0xf, 0x10, 0x11 | disjoint split
+0x261      | byte   | 0x14, 0x17, 0xe8         | 0x3, 0x4, 0x6, 0x10, 0x25, 0x33 | disjoint split
+0x260      | byte   | 0x1c, 0x46, 0xd7         | 0x5, 0x6, 0x1b, 0x33, 0x35, 0x3c | disjoint split
+0x25e      | byte   | 0x31, 0x80, 0xb1         | 0x5, 0x8, 0xd, 0x12, 0x1f, 0x20 | disjoint split
+0x25c      | byte   | 0xd2, 0xd8, 0xf1         | 0x5, 0x10, 0x15, 0x34, 0x48, 0x64 | disjoint split
+0x25a      | byte   | 0x39, 0x9a, 0xb7         | 0xe, 0x6e, 0x7c, 0x88, 0x89, 0x8c | disjoint split
+
+📝 Candidate Strings จาก info_ptr
+------------------------------------------------------------------------------------------------------------------------
+AIR        | unit=0x70ff4f00 | info_off=0x38   | text='exp_structure' | name=''
+GROUND     | unit=0x70ffc730 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x70ffc730 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x70ffc730 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x70ffc730 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x71003dc0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x71003dc0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x71003dc0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x71003dc0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x7100bda0 | info_off=0x8    | text='85mm_52k_noground_a' | name=''
+GROUND     | unit=0x7100bda0 | info_off=0x10   | text='air_defence/ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x7100bda0 | info_off=0x18   | text='gameData/units/air_defence/ussr_85mm_52k_noground.blk' | name=''
+GROUND     | unit=0x7100bda0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x7100bda0 | info_off=0x40   | text='ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x710130c0 | info_off=0x8    | text='85mm_52k_noground_a' | name=''
+GROUND     | unit=0x710130c0 | info_off=0x10   | text='air_defence/ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x710130c0 | info_off=0x18   | text='gameData/units/air_defence/ussr_85mm_52k_noground.blk' | name=''
+GROUND     | unit=0x710130c0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x710130c0 | info_off=0x40   | text='ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x7101a750 | info_off=0x8    | text='85mm_52k_noground_a' | name=''
+GROUND     | unit=0x7101a750 | info_off=0x10   | text='air_defence/ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x7101a750 | info_off=0x18   | text='gameData/units/air_defence/ussr_85mm_52k_noground.blk' | name=''
+GROUND     | unit=0x7101a750 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x7101a750 | info_off=0x40   | text='ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x71021de0 | info_off=0x8    | text='85mm_52k_noground_a' | name=''
+GROUND     | unit=0x71021de0 | info_off=0x10   | text='air_defence/ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x71021de0 | info_off=0x18   | text='gameData/units/air_defence/ussr_85mm_52k_noground.blk' | name=''
+GROUND     | unit=0x71021de0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x71021de0 | info_off=0x40   | text='ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x7102a600 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x7102a600 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x7102a600 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x7102a600 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x71031920 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x71031920 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x71031920 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x71031920 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x71039220 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x71039220 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x71039220 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x71039220 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x71040a10 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x71040a10 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x71040a10 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x71040a10 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x71048410 | info_off=0x8    | text='88mm_flak_noground_a' | name=''
+GROUND     | unit=0x71048410 | info_off=0x10   | text='air_defence/germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x71048410 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36_noground.blk' | name=''
+GROUND     | unit=0x71048410 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x71048410 | info_off=0x40   | text='germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x7104fc00 | info_off=0x8    | text='88mm_flak_noground_a' | name=''
+GROUND     | unit=0x7104fc00 | info_off=0x10   | text='air_defence/germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x7104fc00 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36_noground.blk' | name=''
+GROUND     | unit=0x7104fc00 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x7104fc00 | info_off=0x40   | text='germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x710573f0 | info_off=0x8    | text='88mm_flak_noground_a' | name=''
+GROUND     | unit=0x710573f0 | info_off=0x10   | text='air_defence/germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x710573f0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36_noground.blk' | name=''
+GROUND     | unit=0x710573f0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x710573f0 | info_off=0x40   | text='germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x7105ebe0 | info_off=0x8    | text='88mm_flak_noground_a' | name=''
+GROUND     | unit=0x7105ebe0 | info_off=0x10   | text='air_defence/germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x7105ebe0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36_noground.blk' | name=''
+GROUND     | unit=0x7105ebe0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x7105ebe0 | info_off=0x40   | text='germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x710684e0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x710684e0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x710684e0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x710684e0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x7106f800 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x7106f800 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x7106f800 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x7106f800 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x71076e90 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x71076e90 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x71076e90 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x71076e90 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x7107e520 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x7107e520 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x7107e520 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x7107e520 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x71085c70 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x71085c70 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x71085c70 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x71085c70 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x7108d460 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x7108d460 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x7108d460 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x7108d460 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x71094c50 | info_off=0x10   | text='tankModels/germ_pzkpfw_II_ausf_H' | name=''
+GROUND     | unit=0x71094c50 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_II_ausf_H.blk' | name=''
+GROUND     | unit=0x71094c50 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x71094c50 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71094c50 | info_off=0x40   | text='germ_pzkpfw_II_ausf_H' | name=''
+GROUND     | unit=0x7109c440 | info_off=0x10   | text='tankModels/ussr_bt_5' | name=''
+GROUND     | unit=0x7109c440 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_5.blk' | name=''
+GROUND     | unit=0x7109c440 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x7109c440 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x7109c440 | info_off=0x40   | text='ussr_bt_5' | name=''
+GROUND     | unit=0x710a3c30 | info_off=0x10   | text='tankModels/cn_m8_greyhound' | name=''
+GROUND     | unit=0x710a3c30 | info_off=0x18   | text='gameData/units/tankModels/cn_m8_greyhound.blk' | name=''
+GROUND     | unit=0x710a3c30 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x710a3c30 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710a3c30 | info_off=0x40   | text='cn_m8_greyhound' | name=''
+GROUND     | unit=0x710ab420 | info_off=0x10   | text='tankModels/cn_m8_greyhound' | name=''
+GROUND     | unit=0x710ab420 | info_off=0x18   | text='gameData/units/tankModels/cn_m8_greyhound.blk' | name=''
+GROUND     | unit=0x710ab420 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x710ab420 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710ab420 | info_off=0x40   | text='cn_m8_greyhound' | name=''
+GROUND     | unit=0x710b2d60 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x710b2d60 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x710b2d60 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x710b2d60 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710b2d60 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x710ba550 | info_off=0x10   | text='tankModels/it_m13_40_serie_1' | name=''
+GROUND     | unit=0x710ba550 | info_off=0x18   | text='gameData/units/tankModels/it_m13_40_serie_1.blk' | name=''
+GROUND     | unit=0x710ba550 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x710ba550 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710ba550 | info_off=0x40   | text='it_m13_40_serie_1' | name=''
+MY_GROUND  | unit=0x710c1d40 | info_off=0x10   | text='tankModels/us_m2a4_1st_armor_div' | name=''
+MY_GROUND  | unit=0x710c1d40 | info_off=0x18   | text='gameData/units/tankModels/us_m2a4_1st_armor_div.blk' | name=''
+MY_GROUND  | unit=0x710c1d40 | info_off=0x30   | text='Light tank' | name=''
+MY_GROUND  | unit=0x710c1d40 | info_off=0x38   | text='exp_tank' | name=''
+MY_GROUND  | unit=0x710c1d40 | info_off=0x40   | text='us_m2a4_1st_armor_div' | name=''
+AIR        | unit=0x710c9530 | info_off=0x8    | text='dummy_plane' | name='c'
+AIR        | unit=0x710c9530 | info_off=0x10   | text='dummy_plane' | name='c'
+AIR        | unit=0x710c9530 | info_off=0x18   | text='gameData/flightModels/dummy_plane.blk' | name='c'
+AIR        | unit=0x710c9530 | info_off=0x38   | text='dummy_plane' | name='c'
+AIR        | unit=0x710c9530 | info_off=0x40   | text='dummy_plane' | name='c'
+GROUND     | unit=0x710d0d20 | info_off=0x10   | text='tankModels/ussr_bt_5' | name=''
+GROUND     | unit=0x710d0d20 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_5.blk' | name=''
+GROUND     | unit=0x710d0d20 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x710d0d20 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710d0d20 | info_off=0x40   | text='ussr_bt_5' | name=''
+GROUND     | unit=0x710d8510 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x710d8510 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x710d8510 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x710d8510 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710d8510 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x710e3e50 | info_off=0x10   | text='tankModels/ussr_bt_7_1937' | name=''
+GROUND     | unit=0x710e3e50 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_1937.blk' | name=''
+GROUND     | unit=0x710e3e50 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x710e3e50 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710e3e50 | info_off=0x40   | text='ussr_bt_7_1937' | name=''
+GROUND     | unit=0x710eb170 | info_off=0x10   | text='tankModels/jp_type_98_ta_se' | name=''
+GROUND     | unit=0x710eb170 | info_off=0x18   | text='gameData/units/tankModels/jp_type_98_ta_se.blk' | name=''
+GROUND     | unit=0x710eb170 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x710eb170 | info_off=0x40   | text='jp_type_98_ta_se' | name=''
+GROUND     | unit=0x710f2550 | info_off=0x10   | text='tankModels/germ_pzkpfw_38t_ausf_A' | name=''
+GROUND     | unit=0x710f2550 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_38t_ausf_A.blk' | name=''
+GROUND     | unit=0x710f2550 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x710f2550 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710f2550 | info_off=0x40   | text='germ_pzkpfw_38t_ausf_A' | name=''
+GROUND     | unit=0x710f9d40 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x710f9d40 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x710f9d40 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x710f9d40 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x710f9d40 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x71101530 | info_off=0x10   | text='tankModels/cn_su_76m_1943' | name=''
+GROUND     | unit=0x71101530 | info_off=0x18   | text='gameData/units/tankModels/cn_su_76m_1943.blk' | name=''
+GROUND     | unit=0x71101530 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x71101530 | info_off=0x40   | text='cn_su_76m_1943' | name=''
+GROUND     | unit=0x71108d20 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x71108d20 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x71108d20 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x71108d20 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71108d20 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x71110510 | info_off=0x10   | text='tankModels/us_m2a4_1st_armor_div' | name=''
+GROUND     | unit=0x71110510 | info_off=0x18   | text='gameData/units/tankModels/us_m2a4_1st_armor_div.blk' | name=''
+GROUND     | unit=0x71110510 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x71110510 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71110510 | info_off=0x40   | text='us_m2a4_1st_armor_div' | name=''
+GROUND     | unit=0x71117d00 | info_off=0x10   | text='tankModels/ussr_bt_7_1937' | name=''
+GROUND     | unit=0x71117d00 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_1937.blk' | name=''
+GROUND     | unit=0x71117d00 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x71117d00 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71117d00 | info_off=0x40   | text='ussr_bt_7_1937' | name=''
+GROUND     | unit=0x7111f4f0 | info_off=0x10   | text='tankModels/jp_type_4_ho_ro' | name=''
+GROUND     | unit=0x7111f4f0 | info_off=0x18   | text='gameData/units/tankModels/jp_type_4_ho_ro.blk' | name=''
+GROUND     | unit=0x7111f4f0 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x7111f4f0 | info_off=0x40   | text='jp_type_4_ho_ro' | name=''
+GROUND     | unit=0x71126ce0 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x71126ce0 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x71126ce0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x71126ce0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71126ce0 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x7112e4d0 | info_off=0x10   | text='tankModels/germ_pzkpfw_38t_Aufklarungspanzer' | name=''
+GROUND     | unit=0x7112e4d0 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_38t_Aufklarungspanzer.blk' | name=''
+GROUND     | unit=0x7112e4d0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x7112e4d0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x7112e4d0 | info_off=0x40   | text='germ_pzkpfw_38t_Aufklarungspanzer' | name=''
+GROUND     | unit=0x71135cc0 | info_off=0x10   | text='tankModels/ussr_bt_7_m' | name=''
+GROUND     | unit=0x71135cc0 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_m.blk' | name=''
+GROUND     | unit=0x71135cc0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x71135cc0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71135cc0 | info_off=0x40   | text='ussr_bt_7_m' | name=''
+GROUND     | unit=0x7113d4b0 | info_off=0x10   | text='tankModels/cn_m8_scott' | name=''
+GROUND     | unit=0x7113d4b0 | info_off=0x18   | text='gameData/units/tankModels/cn_m8_scott.blk' | name=''
+GROUND     | unit=0x7113d4b0 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x7113d4b0 | info_off=0x40   | text='cn_m8_scott' | name=''
+GROUND     | unit=0x71144ca0 | info_off=0x10   | text='tankModels/jp_type_2_ho_i' | name=''
+GROUND     | unit=0x71144ca0 | info_off=0x18   | text='gameData/units/tankModels/jp_type_2_ho_i.blk' | name=''
+GROUND     | unit=0x71144ca0 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x71144ca0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71144ca0 | info_off=0x40   | text='jp_type_2_ho_i' | name=''
+GROUND     | unit=0x7114c490 | info_off=0x10   | text='tankModels/ussr_su_76m_1943' | name=''
+GROUND     | unit=0x7114c490 | info_off=0x18   | text='gameData/units/tankModels/ussr_su_76m_1943.blk' | name=''
+GROUND     | unit=0x7114c490 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x7114c490 | info_off=0x40   | text='ussr_su_76m_1943' | name=''
+GROUND     | unit=0x71153c80 | info_off=0x10   | text='tankModels/it_m13_40_serie_3' | name=''
+GROUND     | unit=0x71153c80 | info_off=0x18   | text='gameData/units/tankModels/it_m13_40_serie_3.blk' | name=''
+GROUND     | unit=0x71153c80 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x71153c80 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71153c80 | info_off=0x40   | text='it_m13_40_serie_3' | name=''
+GROUND     | unit=0x7115b470 | info_off=0x10   | text='tankModels/ussr_su_76m_1943' | name=''
+GROUND     | unit=0x7115b470 | info_off=0x18   | text='gameData/units/tankModels/ussr_su_76m_1943.blk' | name=''
+GROUND     | unit=0x7115b470 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x7115b470 | info_off=0x40   | text='ussr_su_76m_1943' | name=''
+GROUND     | unit=0x71162c60 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x71162c60 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x71162c60 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x71162c60 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x71162c60 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x7116a450 | info_off=0x10   | text='tankModels/germ_pzkpfw_II_ausf_C' | name=''
+GROUND     | unit=0x7116a450 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_II_ausf_C.blk' | name=''
+GROUND     | unit=0x7116a450 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x7116a450 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x7116a450 | info_off=0x40   | text='germ_pzkpfw_II_ausf_C' | name=''
+AIR        | unit=0x71171c40 | info_off=0x8    | text='dummy_plane' | name='c'
+AIR        | unit=0x71171c40 | info_off=0x10   | text='dummy_plane' | name='c'
+AIR        | unit=0x71171c40 | info_off=0x18   | text='gameData/flightModels/dummy_plane.blk' | name='c'
+AIR        | unit=0x71171c40 | info_off=0x38   | text='dummy_plane' | name='c'
+AIR        | unit=0x71171c40 | info_off=0x40   | text='dummy_plane' | name='c'
+AIR        | unit=0x718a8800 | info_off=0x8    | text='dummy_plane' | name='c'
+AIR        | unit=0x718a8800 | info_off=0x10   | text='dummy_plane' | name='c'
+AIR        | unit=0x718a8800 | info_off=0x18   | text='gameData/flightModels/dummy_plane.blk' | name='c'
+AIR        | unit=0x718a8800 | info_off=0x38   | text='dummy_plane' | name='c'
+AIR        | unit=0x718a8800 | info_off=0x40   | text='dummy_plane' | name='c'
+GROUND     | unit=0x70c7c0f0 | info_off=0x10   | text='tankModels/sw_ikv_72' | name=''
+GROUND     | unit=0x70c7c0f0 | info_off=0x18   | text='gameData/units/tankModels/sw_ikv_72.blk' | name=''
+GROUND     | unit=0x70c7c0f0 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x70c7c0f0 | info_off=0x40   | text='sw_ikv_72' | name=''
+AIR        | unit=0x70fed960 | info_off=0x8    | text='unit_fulda_windmill' | name=''
+AIR        | unit=0x70fed960 | info_off=0x10   | text='structures/unit_fulda_windmill_char' | name=''
+AIR        | unit=0x70fed960 | info_off=0x18   | text='gameData/units/structures/unit_fulda_windmill_char.blk' | name=''
+AIR        | unit=0x70fed960 | info_off=0x20   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x70fed960 | info_off=0x28   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x70fed960 | info_off=0x30   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x70fed960 | info_off=0x38   | text='exp_zero' | name=''
+AIR        | unit=0x70fed960 | info_off=0x40   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77a45fa0 | info_off=0x8    | text='unit_fulda_windmill' | name=''
+AIR        | unit=0x77a45fa0 | info_off=0x10   | text='structures/unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77a45fa0 | info_off=0x18   | text='gameData/units/structures/unit_fulda_windmill_char.blk' | name=''
+AIR        | unit=0x77a45fa0 | info_off=0x20   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77a45fa0 | info_off=0x28   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77a45fa0 | info_off=0x30   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77a45fa0 | info_off=0x38   | text='exp_zero' | name=''
+AIR        | unit=0x77a45fa0 | info_off=0x40   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7426d0e0 | info_off=0x8    | text='unit_fulda_windmill' | name=''
+AIR        | unit=0x7426d0e0 | info_off=0x10   | text='structures/unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7426d0e0 | info_off=0x18   | text='gameData/units/structures/unit_fulda_windmill_char.blk' | name=''
+AIR        | unit=0x7426d0e0 | info_off=0x20   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7426d0e0 | info_off=0x28   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7426d0e0 | info_off=0x30   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7426d0e0 | info_off=0x38   | text='exp_zero' | name=''
+AIR        | unit=0x7426d0e0 | info_off=0x40   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7186e490 | info_off=0x8    | text='unit_fulda_windmill' | name=''
+AIR        | unit=0x7186e490 | info_off=0x10   | text='structures/unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7186e490 | info_off=0x18   | text='gameData/units/structures/unit_fulda_windmill_char.blk' | name=''
+AIR        | unit=0x7186e490 | info_off=0x20   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7186e490 | info_off=0x28   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7186e490 | info_off=0x30   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x7186e490 | info_off=0x38   | text='exp_zero' | name=''
+AIR        | unit=0x7186e490 | info_off=0x40   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x6c67e430 | info_off=0x8    | text='unit_fulda_windmill' | name=''
+AIR        | unit=0x6c67e430 | info_off=0x10   | text='structures/unit_fulda_windmill_char' | name=''
+AIR        | unit=0x6c67e430 | info_off=0x18   | text='gameData/units/structures/unit_fulda_windmill_char.blk' | name=''
+AIR        | unit=0x6c67e430 | info_off=0x20   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x6c67e430 | info_off=0x28   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x6c67e430 | info_off=0x30   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x6c67e430 | info_off=0x38   | text='exp_zero' | name=''
+AIR        | unit=0x6c67e430 | info_off=0x40   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77dcebe0 | info_off=0x8    | text='unit_fulda_windmill' | name=''
+AIR        | unit=0x77dcebe0 | info_off=0x10   | text='structures/unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77dcebe0 | info_off=0x18   | text='gameData/units/structures/unit_fulda_windmill_char.blk' | name=''
+AIR        | unit=0x77dcebe0 | info_off=0x20   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77dcebe0 | info_off=0x28   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77dcebe0 | info_off=0x30   | text='unit_fulda_windmill_char' | name=''
+AIR        | unit=0x77dcebe0 | info_off=0x38   | text='exp_zero' | name=''
+AIR        | unit=0x77dcebe0 | info_off=0x40   | text='unit_fulda_windmill_char' | name=''
+GROUND     | unit=0x77ee8cd0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x77ee8cd0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x77ee8cd0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x77ee8cd0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x718cc7a0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x718cc7a0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x718cc7a0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x718cc7a0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x70c715d0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x70c715d0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x70c715d0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x70c715d0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x718afb20 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x718afb20 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x718afb20 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x718afb20 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x718d3ac0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x718d3ac0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x718d3ac0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x718d3ac0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x718dade0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x718dade0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x718dade0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x718dade0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x70c83410 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x70c83410 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x70c83410 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x70c83410 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x718b6e40 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x718b6e40 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x718b6e40 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x718b6e40 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x718be160 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x718be160 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x718be160 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x718be160 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x718e2100 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x718e2100 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x718e2100 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x718e2100 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x718c5480 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x718c5480 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x718c5480 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x718c5480 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x6c6df9e0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x6c6df9e0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x6c6df9e0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x6c6df9e0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x739850f0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x739850f0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x739850f0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x739850f0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+
+🔬 Detailed Dump (my unit + first air + first ground)
+------------------------------------------------------------------------------------------------------------------------
+
+[MY_GROUND] unit=0x710c1d40 | info=0x6263a140 | name=''
+ unit+0x18   = 0x710c6268
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x782d4030
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x1
+ unit+0xfc0  = 0x6263a140
+ info+0x10   -> 'tankModels/us_m2a4_1st_armor_div'
+ info+0x18   -> 'gameData/units/tankModels/us_m2a4_1st_armor_div.blk'
+ info+0x30   -> 'Light tank'
+ info+0x38   -> 'exp_tank'
+ info+0x40   -> 'us_m2a4_1st_armor_div'
+
+[AIR] unit=0x70ff4f00 | info=0x62abdb20 | name=''
+ unit+0x18   = 0x70ff8478
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x2
+ unit+0xfc0  = 0x62abdb20
+ info+0x38   -> 'exp_structure'
+
+[GROUND] unit=0x70ffc730 | info=0x62abe030 | name=''
+ unit+0x18   = 0x70fffca8
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x1
+ unit+0xfc0  = 0x62abe030
+ info+0x10   -> 'air_defence/germ_37mm_flak43_airfield'
+ info+0x18   -> 'gameData/units/air_defence/germ_37mm_flak43_airfield.blk'
+ info+0x38   -> 'exp_aaa'
+ info+0x40   -> 'germ_37mm_flak43_airfield'
+(venv) xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ 
+"
+
+
+real game: "
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python unit_kind_dumper.py
+[*] 🚀 เริ่ม UNIT KIND DUMPER...
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x94847c0 (votes 27, score=5)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+  [+] ✅ REFINED! CGame = 0x941b280 (votes 298, score=4)
+=======================================================
+
+[*] MY_UNIT = 0x34d39990 | MY_TEAM = 1
+========================================================================================================================
+🧬 UNIT KIND DUMPER
+========================================================================================================================
+Label      | Kind   | Skip | Unit Ptr     | Info Ptr     | Team | Name
+------------------------------------------------------------------------------------------------------------------------
+AIR        | -      | Y    | 0x34c89b30   | 0x24994c90   | 2    | 
+GROUND     | ground | Y    | 0x34c90e50   | 0x249955a0   | 1    | 
+GROUND     | ground | Y    | 0x34c98170   | 0x249955a0   | 1    | 
+GROUND     | ground | Y    | 0x34c9f490   | 0x249955a0   | 1    | 
+GROUND     | ground | Y    | 0x34ca67b0   | 0x249955a0   | 1    | 
+GROUND     | ground | Y    | 0x34cadad0   | 0x256d1550   | 1    | 
+GROUND     | ground | Y    | 0x34cb4df0   | 0x256d1550   | 1    | 
+GROUND     | ground | Y    | 0x34cbd2a0   | 0x256d1550   | 1    | 
+GROUND     | ground | Y    | 0x34cc45c0   | 0x256d1550   | 1    | 
+GROUND     | ground | Y    | 0x34ccb8e0   | 0x256d1550   | 1    | 
+GROUND     | ground | Y    | 0x34cd2c00   | 0x256d1550   | 1    | 
+GROUND     | ground | Y    | 0x34cd9f20   | 0x256d4e50   | 2    | 
+GROUND     | ground | Y    | 0x34ce1240   | 0x256d4e50   | 2    | 
+GROUND     | ground | Y    | 0x34ce8560   | 0x256d4e50   | 2    | 
+GROUND     | ground | Y    | 0x34cef880   | 0x256d4e50   | 2    | 
+GROUND     | ground | Y    | 0x34cf8d70   | 0x256d79c0   | 2    | 
+GROUND     | ground | Y    | 0x34d00090   | 0x256d79c0   | 2    | 
+GROUND     | ground | Y    | 0x34d073b0   | 0x256d79c0   | 2    | 
+GROUND     | ground | Y    | 0x34d0e6d0   | 0x256d79c0   | 2    | 
+GROUND     | ground | Y    | 0x34d159f0   | 0x256d79c0   | 2    | 
+GROUND     | ground | Y    | 0x34d1cd10   | 0x256d79c0   | 2    | 
+GROUND     | ground | N    | 0x34d24030   | 0x34ad8fc0   | 2    | 
+GROUND     | ground | N    | 0x34d2b350   | 0x34a4fe30   | 1    | 
+GROUND     | ground | N    | 0x34d32670   | 0x36eccf30   | 1    | 
+MY_GROUND  | ground | N    | 0x34d39990   | 0x36708450   | 1    | 
+GROUND     | ground | N    | 0x34d40cb0   | 0x3b1c5490   | 1    | 
+GROUND     | ground | N    | 0x34d47fd0   | 0x34aa1b40   | 1    | 
+GROUND     | ground | N    | 0x34d4f2f0   | 0x3a399cc0   | 2    | 
+GROUND     | ground | N    | 0x34d56610   | 0x24470830   | 2    | 
+GROUND     | ground | N    | 0x34d5d930   | 0x34ae06d0   | 2    | 
+GROUND     | ground | N    | 0x34d64c50   | 0x3aa80da0   | 1    | 
+GROUND     | ground | N    | 0x34d70180   | 0x3493d1c0   | 2    | 
+GROUND     | ground | N    | 0x34d774a0   | 0x36ed2fd0   | 1    | 
+GROUND     | ground | N    | 0x34d7e7c0   | 0x35fd2330   | 2    | 
+GROUND     | ground | N    | 0x34d85ae0   | 0x3669b7a0   | 2    | 
+GROUND     | ground | N    | 0x34d8ce00   | 0x36eccf30   | 1    | 
+GROUND     | ground | N    | 0x34d94120   | 0x36ed2fd0   | 1    | 
+GROUND     | ground | N    | 0x34d9b440   | 0x3aa7cc30   | 2    | 
+GROUND     | ground | N    | 0x34da2760   | 0x3b1b8010   | 2    | 
+GROUND     | ground | N    | 0x34da9a80   | 0x3673ec90   | 1    | 
+GROUND     | ground | N    | 0x34db0da0   | 0x3aa80da0   | 1    | 
+GROUND     | ground | N    | 0x34db80c0   | 0x34935ca0   | 2    | 
+GROUND     | ground | N    | 0x34dbf3e0   | 0x34ad8fc0   | 2    | 
+GROUND     | ground | N    | 0x34dc6700   | 0x3aa7cc30   | 2    | 
+GROUND     | ground | N    | 0x34dcda20   | 0x3aa80da0   | 1    | 
+GROUND     | ground | N    | 0x34dd4d40   | 0x3b19bd70   | 2    | 
+GROUND     | ground | N    | 0x34ddc060   | 0x36744c80   | 1    | 
+AIR        | air    | Y    | 0x34de3380   | 0x3382fb20   | 1    | c
+GROUND     | ground | N    | 0x34dea6a0   | 0x34b8dde0   | 2    | 
+GROUND     | ground | N    | 0x34df19c0   | 0x34b67d30   | 1    | 
+GROUND     | ground | N    | 0x34df8ce0   | 0x3b1b8010   | 2    | 
+GROUND     | ground | N    | 0x349aaed0   | 0x3673ec90   | 1    | 
+GROUND     | ground | N    | 0x35b59790   | 0x34935ca0   | 2    | 
+GROUND     | ground | Y    | 0x2e41b080   | 0x36796680   | 1    | 
+GROUND     | ground | Y    | 0x35b9a3b0   | 0x36796680   | 2    | 
+GROUND     | ground | Y    | 0x34c82810   | 0x36796680   | 2    | 
+GROUND     | ground | Y    | 0x35b76410   | 0x36796680   | 2    | 
+GROUND     | ground | Y    | 0x35ba16d0   | 0x36796680   | 1    | 
+GROUND     | ground | Y    | 0x35b8bd70   | 0x36796680   | 1    | 
+GROUND     | ground | Y    | 0x35b6f0f0   | 0x36796680   | 1    | 
+GROUND     | ground | Y    | 0x35b67dd0   | 0x36796680   | 1    | 
+GROUND     | ground | Y    | 0x35b7d730   | 0x36796680   | 2    | 
+GROUND     | ground | Y    | 0x35b84a50   | 0x36796680   | 1    | 
+GROUND     | ground | Y    | 0x35b60ab0   | 0x36796680   | 2    | 
+GROUND     | ground | Y    | 0x35b93090   | 0x36796680   | 2    | 
+GROUND     | ground | Y    | 0x3b0b0c20   | 0x36796680   | 1    | 
+GROUND     | ground | Y    | 0x36090b70   | 0x36796680   | 2    | 
+GROUND     | ground | Y    | 0x34b68300   | 0x36796680   | 1    | 
+GROUND     | ground | Y    | 0x34b32550   | 0x36796680   | 1    | 
+------------------------------------------------------------------------------------------------------------------------
+
+📌 Candidate Flag Offsets (เทียบจากกลุ่มที่ unit array บอกว่าเป็น air/ground)
+------------------------------------------------------------------------------------------------------------------------
+Offset     | Type   | Air Values               | Ground Values            | Note
+------------------------------------------------------------------------------------------------------------------------
+0xd02      | byte   | 0x7a, 0xdf               | 0x0, 0xb, 0xf, 0x10, 0x17, 0x18 | disjoint split
+0x138      | byte   | 0x7, 0x5f                | 0x0, 0x5, 0x8, 0xc, 0xd, 0xe | disjoint split
+0x26a      | byte   | 0xa6, 0xb9               | 0x1a, 0x1e, 0x20, 0x22, 0x24, 0x28 | disjoint split
+0x269      | byte   | 0x6e, 0xa7               | 0x8, 0x10, 0x26, 0x2c, 0x37, 0x39 | disjoint split
+0x268      | byte   | 0x22, 0xbe               | 0x5, 0x17, 0x28, 0x29, 0x3b, 0x3f | disjoint split
+0x257      | byte   | 0x0, 0xbf                | 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0xba | disjoint split
+0x23f      | byte   | 0x0, 0xbf                | 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0xba | disjoint split
+0xcfe      | byte   | 0x80                     | 0x13, 0x1e, 0x24, 0x25, 0x58, 0x65 | disjoint split
+0x264      | byte   | 0x3c, 0x49               | 0x3, 0x4, 0xa, 0x10, 0x12, 0x16 | disjoint split
+0x258      | byte   | 0x49, 0xf1               | 0x6, 0x9, 0xf, 0x13, 0x1f, 0x39 | disjoint split
+0x24c      | byte   | 0x3c, 0x49               | 0x3, 0x4, 0xa, 0x10, 0x12, 0x16 | disjoint split
+0x240      | byte   | 0x49, 0xf1               | 0x6, 0x9, 0xf, 0x13, 0x1f, 0x39 | disjoint split
+0x209      | byte   | 0x24, 0x51               | 0xa, 0x14, 0x33, 0x39, 0x3c, 0x52 | disjoint split
+0xcfd      | byte   | 0x0                      | 0xb, 0xd, 0xf, 0x16, 0x2f, 0x31 | disjoint split
+0xcfc      | byte   | 0x0                      | 0x14, 0x26, 0x2e, 0x30, 0x3a, 0x3c | disjoint split
+0x262      | byte   | 0x50, 0xd0               | 0x9, 0xf, 0x10, 0x11, 0x19, 0x1b | disjoint split
+0x24a      | byte   | 0x50, 0xd0               | 0x9, 0xf, 0x10, 0x11, 0x19, 0x1b | disjoint split
+0x1fc      | byte   | 0x1c, 0xe5               | 0x3, 0x4, 0xa, 0xe, 0x18, 0x22 | disjoint split
+0xfc9      | byte   | 0xa4, 0xff               | 0x6, 0x8, 0x9, 0x15, 0x1a, 0x1b | disjoint split
+0x266      | byte   | 0x39, 0xb7               | 0x71, 0x77, 0x79, 0x80, 0x82, 0x8a | disjoint split
+
+📝 Candidate Strings จาก info_ptr
+------------------------------------------------------------------------------------------------------------------------
+AIR        | unit=0x34c89b30 | info_off=0x38   | text='exp_structure' | name=''
+GROUND     | unit=0x34c90e50 | info_off=0x8    | text='85mm_52k_noground_a' | name=''
+GROUND     | unit=0x34c90e50 | info_off=0x10   | text='air_defence/ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x34c90e50 | info_off=0x18   | text='gameData/units/air_defence/ussr_85mm_52k_noground.blk' | name=''
+GROUND     | unit=0x34c90e50 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34c90e50 | info_off=0x40   | text='ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x34c98170 | info_off=0x8    | text='85mm_52k_noground_a' | name=''
+GROUND     | unit=0x34c98170 | info_off=0x10   | text='air_defence/ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x34c98170 | info_off=0x18   | text='gameData/units/air_defence/ussr_85mm_52k_noground.blk' | name=''
+GROUND     | unit=0x34c98170 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34c98170 | info_off=0x40   | text='ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x34c9f490 | info_off=0x8    | text='85mm_52k_noground_a' | name=''
+GROUND     | unit=0x34c9f490 | info_off=0x10   | text='air_defence/ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x34c9f490 | info_off=0x18   | text='gameData/units/air_defence/ussr_85mm_52k_noground.blk' | name=''
+GROUND     | unit=0x34c9f490 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34c9f490 | info_off=0x40   | text='ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x34ca67b0 | info_off=0x8    | text='85mm_52k_noground_a' | name=''
+GROUND     | unit=0x34ca67b0 | info_off=0x10   | text='air_defence/ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x34ca67b0 | info_off=0x18   | text='gameData/units/air_defence/ussr_85mm_52k_noground.blk' | name=''
+GROUND     | unit=0x34ca67b0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34ca67b0 | info_off=0x40   | text='ussr_85mm_52k_noground' | name=''
+GROUND     | unit=0x34cadad0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cadad0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x34cadad0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34cadad0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cb4df0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cb4df0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x34cb4df0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34cb4df0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cbd2a0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cbd2a0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x34cbd2a0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34cbd2a0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cc45c0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cc45c0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x34cc45c0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34cc45c0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34ccb8e0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34ccb8e0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x34ccb8e0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34ccb8e0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cd2c00 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cd2c00 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x34cd2c00 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34cd2c00 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x34cd9f20 | info_off=0x8    | text='88mm_flak_noground_a' | name=''
+GROUND     | unit=0x34cd9f20 | info_off=0x10   | text='air_defence/germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x34cd9f20 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36_noground.blk' | name=''
+GROUND     | unit=0x34cd9f20 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34cd9f20 | info_off=0x40   | text='germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x34ce1240 | info_off=0x8    | text='88mm_flak_noground_a' | name=''
+GROUND     | unit=0x34ce1240 | info_off=0x10   | text='air_defence/germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x34ce1240 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36_noground.blk' | name=''
+GROUND     | unit=0x34ce1240 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34ce1240 | info_off=0x40   | text='germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x34ce8560 | info_off=0x8    | text='88mm_flak_noground_a' | name=''
+GROUND     | unit=0x34ce8560 | info_off=0x10   | text='air_defence/germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x34ce8560 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36_noground.blk' | name=''
+GROUND     | unit=0x34ce8560 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34ce8560 | info_off=0x40   | text='germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x34cef880 | info_off=0x8    | text='88mm_flak_noground_a' | name=''
+GROUND     | unit=0x34cef880 | info_off=0x10   | text='air_defence/germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x34cef880 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36_noground.blk' | name=''
+GROUND     | unit=0x34cef880 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34cef880 | info_off=0x40   | text='germ_88mm_flak36_noground' | name=''
+GROUND     | unit=0x34cf8d70 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34cf8d70 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x34cf8d70 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34cf8d70 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d00090 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d00090 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x34d00090 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34d00090 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d073b0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d073b0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x34d073b0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34d073b0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d0e6d0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d0e6d0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x34d0e6d0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34d0e6d0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d159f0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d159f0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x34d159f0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34d159f0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d1cd10 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d1cd10 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x34d1cd10 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x34d1cd10 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x34d24030 | info_off=0x10   | text='tankModels/cn_sdkfz_222_early' | name=''
+GROUND     | unit=0x34d24030 | info_off=0x18   | text='gameData/units/tankModels/cn_sdkfz_222_early.blk' | name=''
+GROUND     | unit=0x34d24030 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x34d24030 | info_off=0x40   | text='cn_sdkfz_222_early' | name=''
+GROUND     | unit=0x34d2b350 | info_off=0x10   | text='tankModels/uk_daimler_mk_2' | name=''
+GROUND     | unit=0x34d2b350 | info_off=0x18   | text='gameData/units/tankModels/uk_daimler_mk_2.blk' | name=''
+GROUND     | unit=0x34d2b350 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34d2b350 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d2b350 | info_off=0x40   | text='uk_daimler_mk_2' | name=''
+GROUND     | unit=0x34d32670 | info_off=0x10   | text='tankModels/germ_pzkpfw_III_ausf_F' | name=''
+GROUND     | unit=0x34d32670 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_III_ausf_F.blk' | name=''
+GROUND     | unit=0x34d32670 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x34d32670 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d32670 | info_off=0x40   | text='germ_pzkpfw_III_ausf_F' | name=''
+MY_GROUND  | unit=0x34d39990 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+MY_GROUND  | unit=0x34d39990 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+MY_GROUND  | unit=0x34d39990 | info_off=0x30   | text='Light tank' | name=''
+MY_GROUND  | unit=0x34d39990 | info_off=0x38   | text='exp_tank' | name=''
+MY_GROUND  | unit=0x34d39990 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x34d40cb0 | info_off=0x10   | text='tankModels/germ_sturmpanzer_II' | name=''
+GROUND     | unit=0x34d40cb0 | info_off=0x18   | text='gameData/units/tankModels/germ_sturmpanzer_II.blk' | name=''
+GROUND     | unit=0x34d40cb0 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x34d40cb0 | info_off=0x40   | text='germ_sturmpanzer_II' | name=''
+GROUND     | unit=0x34d47fd0 | info_off=0x10   | text='tankModels/us_m2a2' | name=''
+GROUND     | unit=0x34d47fd0 | info_off=0x18   | text='gameData/units/tankModels/us_m2a2.blk' | name=''
+GROUND     | unit=0x34d47fd0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34d47fd0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d47fd0 | info_off=0x40   | text='us_m2a2' | name=''
+GROUND     | unit=0x34d4f2f0 | info_off=0x10   | text='tankModels/it_m14_41' | name=''
+GROUND     | unit=0x34d4f2f0 | info_off=0x18   | text='gameData/units/tankModels/it_m14_41.blk' | name=''
+GROUND     | unit=0x34d4f2f0 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x34d4f2f0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d4f2f0 | info_off=0x40   | text='it_m14_41' | name=''
+GROUND     | unit=0x34d56610 | info_off=0x10   | text='tankModels/it_m11_39' | name=''
+GROUND     | unit=0x34d56610 | info_off=0x18   | text='gameData/units/tankModels/it_m11_39.blk' | name=''
+GROUND     | unit=0x34d56610 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x34d56610 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d56610 | info_off=0x40   | text='it_m11_39' | name=''
+GROUND     | unit=0x34d5d930 | info_off=0x10   | text='tankModels/cn_m8_scott' | name=''
+GROUND     | unit=0x34d5d930 | info_off=0x18   | text='gameData/units/tankModels/cn_m8_scott.blk' | name=''
+GROUND     | unit=0x34d5d930 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x34d5d930 | info_off=0x40   | text='cn_m8_scott' | name=''
+GROUND     | unit=0x34d64c50 | info_off=0x10   | text='tankModels/germ_pzkpfw_III_ausf_E' | name=''
+GROUND     | unit=0x34d64c50 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_III_ausf_E.blk' | name=''
+GROUND     | unit=0x34d64c50 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x34d64c50 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d64c50 | info_off=0x40   | text='germ_pzkpfw_III_ausf_E' | name=''
+GROUND     | unit=0x34d70180 | info_off=0x10   | text='tankModels/cn_m8_greyhound' | name=''
+GROUND     | unit=0x34d70180 | info_off=0x18   | text='gameData/units/tankModels/cn_m8_greyhound.blk' | name=''
+GROUND     | unit=0x34d70180 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34d70180 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d70180 | info_off=0x40   | text='cn_m8_greyhound' | name=''
+GROUND     | unit=0x34d774a0 | info_off=0x10   | text='tankModels/us_m2a4' | name=''
+GROUND     | unit=0x34d774a0 | info_off=0x18   | text='gameData/units/tankModels/us_m2a4.blk' | name=''
+GROUND     | unit=0x34d774a0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34d774a0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d774a0 | info_off=0x40   | text='us_m2a4' | name=''
+GROUND     | unit=0x34d7e7c0 | info_off=0x10   | text='tankModels/jp_type_89b_i_go_otsu' | name=''
+GROUND     | unit=0x34d7e7c0 | info_off=0x18   | text='gameData/units/tankModels/jp_type_89b_i_go_otsu.blk' | name=''
+GROUND     | unit=0x34d7e7c0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34d7e7c0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d7e7c0 | info_off=0x40   | text='jp_type_89b_i_go_otsu' | name=''
+GROUND     | unit=0x34d85ae0 | info_off=0x10   | text='tankModels/it_m13_40_serie_1' | name=''
+GROUND     | unit=0x34d85ae0 | info_off=0x18   | text='gameData/units/tankModels/it_m13_40_serie_1.blk' | name=''
+GROUND     | unit=0x34d85ae0 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x34d85ae0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d85ae0 | info_off=0x40   | text='it_m13_40_serie_1' | name=''
+GROUND     | unit=0x34d8ce00 | info_off=0x10   | text='tankModels/germ_pzkpfw_III_ausf_F' | name=''
+GROUND     | unit=0x34d8ce00 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_III_ausf_F.blk' | name=''
+GROUND     | unit=0x34d8ce00 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x34d8ce00 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d8ce00 | info_off=0x40   | text='germ_pzkpfw_III_ausf_F' | name=''
+GROUND     | unit=0x34d94120 | info_off=0x10   | text='tankModels/us_m2a4' | name=''
+GROUND     | unit=0x34d94120 | info_off=0x18   | text='gameData/units/tankModels/us_m2a4.blk' | name=''
+GROUND     | unit=0x34d94120 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34d94120 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d94120 | info_off=0x40   | text='us_m2a4' | name=''
+GROUND     | unit=0x34d9b440 | info_off=0x10   | text='tankModels/ussr_t_26_1940' | name=''
+GROUND     | unit=0x34d9b440 | info_off=0x18   | text='gameData/units/tankModels/ussr_t_26_1940.blk' | name=''
+GROUND     | unit=0x34d9b440 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34d9b440 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34d9b440 | info_off=0x40   | text='ussr_t_26_1940' | name=''
+GROUND     | unit=0x34da2760 | info_off=0x10   | text='tankModels/ussr_bt_7_1937' | name=''
+GROUND     | unit=0x34da2760 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_1937.blk' | name=''
+GROUND     | unit=0x34da2760 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34da2760 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34da2760 | info_off=0x40   | text='ussr_bt_7_1937' | name=''
+GROUND     | unit=0x34da9a80 | info_off=0x10   | text='tankModels/germ_flakpanzer_I_ausf_A' | name=''
+GROUND     | unit=0x34da9a80 | info_off=0x18   | text='gameData/units/tankModels/germ_flakpanzer_I_ausf_A.blk' | name=''
+GROUND     | unit=0x34da9a80 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x34da9a80 | info_off=0x40   | text='germ_flakpanzer_I_ausf_A' | name=''
+GROUND     | unit=0x34db0da0 | info_off=0x10   | text='tankModels/germ_pzkpfw_III_ausf_E' | name=''
+GROUND     | unit=0x34db0da0 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_III_ausf_E.blk' | name=''
+GROUND     | unit=0x34db0da0 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x34db0da0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34db0da0 | info_off=0x40   | text='germ_pzkpfw_III_ausf_E' | name=''
+GROUND     | unit=0x34db80c0 | info_off=0x10   | text='tankModels/cn_t_26_1940' | name=''
+GROUND     | unit=0x34db80c0 | info_off=0x18   | text='gameData/units/tankModels/cn_t_26_1940.blk' | name=''
+GROUND     | unit=0x34db80c0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34db80c0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34db80c0 | info_off=0x40   | text='cn_t_26_1940' | name=''
+GROUND     | unit=0x34dbf3e0 | info_off=0x10   | text='tankModels/cn_sdkfz_222_early' | name=''
+GROUND     | unit=0x34dbf3e0 | info_off=0x18   | text='gameData/units/tankModels/cn_sdkfz_222_early.blk' | name=''
+GROUND     | unit=0x34dbf3e0 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x34dbf3e0 | info_off=0x40   | text='cn_sdkfz_222_early' | name=''
+GROUND     | unit=0x34dc6700 | info_off=0x10   | text='tankModels/ussr_t_26_1940' | name=''
+GROUND     | unit=0x34dc6700 | info_off=0x18   | text='gameData/units/tankModels/ussr_t_26_1940.blk' | name=''
+GROUND     | unit=0x34dc6700 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34dc6700 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34dc6700 | info_off=0x40   | text='ussr_t_26_1940' | name=''
+GROUND     | unit=0x34dcda20 | info_off=0x10   | text='tankModels/germ_pzkpfw_III_ausf_E' | name=''
+GROUND     | unit=0x34dcda20 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_III_ausf_E.blk' | name=''
+GROUND     | unit=0x34dcda20 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x34dcda20 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34dcda20 | info_off=0x40   | text='germ_pzkpfw_III_ausf_E' | name=''
+GROUND     | unit=0x34dd4d40 | info_off=0x10   | text='tankModels/it_ab_41' | name=''
+GROUND     | unit=0x34dd4d40 | info_off=0x18   | text='gameData/units/tankModels/it_ab_41.blk' | name=''
+GROUND     | unit=0x34dd4d40 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34dd4d40 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34dd4d40 | info_off=0x40   | text='it_ab_41' | name=''
+GROUND     | unit=0x34ddc060 | info_off=0x10   | text='tankModels/uk_a_13_mk2_1939' | name=''
+GROUND     | unit=0x34ddc060 | info_off=0x18   | text='gameData/units/tankModels/uk_a_13_mk2_1939.blk' | name=''
+GROUND     | unit=0x34ddc060 | info_off=0x30   | text='Cruiser tank' | name=''
+GROUND     | unit=0x34ddc060 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34ddc060 | info_off=0x40   | text='uk_a_13_mk2_1939' | name=''
+AIR        | unit=0x34de3380 | info_off=0x8    | text='dummy_plane' | name='c'
+AIR        | unit=0x34de3380 | info_off=0x10   | text='dummy_plane' | name='c'
+AIR        | unit=0x34de3380 | info_off=0x18   | text='gameData/flightModels/dummy_plane.blk' | name='c'
+AIR        | unit=0x34de3380 | info_off=0x38   | text='dummy_plane' | name='c'
+AIR        | unit=0x34de3380 | info_off=0x40   | text='dummy_plane' | name='c'
+GROUND     | unit=0x34dea6a0 | info_off=0x10   | text='tankModels/ussr_bt_5' | name=''
+GROUND     | unit=0x34dea6a0 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_5.blk' | name=''
+GROUND     | unit=0x34dea6a0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34dea6a0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34dea6a0 | info_off=0x40   | text='ussr_bt_5' | name=''
+GROUND     | unit=0x34df19c0 | info_off=0x10   | text='tankModels/uk_a_13_mk2' | name=''
+GROUND     | unit=0x34df19c0 | info_off=0x18   | text='gameData/units/tankModels/uk_a_13_mk2.blk' | name=''
+GROUND     | unit=0x34df19c0 | info_off=0x30   | text='Cruiser tank' | name=''
+GROUND     | unit=0x34df19c0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34df19c0 | info_off=0x40   | text='uk_a_13_mk2' | name=''
+GROUND     | unit=0x34df8ce0 | info_off=0x10   | text='tankModels/ussr_bt_7_1937' | name=''
+GROUND     | unit=0x34df8ce0 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_1937.blk' | name=''
+GROUND     | unit=0x34df8ce0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x34df8ce0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x34df8ce0 | info_off=0x40   | text='ussr_bt_7_1937' | name=''
+GROUND     | unit=0x349aaed0 | info_off=0x10   | text='tankModels/germ_flakpanzer_I_ausf_A' | name=''
+GROUND     | unit=0x349aaed0 | info_off=0x18   | text='gameData/units/tankModels/germ_flakpanzer_I_ausf_A.blk' | name=''
+GROUND     | unit=0x349aaed0 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x349aaed0 | info_off=0x40   | text='germ_flakpanzer_I_ausf_A' | name=''
+GROUND     | unit=0x35b59790 | info_off=0x10   | text='tankModels/cn_t_26_1940' | name=''
+GROUND     | unit=0x35b59790 | info_off=0x18   | text='gameData/units/tankModels/cn_t_26_1940.blk' | name=''
+GROUND     | unit=0x35b59790 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x35b59790 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x35b59790 | info_off=0x40   | text='cn_t_26_1940' | name=''
+GROUND     | unit=0x2e41b080 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x2e41b080 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x2e41b080 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x2e41b080 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b9a3b0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b9a3b0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b9a3b0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b9a3b0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x34c82810 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x34c82810 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x34c82810 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x34c82810 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b76410 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b76410 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b76410 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b76410 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35ba16d0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35ba16d0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35ba16d0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35ba16d0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b8bd70 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b8bd70 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b8bd70 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b8bd70 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b6f0f0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b6f0f0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b6f0f0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b6f0f0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b67dd0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b67dd0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b67dd0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b67dd0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b7d730 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b7d730 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b7d730 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b7d730 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b84a50 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b84a50 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b84a50 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b84a50 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b60ab0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b60ab0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b60ab0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b60ab0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b93090 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x35b93090 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x35b93090 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x35b93090 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x3b0b0c20 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x3b0b0c20 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x3b0b0c20 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x3b0b0c20 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x36090b70 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x36090b70 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x36090b70 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x36090b70 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x34b68300 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x34b68300 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x34b68300 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x34b68300 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x34b32550 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x34b32550 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x34b32550 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x34b32550 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+
+🔬 Detailed Dump (my unit + first air + first ground)
+------------------------------------------------------------------------------------------------------------------------
+
+[MY_GROUND] unit=0x34d39990 | info=0x36708450 | name=''
+ unit+0x18   = 0x34d3deb8
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x39849e80
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x1
+ unit+0xfc0  = 0x36708450
+ info+0x10   -> 'tankModels/us_m22_locust'
+ info+0x18   -> 'gameData/units/tankModels/us_m22_locust.blk'
+ info+0x30   -> 'Light tank'
+ info+0x38   -> 'exp_tank'
+ info+0x40   -> 'us_m22_locust'
+
+[AIR] unit=0x34c89b30 | info=0x24994c90 | name=''
+ unit+0x18   = 0x34c8d0a8
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x2
+ unit+0xfc0  = 0x24994c90
+ info+0x38   -> 'exp_structure'
+
+[GROUND] unit=0x34c90e50 | info=0x249955a0 | name=''
+ unit+0x18   = 0x34c943c8
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x1
+ unit+0xfc0  = 0x249955a0
+ info+0x8    -> '85mm_52k_noground_a'
+ info+0x10   -> 'air_defence/ussr_85mm_52k_noground'
+ info+0x18   -> 'gameData/units/air_defence/ussr_85mm_52k_noground.blk'
+ info+0x38   -> 'exp_aaa'
+ info+0x40   -> 'ussr_85mm_52k_noground'
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ 
+"
+=======================================================================================
+
+Real Game: "
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python unit_kind_dumper.py
+[*] 🚀 เริ่ม UNIT KIND DUMPER...
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x9484840 (votes 47, score=6)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+  [+] ✅ REFINED! CGame = 0x941b280 (votes 298, score=4)
+=======================================================
+
+[*] MY_UNIT = 0x5831c240 | MY_TEAM = 1
+========================================================================================================================
+🧬 UNIT KIND DUMPER
+========================================================================================================================
+Label      | Kind   | Skip | Why            | Unit Ptr     | Info Ptr     | Team | Name
+------------------------------------------------------------------------------------------------------------------------
+AIR        | ground | Y    | tag:exp_struct | 0x581bd400   | 0x5931d360   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581c4a90   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581cca70   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581d3d90   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581db420   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581e2ab0   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581eb2d0   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581f2960   | 0x5cfce590   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581f9ff0   | 0x5cfce590   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582017e0   | 0x5cfce590   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582091e0   | 0x5cfce590   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582109d0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582181c0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x5821f9b0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582292b0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582305d0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x58237c60   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x5823f2f0   | 0x5cfce590   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x58246a40   | 0x5cfce590   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x5824e230   | 0x5cfce590   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x58255a20   | 0x5cfce590   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x5825d210   | 0x5d8a08c0   | 1    | 
+GROUND     | ground | N    | exp_tank_destr | 0x58264a00   | 0x49aafd70   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5826c1f0   | 0x59fce470   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x52bb2520   | 0x57d3c390   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x5827b320   | 0x595c6160   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x58282b10   | 0x5cd02d50   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5828a300   | 0x595c6160   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x58291af0   | 0x55866020   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x582992e0   | 0x595c6160   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x582a4c20   | 0x49a9f570   | 2    | 
+GROUND     | ground | N    | exp_tank_destr | 0x582abf40   | 0x5e90be30   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x582b3320   | 0x49a96030   | 1    | 
+GROUND     | ground | N    | exp_SPAA       | 0x582c2300   | 0x52c605f0   | 2    | 
+GROUND     | ground | N    | exp_SPAA       | 0x582c9af0   | 0x5ccf24f0   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x582d12e0   | 0x49ab1800   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x582d8ad0   | 0x49ab1800   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x582e7ab0   | 0x49ab1800   | 2    | 
+GROUND     | ground | N    | exp_tank_destr | 0x582ef2a0   | 0x49a8ce40   | 2    | 
+GROUND     | ground | N    | exp_SPAA       | 0x582f6a90   | 0x5c7bbb30   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x58305a70   | 0x52bbc620   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5830d260   | 0x5e4d3aa0   | 2    | 
+GROUND     | ground | N    | exp_tank_destr | 0x58314a50   | 0x5965d000   | 2    | 
+MY_GROUND  | ground | N    | exp_tank       | 0x5831c240   | 0x595c6160   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5832b220   | 0x52bbc620   | 1    | 
+GROUND     | ground | N    | exp_tank_destr | 0x58332a10   | 0x49aafd70   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x4d0b66a0   | 0x49ab1800   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x57e321b0   | 0x5b9aebe0   | 1    | 
+GROUND     | ground | N    | exp_tank_destr | 0x4d0bd9c0   | 0x49a8ce40   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d53c60   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d695c0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58273b30   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d77c00   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x581b5bd0   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x4d0c4ce0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d4c940   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x4d0cc000   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d5af80   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d708e0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x58d622a0   | 0x55868860   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x581ae630   | 0x5e5a6f50   | 1    | 
+------------------------------------------------------------------------------------------------------------------------
+
+📌 Candidate Flag Offsets (เทียบจากกลุ่มที่ unit array บอกว่าเป็น air/ground)
+------------------------------------------------------------------------------------------------------------------------
+Offset     | Type   | Air Values               | Ground Values            | Note
+------------------------------------------------------------------------------------------------------------------------
+[-] ยังไม่เจอ byte flag ที่แยก air/ground ได้แบบชัดเจนใน range ที่สแกน
+
+📝 Candidate Strings จาก info_ptr
+------------------------------------------------------------------------------------------------------------------------
+AIR        | unit=0x581bd400 | info_off=0x38   | text='exp_structure' | name=''
+GROUND     | unit=0x581c4a90 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581c4a90 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581c4a90 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581c4a90 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581cca70 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581cca70 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581cca70 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581cca70 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581d3d90 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581d3d90 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581d3d90 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581d3d90 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581db420 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581db420 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581db420 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581db420 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581e2ab0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581e2ab0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581e2ab0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581e2ab0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581eb2d0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581eb2d0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581eb2d0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581eb2d0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581f2960 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x581f2960 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x581f2960 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581f2960 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x581f9ff0 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x581f9ff0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x581f9ff0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581f9ff0 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x582017e0 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x582017e0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x582017e0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582017e0 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x582091e0 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x582091e0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x582091e0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582091e0 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x582109d0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582109d0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x582109d0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582109d0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582181c0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582181c0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x582181c0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582181c0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x5821f9b0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x5821f9b0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x5821f9b0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x5821f9b0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582292b0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582292b0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x582292b0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582292b0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582305d0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582305d0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x582305d0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582305d0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x58237c60 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x58237c60 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x58237c60 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x58237c60 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x5823f2f0 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x5823f2f0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x5823f2f0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x5823f2f0 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x58246a40 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x58246a40 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x58246a40 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x58246a40 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x5824e230 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x5824e230 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x5824e230 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x5824e230 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x58255a20 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x58255a20 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x58255a20 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x58255a20 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x5825d210 | info_off=0x10   | text='tankModels/germ_pzkpfw_38t_na' | name=''
+GROUND     | unit=0x5825d210 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_38t_na.blk' | name=''
+GROUND     | unit=0x5825d210 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x5825d210 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5825d210 | info_off=0x40   | text='germ_pzkpfw_38t_na' | name=''
+GROUND     | unit=0x58264a00 | info_off=0x10   | text='tankModels/germ_stug_III_ausf_A' | name=''
+GROUND     | unit=0x58264a00 | info_off=0x18   | text='gameData/units/tankModels/germ_stug_III_ausf_A.blk' | name=''
+GROUND     | unit=0x58264a00 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x58264a00 | info_off=0x40   | text='germ_stug_III_ausf_A' | name=''
+GROUND     | unit=0x5826c1f0 | info_off=0x10   | text='tankModels/us_t18_e2' | name=''
+GROUND     | unit=0x5826c1f0 | info_off=0x18   | text='gameData/units/tankModels/us_t18_e2.blk' | name=''
+GROUND     | unit=0x5826c1f0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5826c1f0 | info_off=0x40   | text='us_t18_e2' | name=''
+GROUND     | unit=0x52bb2520 | info_off=0x10   | text='tankModels/ussr_t_60_1941' | name=''
+GROUND     | unit=0x52bb2520 | info_off=0x18   | text='gameData/units/tankModels/ussr_t_60_1941.blk' | name=''
+GROUND     | unit=0x52bb2520 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x52bb2520 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x52bb2520 | info_off=0x40   | text='ussr_t_60_1941' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x58282b10 | info_off=0x10   | text='tankModels/germ_pzkpfw_IV_ausf_E' | name=''
+GROUND     | unit=0x58282b10 | info_off=0x18   | text='gameData/units/tankModels/germ_pzkpfw_IV_ausf_E.blk' | name=''
+GROUND     | unit=0x58282b10 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x58282b10 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x58282b10 | info_off=0x40   | text='germ_pzkpfw_IV_ausf_E' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x58291af0 | info_off=0x10   | text='tankModels/ussr_t_28_1938' | name=''
+GROUND     | unit=0x58291af0 | info_off=0x18   | text='gameData/units/tankModels/ussr_t_28_1938.blk' | name=''
+GROUND     | unit=0x58291af0 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x58291af0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x58291af0 | info_off=0x40   | text='ussr_t_28_1938' | name=''
+GROUND     | unit=0x582992e0 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x582992e0 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x582992e0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x582992e0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x582992e0 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x582a4c20 | info_off=0x10   | text='tankModels/ussr_t_50' | name=''
+GROUND     | unit=0x582a4c20 | info_off=0x18   | text='gameData/units/tankModels/ussr_t_50.blk' | name=''
+GROUND     | unit=0x582a4c20 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x582a4c20 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x582a4c20 | info_off=0x40   | text='ussr_t_50' | name=''
+GROUND     | unit=0x582abf40 | info_off=0x10   | text='tankModels/it_lancia3ro_100' | name=''
+GROUND     | unit=0x582abf40 | info_off=0x18   | text='gameData/units/tankModels/it_lancia3ro_100.blk' | name=''
+GROUND     | unit=0x582abf40 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x582abf40 | info_off=0x40   | text='it_lancia3ro_100' | name=''
+GROUND     | unit=0x582b3320 | info_off=0x10   | text='tankModels/us_m4a3_105_sherman' | name=''
+GROUND     | unit=0x582b3320 | info_off=0x18   | text='gameData/units/tankModels/us_m4a3_105_sherman.blk' | name=''
+GROUND     | unit=0x582b3320 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x582b3320 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x582b3320 | info_off=0x40   | text='us_m4a3_105_sherman' | name=''
+GROUND     | unit=0x582c2300 | info_off=0x10   | text='tankModels/ussr_zis_43' | name=''
+GROUND     | unit=0x582c2300 | info_off=0x18   | text='gameData/units/tankModels/ussr_zis_43.blk' | name=''
+GROUND     | unit=0x582c2300 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x582c2300 | info_off=0x40   | text='ussr_zis_43' | name=''
+GROUND     | unit=0x582c9af0 | info_off=0x10   | text='tankModels/ussr_gaz_mm_72k' | name=''
+GROUND     | unit=0x582c9af0 | info_off=0x18   | text='gameData/units/tankModels/ussr_gaz_mm_72k.blk' | name=''
+GROUND     | unit=0x582c9af0 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x582c9af0 | info_off=0x40   | text='ussr_gaz_mm_72k' | name=''
+GROUND     | unit=0x582d12e0 | info_off=0x10   | text='tankModels/ussr_bt_7_m' | name=''
+GROUND     | unit=0x582d12e0 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_m.blk' | name=''
+GROUND     | unit=0x582d12e0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x582d12e0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x582d12e0 | info_off=0x40   | text='ussr_bt_7_m' | name=''
+GROUND     | unit=0x582d8ad0 | info_off=0x10   | text='tankModels/ussr_bt_7_m' | name=''
+GROUND     | unit=0x582d8ad0 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_m.blk' | name=''
+GROUND     | unit=0x582d8ad0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x582d8ad0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x582d8ad0 | info_off=0x40   | text='ussr_bt_7_m' | name=''
+GROUND     | unit=0x582e7ab0 | info_off=0x10   | text='tankModels/ussr_bt_7_m' | name=''
+GROUND     | unit=0x582e7ab0 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_m.blk' | name=''
+GROUND     | unit=0x582e7ab0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x582e7ab0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x582e7ab0 | info_off=0x40   | text='ussr_bt_7_m' | name=''
+GROUND     | unit=0x582ef2a0 | info_off=0x10   | text='tankModels/jp_type_3_ho_ni_III' | name=''
+GROUND     | unit=0x582ef2a0 | info_off=0x18   | text='gameData/units/tankModels/jp_type_3_ho_ni_III.blk' | name=''
+GROUND     | unit=0x582ef2a0 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x582ef2a0 | info_off=0x40   | text='jp_type_3_ho_ni_III' | name=''
+GROUND     | unit=0x582f6a90 | info_off=0x10   | text='tankModels/germ_sdkfz_222' | name=''
+GROUND     | unit=0x582f6a90 | info_off=0x18   | text='gameData/units/tankModels/germ_sdkfz_222.blk' | name=''
+GROUND     | unit=0x582f6a90 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x582f6a90 | info_off=0x40   | text='germ_sdkfz_222' | name=''
+GROUND     | unit=0x58305a70 | info_off=0x10   | text='tankModels/us_m3a1_stuart' | name=''
+GROUND     | unit=0x58305a70 | info_off=0x18   | text='gameData/units/tankModels/us_m3a1_stuart.blk' | name=''
+GROUND     | unit=0x58305a70 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x58305a70 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x58305a70 | info_off=0x40   | text='us_m3a1_stuart' | name=''
+GROUND     | unit=0x5830d260 | info_off=0x10   | text='tankModels/jp_type_2_ho_i' | name=''
+GROUND     | unit=0x5830d260 | info_off=0x18   | text='gameData/units/tankModels/jp_type_2_ho_i.blk' | name=''
+GROUND     | unit=0x5830d260 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x5830d260 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5830d260 | info_off=0x40   | text='jp_type_2_ho_i' | name=''
+GROUND     | unit=0x58314a50 | info_off=0x10   | text='tankModels/ussr_su_76m_1943' | name=''
+GROUND     | unit=0x58314a50 | info_off=0x18   | text='gameData/units/tankModels/ussr_su_76m_1943.blk' | name=''
+GROUND     | unit=0x58314a50 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x58314a50 | info_off=0x40   | text='ussr_su_76m_1943' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x30   | text='Light tank' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x38   | text='exp_tank' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x5832b220 | info_off=0x10   | text='tankModels/us_m3a1_stuart' | name=''
+GROUND     | unit=0x5832b220 | info_off=0x18   | text='gameData/units/tankModels/us_m3a1_stuart.blk' | name=''
+GROUND     | unit=0x5832b220 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x5832b220 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5832b220 | info_off=0x40   | text='us_m3a1_stuart' | name=''
+GROUND     | unit=0x58332a10 | info_off=0x10   | text='tankModels/germ_stug_III_ausf_A' | name=''
+GROUND     | unit=0x58332a10 | info_off=0x18   | text='gameData/units/tankModels/germ_stug_III_ausf_A.blk' | name=''
+GROUND     | unit=0x58332a10 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x58332a10 | info_off=0x40   | text='germ_stug_III_ausf_A' | name=''
+GROUND     | unit=0x4d0b66a0 | info_off=0x10   | text='tankModels/ussr_bt_7_m' | name=''
+GROUND     | unit=0x4d0b66a0 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_7_m.blk' | name=''
+GROUND     | unit=0x4d0b66a0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x4d0b66a0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x4d0b66a0 | info_off=0x40   | text='ussr_bt_7_m' | name=''
+GROUND     | unit=0x57e321b0 | info_off=0x10   | text='tankModels/sw_strv_m38' | name=''
+GROUND     | unit=0x57e321b0 | info_off=0x18   | text='gameData/units/tankModels/sw_strv_m38.blk' | name=''
+GROUND     | unit=0x57e321b0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x57e321b0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x57e321b0 | info_off=0x40   | text='sw_strv_m38' | name=''
+GROUND     | unit=0x4d0bd9c0 | info_off=0x10   | text='tankModels/jp_type_3_ho_ni_III' | name=''
+GROUND     | unit=0x4d0bd9c0 | info_off=0x18   | text='gameData/units/tankModels/jp_type_3_ho_ni_III.blk' | name=''
+GROUND     | unit=0x4d0bd9c0 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x4d0bd9c0 | info_off=0x40   | text='jp_type_3_ho_ni_III' | name=''
+GROUND     | unit=0x58d53c60 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d53c60 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d53c60 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d53c60 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d695c0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d695c0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d695c0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d695c0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58273b30 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58273b30 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58273b30 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58273b30 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d77c00 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d77c00 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d77c00 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d77c00 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x581b5bd0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x581b5bd0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x581b5bd0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x581b5bd0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x4d0c4ce0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x4d0c4ce0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x4d0c4ce0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x4d0c4ce0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d4c940 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d4c940 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d4c940 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d4c940 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x4d0cc000 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x4d0cc000 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x4d0cc000 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x4d0cc000 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d5af80 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d5af80 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d5af80 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d5af80 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d708e0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d708e0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d708e0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d708e0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d622a0 | info_off=0x10   | text='tankModels/uk_a_13_mk2' | name=''
+GROUND     | unit=0x58d622a0 | info_off=0x18   | text='gameData/units/tankModels/uk_a_13_mk2.blk' | name=''
+GROUND     | unit=0x58d622a0 | info_off=0x30   | text='Cruiser tank' | name=''
+GROUND     | unit=0x58d622a0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x58d622a0 | info_off=0x40   | text='uk_a_13_mk2' | name=''
+GROUND     | unit=0x581ae630 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x581ae630 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x581ae630 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x581ae630 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+
+🔬 Detailed Dump (my unit + first air + first ground)
+------------------------------------------------------------------------------------------------------------------------
+
+[MY_GROUND] unit=0x5831c240 | info=0x595c6160 | name=''
+ unit+0x18   = 0x58320768
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x592051b0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x1
+ unit+0xfc0  = 0x595c6160
+ info+0x10   -> 'tankModels/us_m22_locust'
+ info+0x18   -> 'gameData/units/tankModels/us_m22_locust.blk'
+ info+0x30   -> 'Light tank'
+ info+0x38   -> 'exp_tank'
+ info+0x40   -> 'us_m22_locust'
+
+[AIR] unit=0x581bd400 | info=0x5931d360 | name=''
+ unit+0x18   = 0x581c0978
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x2
+ unit+0xfc0  = 0x5931d360
+ info+0x38   -> 'exp_structure'
+
+[GROUND] unit=0x581c4a90 | info=0x5cfcaf90 | name=''
+ unit+0x18   = 0x581c8008
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x1
+ unit+0xfc0  = 0x5cfcaf90
+ info+0x10   -> 'air_defence/ussr_37mm_61k_airfield'
+ info+0x18   -> 'gameData/units/air_defence/ussr_37mm_61k_airfield.blk'
+ info+0x38   -> 'exp_aaa'
+ info+0x40   -> 'ussr_37mm_61k_airfield'
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ 
+"
+
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python unit_kind_dumper.py
+[*] 🚀 เริ่ม UNIT KIND DUMPER...
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x9484840 (votes 47, score=6)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x981cfc8 (โหวต 2 เสียง)
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+  [+] ✅ BINGO! BBMIN = 0x1e0 (BBMAX = 0x1ec) (โหวต 34 เสียง)
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfc0 (โหวต 144 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfb0 (โหวต 139 เสียง)
+  [+] ✅ BINGO! STATE = 0xf30 (โหวต 3 เสียง)
+  [+] ✅ BINGO! RELOAD = 0x918 (RELOADING = 0x7fc) (โหวต 12 เสียง)
+[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1c0
+  [+] ✅ REFINED! CGame = 0x941b280 (votes 298, score=4)
+=======================================================
+
+[*] MY_UNIT = 0x5831c240 | MY_TEAM = 1
+========================================================================================================================
+🧬 UNIT KIND DUMPER
+========================================================================================================================
+Label      | Kind   | Skip | Why            | Unit Ptr     | Info Ptr     | Team | Name
+------------------------------------------------------------------------------------------------------------------------
+AIR        | ground | Y    | tag:exp_struct | 0x581bd400   | 0x5931d360   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581c4a90   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581cca70   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581d3d90   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581db420   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581e2ab0   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581eb2d0   | 0x5cfcaf90   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581f2960   | 0x5cfce590   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x581f9ff0   | 0x5cfce590   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582017e0   | 0x5cfce590   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582091e0   | 0x5cfce590   | 1    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582109d0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582181c0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x5821f9b0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582292b0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x582305d0   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x58237c60   | 0x592b39c0   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x5823f2f0   | 0x5cfce590   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x58246a40   | 0x5cfce590   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x5824e230   | 0x5cfce590   | 2    | 
+GROUND     | ground | Y    | tag:exp_aaa    | 0x58255a20   | 0x5cfce590   | 2    | 
+GROUND     | ground | N    | exp_tank_destr | 0x58264a00   | 0x49aafd70   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5826c1f0   | 0x59fce470   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5827b320   | 0x595c6160   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5828a300   | 0x595c6160   | 1    | 
+MY_GROUND  | ground | N    | exp_tank       | 0x5831c240   | 0x595c6160   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d53c60   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d695c0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58273b30   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d77c00   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x581b5bd0   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x4d0c4ce0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d4c940   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x4d0cc000   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d5af80   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x58d708e0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x581ae630   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | N    | exp_SPAA       | 0x52cfa520   | 0x5c7bbb30   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5f0308f0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5ef34000   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | N    | exp_tank       | 0x5f1197c0   | 0x5d947840   | 2    | 
+GROUND     | ground | N    | exp_SPAA       | 0x5f1770b0   | 0x5e451ac0   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5f1e7220   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5f25fe20   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x57d5e9c0   | 0x5f239740   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5ee82060   | 0x591f4e60   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x5ee93f00   | 0x5ef195e0   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5ef1d7f0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x591e4aa0   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | N    | exp_SPAA       | 0x5ba73a20   | 0x59e7f280   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5f17ef80   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5f267140   | 0x5e5a6f50   | 1    | 
+AIR        | air    | N    | exp_fighter    | 0x5f69c940   | 0x5f750700   | 2    | c
+GROUND     | ground | N    | exp_tank       | 0x59cc59e0   | 0x5f1611f0   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5ef5a0b0   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | N    | exp_SPAA       | 0x5f6e73c0   | 0x5ccf24f0   | 2    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5f2b2080   | 0x5e5a6f50   | 2    | 
+GROUND     | ground | N    | exp_SPAA       | 0x5ba3f340   | 0x5e565b40   | 1    | 
+GROUND     | ground | Y    | tag:exp_fortif | 0x5f6dcda0   | 0x5e5a6f50   | 1    | 
+GROUND     | ground | N    | exp_tank       | 0x599ffb80   | 0x5f239740   | 1    | 
+AIR        | air    | N    | exp_assault    | 0x5ef2b3e0   | 0x5ba5d760   | 1    | c
+GROUND     | ground | N    | exp_tank       | 0x5e6375f0   | 0x5d947840   | 2    | 
+------------------------------------------------------------------------------------------------------------------------
+
+📌 Candidate Flag Offsets (เทียบจากกลุ่มที่ unit array บอกว่าเป็น air/ground)
+------------------------------------------------------------------------------------------------------------------------
+Offset     | Type   | Air Values               | Ground Values            | Note
+------------------------------------------------------------------------------------------------------------------------
+0x26a      | byte   | 0xa3, 0xa6, 0xe9         | 0x22, 0x24, 0x2b, 0x30, 0x34, 0x3b | disjoint split
+0x269      | byte   | 0x50, 0xa7, 0xfa         | 0xf, 0x23, 0x26, 0x3d, 0x54, 0x59 | disjoint split
+0x268      | byte   | 0xe, 0x22, 0x36          | 0xc, 0x23, 0x63, 0x6b, 0x7f, 0x88 | disjoint split
+0x138      | byte   | 0x5, 0x7, 0x9            | 0x0, 0x13, 0x15, 0x17, 0x18, 0x1a | disjoint split
+0xfca      | byte   | 0x93, 0xa5, 0xa8         | 0x0, 0x15, 0x16, 0x20, 0x33, 0x38 | disjoint split
+0xfc2      | byte   | 0x31, 0x75, 0xa5         | 0x16, 0x1f, 0x23, 0x2b, 0x45, 0x56 | disjoint split
+0xfc1      | byte   | 0x7, 0xd3, 0xd7          | 0x11, 0x1a, 0x24, 0x39, 0x4e, 0x5b | disjoint split
+0xd06      | byte   | 0x69, 0x82, 0xc6         | 0x0, 0xe, 0xf, 0x21, 0x22, 0x23 | disjoint split
+0xcfe      | byte   | 0x80, 0x81, 0x8e         | 0x9, 0x1c, 0x24, 0x2d, 0x2f, 0x33 | disjoint split
+0xcfd      | byte   | 0x0, 0x54, 0xe4          | 0x1a, 0x1d, 0x36, 0x55, 0x58, 0x5b | disjoint split
+0x266      | byte   | 0x39, 0xa3, 0xe8         | 0x69, 0x77, 0x78, 0x82, 0x85, 0x8c | disjoint split
+0x265      | byte   | 0x38, 0xb4, 0xf6         | 0x4, 0x18, 0x2d, 0x32, 0x3f, 0x4b | disjoint split
+0x262      | byte   | 0x4, 0x50, 0xe2          | 0x0, 0x7, 0xb, 0x11, 0x17, 0x19 | disjoint split
+0x261      | byte   | 0xb0, 0xdf, 0xe8         | 0x3, 0x25, 0x27, 0x2b, 0x30, 0x39 | disjoint split
+0x25d      | byte   | 0x54, 0x6a, 0xb8         | 0x3, 0x2c, 0x44, 0x59, 0x81, 0x86 | disjoint split
+0x25a      | byte   | 0x39, 0xa3, 0xe8         | 0x6e, 0x75, 0x7c, 0x80, 0x87, 0x88 | disjoint split
+0x258      | byte   | 0xe, 0x49, 0x8f          | 0x6, 0x10, 0x13, 0x24, 0x28, 0x68 | disjoint split
+0x256      | byte   | 0x0, 0x1a, 0xe9          | 0x2, 0xd, 0xf, 0x22, 0x37, 0x4c | disjoint split
+0x255      | byte   | 0x0, 0x28, 0xf4          | 0x5, 0x1b, 0x22, 0x3d, 0x6a, 0x76 | disjoint split
+0x252      | byte   | 0x80, 0x93, 0xee         | 0x0, 0x14, 0x1a, 0x20, 0x26, 0x30 | disjoint split
+
+📝 Candidate Strings จาก info_ptr
+------------------------------------------------------------------------------------------------------------------------
+AIR        | unit=0x581bd400 | info_off=0x38   | text='exp_structure' | name=''
+GROUND     | unit=0x581c4a90 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581c4a90 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581c4a90 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581c4a90 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581cca70 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581cca70 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581cca70 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581cca70 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581d3d90 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581d3d90 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581d3d90 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581d3d90 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581db420 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581db420 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581db420 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581db420 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581e2ab0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581e2ab0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581e2ab0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581e2ab0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581eb2d0 | info_off=0x10   | text='air_defence/ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581eb2d0 | info_off=0x18   | text='gameData/units/air_defence/ussr_37mm_61k_airfield.blk' | name=''
+GROUND     | unit=0x581eb2d0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581eb2d0 | info_off=0x40   | text='ussr_37mm_61k_airfield' | name=''
+GROUND     | unit=0x581f2960 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x581f2960 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x581f2960 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581f2960 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x581f9ff0 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x581f9ff0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x581f9ff0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x581f9ff0 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x582017e0 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x582017e0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x582017e0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582017e0 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x582091e0 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x582091e0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x582091e0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582091e0 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x582109d0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582109d0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x582109d0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582109d0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582181c0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582181c0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x582181c0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582181c0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x5821f9b0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x5821f9b0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x5821f9b0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x5821f9b0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582292b0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582292b0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x582292b0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582292b0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582305d0 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x582305d0 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x582305d0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x582305d0 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x58237c60 | info_off=0x10   | text='air_defence/germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x58237c60 | info_off=0x18   | text='gameData/units/air_defence/germ_37mm_flak43_airfield.blk' | name=''
+GROUND     | unit=0x58237c60 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x58237c60 | info_off=0x40   | text='germ_37mm_flak43_airfield' | name=''
+GROUND     | unit=0x5823f2f0 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x5823f2f0 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x5823f2f0 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x5823f2f0 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x58246a40 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x58246a40 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x58246a40 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x58246a40 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x5824e230 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x5824e230 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x5824e230 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x5824e230 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x58255a20 | info_off=0x10   | text='air_defence/germ_88mm_flak36' | name=''
+GROUND     | unit=0x58255a20 | info_off=0x18   | text='gameData/units/air_defence/germ_88mm_flak36.blk' | name=''
+GROUND     | unit=0x58255a20 | info_off=0x38   | text='exp_aaa' | name=''
+GROUND     | unit=0x58255a20 | info_off=0x40   | text='germ_88mm_flak36' | name=''
+GROUND     | unit=0x58264a00 | info_off=0x10   | text='tankModels/germ_stug_III_ausf_A' | name=''
+GROUND     | unit=0x58264a00 | info_off=0x18   | text='gameData/units/tankModels/germ_stug_III_ausf_A.blk' | name=''
+GROUND     | unit=0x58264a00 | info_off=0x38   | text='exp_tank_destroyer' | name=''
+GROUND     | unit=0x58264a00 | info_off=0x40   | text='germ_stug_III_ausf_A' | name=''
+GROUND     | unit=0x5826c1f0 | info_off=0x10   | text='tankModels/us_t18_e2' | name=''
+GROUND     | unit=0x5826c1f0 | info_off=0x18   | text='gameData/units/tankModels/us_t18_e2.blk' | name=''
+GROUND     | unit=0x5826c1f0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5826c1f0 | info_off=0x40   | text='us_t18_e2' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5827b320 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5828a300 | info_off=0x40   | text='us_m22_locust' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x10   | text='tankModels/us_m22_locust' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x18   | text='gameData/units/tankModels/us_m22_locust.blk' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x30   | text='Light tank' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x38   | text='exp_tank' | name=''
+MY_GROUND  | unit=0x5831c240 | info_off=0x40   | text='us_m22_locust' | name=''
+GROUND     | unit=0x58d53c60 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d53c60 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d53c60 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d53c60 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d695c0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d695c0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d695c0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d695c0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58273b30 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58273b30 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58273b30 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58273b30 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d77c00 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d77c00 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d77c00 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d77c00 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x581b5bd0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x581b5bd0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x581b5bd0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x581b5bd0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x4d0c4ce0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x4d0c4ce0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x4d0c4ce0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x4d0c4ce0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d4c940 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d4c940 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d4c940 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d4c940 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x4d0cc000 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x4d0cc000 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x4d0cc000 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x4d0cc000 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d5af80 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d5af80 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d5af80 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d5af80 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d708e0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x58d708e0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x58d708e0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x58d708e0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x581ae630 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x581ae630 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x581ae630 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x581ae630 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x52cfa520 | info_off=0x10   | text='tankModels/germ_sdkfz_222' | name=''
+GROUND     | unit=0x52cfa520 | info_off=0x18   | text='gameData/units/tankModels/germ_sdkfz_222.blk' | name=''
+GROUND     | unit=0x52cfa520 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x52cfa520 | info_off=0x40   | text='germ_sdkfz_222' | name=''
+GROUND     | unit=0x5f0308f0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f0308f0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5f0308f0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5f0308f0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x5ef34000 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5ef34000 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5ef34000 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5ef34000 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f1197c0 | info_off=0x10   | text='tankModels/jp_type_97_kai' | name=''
+GROUND     | unit=0x5f1197c0 | info_off=0x18   | text='gameData/units/tankModels/jp_type_97_kai.blk' | name=''
+GROUND     | unit=0x5f1197c0 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x5f1197c0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5f1197c0 | info_off=0x40   | text='jp_type_97_kai' | name=''
+GROUND     | unit=0x5f1770b0 | info_off=0x10   | text='tankModels/us_halftrack_m13' | name=''
+GROUND     | unit=0x5f1770b0 | info_off=0x18   | text='gameData/units/tankModels/us_halftrack_m13.blk' | name=''
+GROUND     | unit=0x5f1770b0 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x5f1770b0 | info_off=0x40   | text='us_halftrack_m13' | name=''
+GROUND     | unit=0x5f1e7220 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f1e7220 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5f1e7220 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5f1e7220 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f25fe20 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f25fe20 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5f25fe20 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5f25fe20 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x57d5e9c0 | info_off=0x10   | text='tankModels/us_m3_stuart' | name=''
+GROUND     | unit=0x57d5e9c0 | info_off=0x18   | text='gameData/units/tankModels/us_m3_stuart.blk' | name=''
+GROUND     | unit=0x57d5e9c0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x57d5e9c0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x57d5e9c0 | info_off=0x40   | text='us_m3_stuart' | name=''
+GROUND     | unit=0x5ee82060 | info_off=0x10   | text='tankModels/sw_strv_m40l' | name=''
+GROUND     | unit=0x5ee82060 | info_off=0x18   | text='gameData/units/tankModels/sw_strv_m40l.blk' | name=''
+GROUND     | unit=0x5ee82060 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x5ee82060 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5ee82060 | info_off=0x40   | text='sw_strv_m40l' | name=''
+GROUND     | unit=0x5ee93f00 | info_off=0x10   | text='tankModels/uk_a17_mk_1_tetrarch' | name=''
+GROUND     | unit=0x5ee93f00 | info_off=0x18   | text='gameData/units/tankModels/uk_a17_mk_1_tetrarch.blk' | name=''
+GROUND     | unit=0x5ee93f00 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x5ee93f00 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5ee93f00 | info_off=0x40   | text='uk_a17_mk_1_tetrarch' | name=''
+GROUND     | unit=0x5ef1d7f0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5ef1d7f0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5ef1d7f0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5ef1d7f0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x591e4aa0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x591e4aa0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x591e4aa0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x591e4aa0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x5ba73a20 | info_off=0x10   | text='tankModels/us_halftrack_m15' | name=''
+GROUND     | unit=0x5ba73a20 | info_off=0x18   | text='gameData/units/tankModels/us_halftrack_m15.blk' | name=''
+GROUND     | unit=0x5ba73a20 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x5ba73a20 | info_off=0x40   | text='us_halftrack_m15' | name=''
+GROUND     | unit=0x5f17ef80 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f17ef80 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5f17ef80 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5f17ef80 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f267140 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f267140 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5f267140 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5f267140 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+AIR        | unit=0x5f69c940 | info_off=0x38   | text='exp_fighter' | name='c'
+GROUND     | unit=0x59cc59e0 | info_off=0x10   | text='tankModels/ussr_bt_5' | name=''
+GROUND     | unit=0x59cc59e0 | info_off=0x18   | text='gameData/units/tankModels/ussr_bt_5.blk' | name=''
+GROUND     | unit=0x59cc59e0 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x59cc59e0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x59cc59e0 | info_off=0x40   | text='ussr_bt_5' | name=''
+GROUND     | unit=0x5ef5a0b0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5ef5a0b0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5ef5a0b0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5ef5a0b0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f6e73c0 | info_off=0x10   | text='tankModels/ussr_gaz_mm_72k' | name=''
+GROUND     | unit=0x5f6e73c0 | info_off=0x18   | text='gameData/units/tankModels/ussr_gaz_mm_72k.blk' | name=''
+GROUND     | unit=0x5f6e73c0 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x5f6e73c0 | info_off=0x40   | text='ussr_gaz_mm_72k' | name=''
+GROUND     | unit=0x5f2b2080 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f2b2080 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5f2b2080 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5f2b2080 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x5ba3f340 | info_off=0x10   | text='tankModels/germ_flakpanzer_38t_Gepard' | name=''
+GROUND     | unit=0x5ba3f340 | info_off=0x18   | text='gameData/units/tankModels/germ_flakpanzer_38t_Gepard.blk' | name=''
+GROUND     | unit=0x5ba3f340 | info_off=0x38   | text='exp_SPAA' | name=''
+GROUND     | unit=0x5ba3f340 | info_off=0x40   | text='germ_flakpanzer_38t_Gepard' | name=''
+GROUND     | unit=0x5f6dcda0 | info_off=0x10   | text='structures/ussr_122mm_m30' | name=''
+GROUND     | unit=0x5f6dcda0 | info_off=0x18   | text='gameData/units/structures/ussr_122mm_m30.blk' | name=''
+GROUND     | unit=0x5f6dcda0 | info_off=0x38   | text='exp_fortification' | name=''
+GROUND     | unit=0x5f6dcda0 | info_off=0x40   | text='ussr_122mm_m30' | name=''
+GROUND     | unit=0x599ffb80 | info_off=0x10   | text='tankModels/us_m3_stuart' | name=''
+GROUND     | unit=0x599ffb80 | info_off=0x18   | text='gameData/units/tankModels/us_m3_stuart.blk' | name=''
+GROUND     | unit=0x599ffb80 | info_off=0x30   | text='Light tank' | name=''
+GROUND     | unit=0x599ffb80 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x599ffb80 | info_off=0x40   | text='us_m3_stuart' | name=''
+AIR        | unit=0x5ef2b3e0 | info_off=0x38   | text='exp_assault' | name='c'
+GROUND     | unit=0x5e6375f0 | info_off=0x10   | text='tankModels/jp_type_97_kai' | name=''
+GROUND     | unit=0x5e6375f0 | info_off=0x18   | text='gameData/units/tankModels/jp_type_97_kai.blk' | name=''
+GROUND     | unit=0x5e6375f0 | info_off=0x30   | text='Medium tank' | name=''
+GROUND     | unit=0x5e6375f0 | info_off=0x38   | text='exp_tank' | name=''
+GROUND     | unit=0x5e6375f0 | info_off=0x40   | text='jp_type_97_kai' | name=''
+
+🔬 Detailed Dump (my unit + first air + first ground)
+------------------------------------------------------------------------------------------------------------------------
+
+[MY_GROUND] unit=0x5831c240 | info=0x595c6160 | name=''
+ unit+0x18   = 0x58320768
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x592051b0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x1
+ unit+0xfc0  = 0x595c6160
+ info+0x10   -> 'tankModels/us_m22_locust'
+ info+0x18   -> 'gameData/units/tankModels/us_m22_locust.blk'
+ info+0x30   -> 'Light tank'
+ info+0x38   -> 'exp_tank'
+ info+0x40   -> 'us_m22_locust'
+
+[AIR] unit=0x581bd400 | info=0x5931d360 | name=''
+ unit+0x18   = 0x581c0978
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x2
+ unit+0xfc0  = 0x5931d360
+ info+0x38   -> 'exp_structure'
+
+[GROUND] unit=0x581c4a90 | info=0x5cfcaf90 | name=''
+ unit+0x18   = 0x581c8008
+ unit+0x1c   = 0x0
+ unit+0x20   = 0x54454e44
+ unit+0x340  = 0xf000000ff
+ unit+0x358  = 0xffffffffffffffff
+ unit+0xd10  = 0x0
+ unit+0xd18  = 0x0
+ unit+0xf30  = 0x0
+ unit+0xfb0  = 0x1
+ unit+0xfc0  = 0x5cfcaf90
+ info+0x10   -> 'air_defence/ussr_37mm_61k_airfield'
+ info+0x18   -> 'gameData/units/air_defence/ussr_37mm_61k_airfield.blk'
+ info+0x38   -> 'exp_aaa'
+ info+0x40   -> 'ussr_37mm_61k_airfield'
+xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ 
+==================================================================================
+
+Bot: "xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py 
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x9484840 (votes 47, score=6)
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 82  | Units: 10)
+================================================================
+🟢 [MY UNIT]  : 0x5831c240xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+🚀 Velocity   :    0.7 km/h | V:(  0.20,   0.00,   0.00)สียง)
+----------------------------------------------------------------
+🎯 [TARGET]   : TYPE_3_HO_NI_III                            [LOCKED]KED]
+📏 Distance   : 5777.1 m      | TOF: 14.566 ss
+🚀 Velocity   :    0.1 km/h | V:( -0.02,   0.00,   0.00) | SRC:blended SRC:pos_reject_raw
+📡 Vel Check  : raw=   0.1 km/h | pos=   0.0 km/h | PTR:0x4d0bd9c09c0
+🌪️ Accel      :   0.00 m/s² | A:(  0.00,   0.00,   0.00)
+----------------------------------------------------------------
+📉 [BALLISTICS]TCH! Found Chain: 0x1c0 -> 0x101
+🔫 Bullet     : Spd:883 m/s | CD:0.35 | Mass:0.87
+📉 Drop       : Gravity: +1040.27 m | Zeroing: - 0.00 m0 m
+================================================================
+ [Q] Cycle Targets | [Ctrl+C] Exit[🐞 DEBUG] VEL STABILIZED | unit=0x5831c240 | type=GROUND | source=blended | raw=(0.30, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(0.20, 0.00, 0.00)0)5ef527
+40 | raw_vel=[00 00 00 00 00 00 00 00 00 00 00 00] | decoded=(0.0000, 0.0000, 0.0000) | reason=decoded near-zero vector97df8d8430=============
+👁️ View Matrix  : ✅ OK
+🟢 My Unit      : ✅ FOUND8d8430
+📡 Total Units  : 99 units (ถ้าเป็น 0 แปลว่า OFF_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
+⚔️ Valid Targets: 10 targets
+=============================================_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
+⚔️ Valid Targets: 15 targets
+=============================================
+", "xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py 
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x9484840 (votes 47, score=6)
+================================================================
+📊 WTM TACTICAL DASHBOARD | FPS: 84  | Units: 7 )
+================================================================
+🟢 [MY UNIT]  : 0x5831c240xd00 (หมุน = 0xcdc) (โหวต 39 เสียง)
+🚀 Velocity   :    0.7 km/h | V:(  0.20,   0.00,   0.00)สียง)
+----------------------------------------------------------------
+🎯 [TARGET]   : L3_CC                            [LOCKED]OCKED]CKED]KED]
+📏 Distance   : 5777.1 m      | TOF: 14.564 ss
+🚀 Velocity   :    0.0 km/h | V:(  0.00,   0.00,   0.00) | SRC:rawnded SRC:pos_reject_raw
+📡 Vel Check  : raw=   0.0 km/h | pos=   0.0 km/h | PTR:0x5996e5a09c0
+🌪️ Accel      :   0.00 m/s² | A:(  0.00,   0.00,   0.00)
+----------------------------------------------------------------
+📉 [BALLISTICS]TCH! Found Chain: 0x1c0 -> 0x101
+🔫 Bullet     : Spd:883 m/s | CD:0.35 | Mass:0.87
+📉 Drop       : Gravity: +1040.12 m | Zeroing: - 0.00 m0 m
+================================================================
+ [Q] Cycle Targets | [Ctrl+C] Exit[🐞 DEBUG] VEL STABILIZED | unit=0x5831c240 | type=GROUND | source=blended | raw=(0.30, 0.00, 0.00) | pos=(0.00, 0.00, 0.00) | chosen=(0.20, 0.00, 0.00)0x5ef527
+40 | raw_vel=[00 00 00 00 00 00 00 00 00 00 00 00] | decoded=(0.0000, 0.0000, 0.0000) | reason=decoded near-zero vector97df8d8430=============
+👁️ View Matrix  : ✅ OK
+🟢 My Unit      : ✅ FOUND8d8430
+📡 Total Units  : 104 units (ถ้าเป็น 0 แปลว่า OFF_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
+⚔️ Valid Targets: 10 targets
+=============================================_AIR_UNITS / OFF_GROUND_UNITS ขยับ)
+⚔️ Valid Targets: 15 targets
+=============================================
+"

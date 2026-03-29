@@ -33,8 +33,15 @@ COLOR_FLIGHT_PATH    = (255, 200, 0, 180)
 COLOR_FPS_GOOD       = (0, 255, 0, 255)      
 
 BULLET_GRAVITY       = 9.80665   
-BOT_KEYWORDS = ["speaker","water", "panzerzug","windmill","dummy", "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery", "infantry", "ship", "boat", "freighter", "hangar", "technic", "vent", "railway", "freight"]
+BOT_KEYWORDS = [
+    "speaker", "water", "panzerzug", "windmill", "dummy", "dummy_plane",
+    "unit_fulda_windmill", "airfield", "noground", "fortification",
+    "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery",
+    "infantry", "freighter", "hangar", "technic", "vent", "railway", "freight",
+]
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
+MAX_GROUND_TARGET_DISTANCE = 7000.0
+MAX_AIR_TARGET_DISTANCE = 18000.0
 
 # 🎯 TURN BOOST: ตัวคูณช่วยดึงเป้าไปทางที่เลี้ยว
 # 1.0 = ปกติ (ตามที่ AI คำนวณ)
@@ -79,6 +86,7 @@ class ESPOverlay(QWidget):
         self.current_fps = 0.0
         self.cached_matrix_offset = 0x1C0
         self.last_velocity_meta = {}
+        self.last_cgame_base = 0
         
         # 🤖 AI Auto-Calibration for Maneuvers (6 Threads)
         self.ai_ghost_queue = []
@@ -219,14 +227,18 @@ class ESPOverlay(QWidget):
             
             # 🐞 แทรก Debug: เช็ค CGame
             if cgame_base == 0: 
-                dprint("CGame Base is 0! ข้ามการวาดรูป", force=True)
+                dprint("CGame Base is 0! ข้ามการวาดรูป", force=False)
                 return
+
+            if cgame_base != self.last_cgame_base:
+                reset_runtime_caches()
+                self.last_cgame_base = cgame_base
                 
             view_matrix = get_view_matrix(self.scanner, cgame_base)
             
             # 🐞 แทรก Debug: เช็ค View Matrix
             if not view_matrix: 
-                dprint("อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป", force=True)
+                dprint("อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป", force=False)
                 return
 
             current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
@@ -249,12 +261,19 @@ class ESPOverlay(QWidget):
             for u_ptr, is_air in all_units_data:
                 if u_ptr == my_unit:
                     my_is_air = is_air; break
+            if my_unit:
+                my_profile = get_unit_filter_profile(self.scanner, my_unit)
+                if my_profile.get("kind") == "air":
+                    my_is_air = True
+                elif my_profile.get("kind") == "ground":
+                    my_is_air = False
             
             my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t) if my_unit and my_pos else (0.0, 0.0, 0.0)
             if not my_vel: my_vel = (0.0, 0.0, 0.0)
             my_vx, my_vy, my_vz = my_vel
 
             if my_unit != self.last_my_unit:
+                reset_runtime_caches()
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
                 self.max_reload_cache = {}
                 self.vel_window = {} 
@@ -269,11 +288,42 @@ class ESPOverlay(QWidget):
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
                 u_team, u_state, unit_name, reload_val = status
-                if u_state >= 1 or (my_team != 0 and u_team == my_team): continue 
-                
-                unit_name_lower = unit_name.lower()
+                if u_state >= 1 or u_team == 0 or (my_team != 0 and u_team == my_team): continue
+
+                profile = get_unit_filter_profile(self.scanner, u_ptr)
+                if profile.get("skip"):
+                    continue
+
+                resolved_is_air = is_air
+                if profile.get("kind") == "air":
+                    resolved_is_air = True
+                elif profile.get("kind") == "ground":
+                    resolved_is_air = False
+
+                resolved_name = unit_name
+                if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
+                    resolved_name = profile.get("display_name") or resolved_name
+                if not resolved_name:
+                    resolved_name = "unknown"
+
+                if profile.get("kind") is None and resolved_name.lower() in ("unknown", "c", "none"):
+                    continue
+
+                unit_name_lower = resolved_name.lower()
                 if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
-                valid_targets.append((u_ptr, unit_name, reload_val, is_air))
+
+                if my_pos:
+                    pos = get_unit_pos(self.scanner, u_ptr)
+                    if pos:
+                        dx = pos[0] - my_pos[0]
+                        dy = pos[1] - my_pos[1]
+                        dz = pos[2] - my_pos[2]
+                        dist_to_me = math.sqrt(dx * dx + dy * dy + dz * dz)
+                        max_dist = MAX_AIR_TARGET_DISTANCE if resolved_is_air else MAX_GROUND_TARGET_DISTANCE
+                        if dist_to_me > max_dist:
+                            continue
+
+                valid_targets.append((u_ptr, resolved_name, reload_val, resolved_is_air))
             
             dprint_frame_stats(
                 self.current_fps, 

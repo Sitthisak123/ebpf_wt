@@ -220,7 +220,7 @@ QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
 [🐞 DEBUG] อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป
 
 
-in lobby: "
+in lobby its work: "
 (venv) xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py type=GROUND_PRIMARY | unit=0x35c32ea0 | mov_off=0xd18 | vel_off=0x3c 
 | fmt=fff | raw_ptr=[D0 AE 60 42 00 00 00 00] | mov_ptr=0x4260aed0 | raw_vel=[00 00 00 00 01 01 
 ======================================================= reason=decoded near-zero vector

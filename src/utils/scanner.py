@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import math
 import struct
 import subprocess
 from collections import Counter
@@ -178,6 +179,21 @@ def get_game_base_address(pid):
     except: pass
     return 0
 
+
+def _looks_like_view_matrix(matrix_data):
+    if not matrix_data or len(matrix_data) < 64:
+        return False
+    try:
+        values = struct.unpack("<16f", matrix_data[:64])
+    except Exception:
+        return False
+    if not all(math.isfinite(v) for v in values):
+        return False
+    if any(abs(v) > 1e6 for v in values):
+        return False
+    non_zero = sum(1 for v in values if abs(v) > 1e-6)
+    return non_zero >= 6
+
 # ==========================================
 # 🚀 ระบบตั้งค่า Offset อัตโนมัติ (Master Auto-Updater)
 # ==========================================
@@ -196,29 +212,50 @@ def init_dynamic_offsets(scanner, base_address):
     print("[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...")
     patterns_manager = ["48 8B 05 ? ? ? ? 48 85 C0", "48 8B 3D ? ? ? ? 48 85 FF"]
     all_manager_targets = []
-    for p in patterns_manager: all_manager_targets.extend(scanner.find_all_patterns(p))
-            
+    manager_candidates = []
+    for p in patterns_manager:
+        all_manager_targets.extend(scanner.find_all_patterns(p))
+
     if all_manager_targets:
         valid_targets = [t for t in all_manager_targets if t > base_address and (t - base_address) < 0x20000000]
         counter = Counter(valid_targets)
-        for target_addr, count in counter.most_common(30):
-            dynamic_offset = target_addr - base_address
+        for target_addr, count in counter.most_common(80):
             raw_ptr = scanner.read_mem(target_addr, 8)
-            if not raw_ptr: continue
+            if not raw_ptr or len(raw_ptr) < 8:
+                continue
             cgame_ptr = struct.unpack("<Q", raw_ptr)[0]
-            if not mul.is_valid_ptr(cgame_ptr): continue
-            
-            raw_cam = scanner.read_mem(cgame_ptr + mul.OFF_CAMERA_PTR, 8)
-            if not raw_cam: continue
-            cam_ptr = struct.unpack("<Q", raw_cam)[0]
-            if mul.is_valid_ptr(cam_ptr):
-                matrix_data = scanner.read_mem(cam_ptr + mul.OFF_VIEW_MATRIX, 64)
-                if matrix_data and len(matrix_data) == 64:
-                    print(f"  [+] ✅ BINGO! CGame = {hex(dynamic_offset)} (โหวต {count} เสียง)")
-                    mul.MANAGER_OFFSET = dynamic_offset
-                    manager_ok = True
-                    break
-    
+            if not mul.is_valid_ptr(cgame_ptr):
+                continue
+
+            struct_score = 0
+            for unit_off, _ in (mul.OFF_AIR_UNITS, mul.OFF_GROUND_UNITS):
+                raw_array_ptr = scanner.read_mem(cgame_ptr + unit_off, 8)
+                raw_count = scanner.read_mem(cgame_ptr + unit_off + 16, 4)
+                if not raw_array_ptr or len(raw_array_ptr) < 8 or not raw_count or len(raw_count) < 4:
+                    continue
+                array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
+                unit_count = struct.unpack("<I", raw_count)[0]
+                if 0 <= unit_count <= 2048:
+                    struct_score += 1
+                if unit_count > 0 and mul.is_valid_ptr(array_ptr):
+                    struct_score += 2
+
+            manager_candidates.append({
+                "target_addr": target_addr,
+                "dynamic_offset": target_addr - base_address,
+                "votes": count,
+                "cgame_ptr": cgame_ptr,
+                "struct_score": struct_score,
+            })
+
+    if manager_candidates:
+        best_manager = max(manager_candidates, key=lambda c: (c["struct_score"], c["votes"]))
+        mul.MANAGER_OFFSET = best_manager["dynamic_offset"]
+        manager_ok = True
+        print(f"  [+] BINGO! CGame = {hex(mul.MANAGER_OFFSET)} (votes {best_manager['votes']}, score={best_manager['struct_score']})")
+    else:
+        print("  [-] CGame not found")
+
     # ---------------------------------------------------------
     # 🎯 Phase 2: สแกนหาตัวละครของเรา (DAT_CONTROLLED_UNIT)
     # ---------------------------------------------------------
@@ -354,12 +391,47 @@ def init_dynamic_offsets(scanner, base_address):
         # เลือกเอาคู่ที่พบบ่อยที่สุด (ปกติจะมีแค่ที่เดียวในฟังก์ชันตั้งค่ากล้อง)
         top_pair = Counter(chains).most_common(1)[0][0]
         mul.OFF_VIEW_MATRIX = top_pair[0] # ตัวแรกคือ 0x1C0
-        mul.OFF_UNIT_BBMIN = top_pair[1] + 0x60 # (ตัวอย่างลอจิก: ถ้า 0x1E0 คือตัวถัดไป)
         print(f"  [+] ✅ DNA MATCH! Found Chain: {hex(top_pair[0])} -> {hex(top_pair[1])}")
         print(f"  [+] ✅ BINGO! VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)}")
     else:
         mul.OFF_VIEW_MATRIX = 0x1C0
         print("  [!] ⚠️ Chain Match ล้มเหลว! ใช้ค่า Fallback: 0x1C0")
+
+    # Re-validate DAT_MANAGER using actual visual offsets discovered in phase 5.
+    validated_managers = []
+    for candidate in manager_candidates:
+        raw_cam = scanner.read_mem(candidate["cgame_ptr"] + mul.OFF_CAMERA_PTR, 8)
+        if not raw_cam or len(raw_cam) < 8:
+            continue
+        cam_ptr = struct.unpack("<Q", raw_cam)[0]
+        if not mul.is_valid_ptr(cam_ptr):
+            continue
+
+        matrix_data = scanner.read_mem(cam_ptr + mul.OFF_VIEW_MATRIX, 64)
+        if not _looks_like_view_matrix(matrix_data):
+            continue
+
+        validated_managers.append(candidate)
+
+    if validated_managers:
+        best_valid = max(validated_managers, key=lambda c: (c["struct_score"], c["votes"]))
+        if mul.MANAGER_OFFSET != best_valid["dynamic_offset"]:
+            print(
+                f"  [+] ✅ REFINED! CGame = {hex(best_valid['dynamic_offset'])} "
+                f"(votes {best_valid['votes']}, score={best_valid['struct_score']})"
+            )
+        else:
+            print(
+                f"  [+] ✅ VALIDATED! CGame = {hex(best_valid['dynamic_offset'])} "
+                f"(votes {best_valid['votes']}, score={best_valid['struct_score']})"
+            )
+        mul.MANAGER_OFFSET = best_valid["dynamic_offset"]
+        manager_ok = True
+    else:
+        print("  [!] ⚠️ ยังไม่พบ manager candidate ที่อ่าน View Matrix ได้แน่ชัด")
+
+    # Offsets were refreshed; flush per-unit caches to avoid stale class/filter state.
+    mul.reset_runtime_caches(clear_view=True)
 
     print("="*55 + "\n")
     return manager_ok and hero_ok

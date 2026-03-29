@@ -23,6 +23,7 @@ UNIT_FLAG_SCAN_RANGES = [
 
 INFO_STRING_OFFSETS = list(range(0x00, 0x100, 8))
 MAX_CANDIDATES_PER_GROUP = 20
+SUSPICIOUS_HINTS = ("air_defence", "structures", "dummy", "windmill", "fortification", "exp_aaa", "exp_structure", "exp_zero")
 
 
 def safe_read_c_string(scanner, ptr, max_len=96):
@@ -93,6 +94,7 @@ def collect_units(scanner, base_addr):
         else:
             _, info_ptr = get_unit_name_and_info(scanner, u_ptr)
 
+        profile = mul.get_unit_filter_profile(scanner, u_ptr)
         pos = mul.get_unit_pos(scanner, u_ptr)
         rows.append({
             "u_ptr": u_ptr,
@@ -104,6 +106,10 @@ def collect_units(scanner, base_addr):
             "name": unit_name,
             "info_ptr": info_ptr,
             "pos": pos,
+            "kind": profile.get("kind"),
+            "skip": profile.get("skip"),
+            "reason": profile.get("reason"),
+            "tag": profile.get("tag"),
         })
     return cgame_base, my_unit, my_team, rows
 
@@ -112,12 +118,37 @@ def print_unit_table(rows):
     print("=" * 120)
     print("🧬 UNIT KIND DUMPER")
     print("=" * 120)
-    print(f"{'Label':<10} | {'Unit Ptr':<12} | {'Info Ptr':<12} | {'Team':<4} | {'Name'}")
+    print(f"{'Label':<10} | {'Kind':<6} | {'Skip':<4} | {'Why':<14} | {'Unit Ptr':<12} | {'Info Ptr':<12} | {'Team':<4} | {'Name'}")
     print("-" * 120)
     for row in rows:
+        why = row.get("reason") or row.get("tag") or "-"
         print(
-            f"{row['label']:<10} | {hex(row['u_ptr']):<12} | {hex(row['info_ptr']) if row['info_ptr'] else '-':<12} | "
+            f"{row['label']:<10} | {str(row.get('kind') or '-'):<6} | {('Y' if row.get('skip') else 'N'):<4} | {why[:14]:<14} | "
+            f"{hex(row['u_ptr']):<12} | {hex(row['info_ptr']) if row['info_ptr'] else '-':<12} | "
             f"{row['team']:<4} | {row['name']}"
+        )
+    print("-" * 120)
+
+
+def print_non_skipped_suspicious(rows):
+    suspicious = []
+    for row in rows:
+        if row.get("skip"):
+            continue
+        name_l = (row.get("name") or "").lower()
+        tag_l = (row.get("tag") or "").lower()
+        if any(h in name_l for h in SUSPICIOUS_HINTS) or any(h in tag_l for h in SUSPICIOUS_HINTS):
+            suspicious.append(row)
+
+    if not suspicious:
+        return
+
+    print("\n⚠ Non-skipped suspicious units")
+    print("-" * 120)
+    for row in suspicious:
+        print(
+            f"{row['label']:<10} | ptr={hex(row['u_ptr'])} | team={row['team']} | "
+            f"tag='{row.get('tag') or ''}' | name='{row.get('name') or ''}'"
         )
     print("-" * 120)
 
@@ -265,6 +296,7 @@ def main():
 
     print(f"[*] MY_UNIT = {hex(my_unit) if my_unit else '0x0'} | MY_TEAM = {my_team}")
     print_unit_table(rows)
+    print_non_skipped_suspicious(rows)
     analyze_flag_offsets(scanner, rows)
     scan_info_strings(scanner, rows)
     dump_selected_units(scanner, rows)

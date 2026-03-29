@@ -65,6 +65,63 @@ def is_valid_ptr(p):
 
 
 UNIT_KIND_CACHE = {}
+LAST_CGAME_PTR = 0
+LAST_VIEW_MATRIX = None
+UNIT_FILTER_CACHE = {}
+
+PLAYABLE_AIR_TAGS = {
+    "exp_fighter",
+    "exp_bomber",
+    "exp_helicopter",
+    "exp_assault",
+    "exp_attacker",
+}
+
+PLAYABLE_GROUND_TAGS = {
+    "exp_tank",
+    "exp_heavy_tank",
+    "exp_tank_destroyer",
+    "exp_spaa",
+}
+
+PLAYABLE_NAVAL_TAGS = {
+    "exp_torpedo_boat",
+    "exp_torpedo_gun_boat",
+    "exp_gun_boat",
+    "exp_destroyer",
+    "exp_cruiser",
+}
+
+NON_PLAYABLE_TAGS = {
+    "exp_structure",
+    "exp_zero",
+    "exp_aaa",
+    "exp_fortification",
+}
+
+NON_PLAYABLE_PATH_HINTS = (
+    "air_defence/",
+    "/air_defence/",
+    "structures/",
+    "/structures/",
+    "dummy_plane",
+)
+
+NON_PLAYABLE_NAME_HINTS = (
+    "dummy",
+    "windmill",
+    "airfield",
+    "_noground",
+)
+
+
+def reset_runtime_caches(clear_view=False):
+    global LAST_CGAME_PTR, LAST_VIEW_MATRIX
+    UNIT_KIND_CACHE.clear()
+    UNIT_FILTER_CACHE.clear()
+    if clear_view:
+        LAST_CGAME_PTR = 0
+        LAST_VIEW_MATRIX = None
 
 
 def _read_ptr(scanner, addr):
@@ -101,23 +158,34 @@ def _read_info_string(scanner, info_ptr, off, max_len=96):
     return _read_c_string(scanner, ptr, max_len)
 
 
+def _read_info_ptr_signature(scanner, info_ptr):
+    return (
+        _read_ptr(scanner, info_ptr + 0x08),
+        _read_ptr(scanner, info_ptr + 0x10),
+        _read_ptr(scanner, info_ptr + 0x18),
+        _read_ptr(scanner, info_ptr + 0x38),
+        _read_ptr(scanner, info_ptr + 0x40),
+    )
+
+
 def get_unit_kind_from_info(scanner, u_ptr):
     if OFF_UNIT_INFO == 0:
         return None
     info_ptr = _read_ptr(scanner, u_ptr + OFF_UNIT_INFO)
     if not is_valid_ptr(info_ptr):
         return None
+    info_sig = _read_info_ptr_signature(scanner, info_ptr)
     cached = UNIT_KIND_CACHE.get(info_ptr)
-    if cached:
-        return cached
+    if cached and cached.get("sig") == info_sig:
+        return cached.get("kind")
 
     kind = None
     tag = _read_info_string(scanner, info_ptr, 0x38, 64)
     if tag:
         label = tag.lower()
-        if any(k in label for k in ("fighter", "bomber", "helicopter", "attacker", "jet", "air")):
+        if any(k in label for k in ("fighter", "bomber", "helicopter", "attacker", "assault", "jet", "air")):
             kind = "air"
-        elif any(k in label for k in ("tank", "spaa", "destroyer", "fortification", "ship", "boat")):
+        elif any(k in label for k in ("tank", "spaa", "destroyer", "fortification", "ship", "boat", "cruiser", "battleship", "aaa")):
             kind = "ground"
 
     if not kind:
@@ -126,12 +194,98 @@ def get_unit_kind_from_info(scanner, u_ptr):
             p = path.replace("\\", "/").lower()
             if "tankmodels/" in p or "/tankmodels/" in p:
                 kind = "ground"
+            elif "ships/" in p or "/ships/" in p or "air_defence/" in p:
+                kind = "ground"
             elif "helicopter" in p or "aircraft" in p or "plane" in p:
                 kind = "air"
 
     if kind:
-        UNIT_KIND_CACHE[info_ptr] = kind
+        UNIT_KIND_CACHE[info_ptr] = {"sig": info_sig, "kind": kind}
     return kind
+
+
+def _name_from_path(path):
+    if not path:
+        return ""
+    name = path.replace("\\", "/").split("/")[-1]
+    if name.lower().endswith(".blk"):
+        name = name[:-4]
+    return "".join(c for c in name if c.isalnum() or c in "-_")
+
+
+def get_unit_filter_profile(scanner, u_ptr):
+    profile = {
+        "skip": False,
+        "reason": "",
+        "kind": None,
+        "tag": "",
+        "path": "",
+        "unit_key": "",
+        "display_name": "",
+    }
+    if OFF_UNIT_INFO == 0:
+        return profile
+
+    info_ptr = _read_ptr(scanner, u_ptr + OFF_UNIT_INFO)
+    if not is_valid_ptr(info_ptr):
+        return profile
+
+    info_sig = _read_info_ptr_signature(scanner, info_ptr)
+    cached = UNIT_FILTER_CACHE.get(info_ptr)
+    if cached and cached.get("sig") == info_sig:
+        return cached["profile"].copy()
+
+    tag = _read_info_string(scanner, info_ptr, 0x38, 64) or ""
+    path = _read_info_string(scanner, info_ptr, 0x18, 128) or _read_info_string(scanner, info_ptr, 0x10, 128) or ""
+    unit_key = _read_info_string(scanner, info_ptr, 0x40, 96) or _read_info_string(scanner, info_ptr, 0x08, 96) or ""
+
+    tag_l = tag.lower()
+    path_l = path.lower()
+    key_l = unit_key.lower()
+
+    kind = None
+    if tag_l in PLAYABLE_AIR_TAGS:
+        kind = "air"
+    elif tag_l in PLAYABLE_GROUND_TAGS or tag_l in PLAYABLE_NAVAL_TAGS:
+        kind = "ground"
+    elif "flightmodels/" in path_l or "helicopter" in path_l or "aircraft" in path_l or "plane" in path_l:
+        kind = "air"
+    elif "tankmodels/" in path_l or "ships/" in path_l or "air_defence/" in path_l or "structures/" in path_l:
+        kind = "ground"
+    else:
+        kind = get_unit_kind_from_info(scanner, u_ptr)
+
+    skip = False
+    reason = ""
+    if tag_l in NON_PLAYABLE_TAGS:
+        skip = True
+        reason = f"tag:{tag_l}"
+    elif any(h in path_l for h in NON_PLAYABLE_PATH_HINTS):
+        skip = True
+        reason = "path_hint"
+    elif any(h in key_l for h in NON_PLAYABLE_NAME_HINTS):
+        skip = True
+        reason = "name_hint"
+
+    display_name = unit_key or _name_from_path(path)
+    profile = {
+        "skip": skip,
+        "reason": reason,
+        "kind": kind,
+        "tag": tag,
+        "path": path,
+        "unit_key": unit_key,
+        "display_name": display_name,
+    }
+
+    # Cache only when enough source data is readable. This avoids poisoning cache
+    # with transient empty reads during map/match transitions.
+    cacheable = bool(tag or path or unit_key or skip or kind)
+    if cacheable:
+        UNIT_FILTER_CACHE[info_ptr] = {"sig": info_sig, "profile": profile.copy()}
+    else:
+        UNIT_FILTER_CACHE.pop(info_ptr, None)
+    return profile.copy()
 
 
 VELOCITY_PROFILES = {
@@ -301,20 +455,91 @@ def _read_velocity_by_profile(scanner, u_ptr, profile_name):
     return (0.0, 0.0, 0.0)
 
 def get_cgame_base(scanner, base_addr):
-    c_game_ptr_addr = base_addr + MANAGER_OFFSET
-    raw_ptr = scanner.read_mem(c_game_ptr_addr, 8)
-    if not raw_ptr or len(raw_ptr) < 8: return 0
-    return struct.unpack("<Q", raw_ptr)[0]
+    global LAST_CGAME_PTR
+
+    default_manager_offset = DAT_MANAGER - GHIDRA_BASE
+    candidate_offsets = [MANAGER_OFFSET]
+    if default_manager_offset not in candidate_offsets:
+        candidate_offsets.append(default_manager_offset)
+
+    fallback_cgame_ptr = 0
+
+    for offset in candidate_offsets:
+        cgame_ptr = _read_ptr(scanner, base_addr + offset)
+        if not is_valid_ptr(cgame_ptr):
+            continue
+
+        # Prefer candidates that can produce a plausible view matrix.
+        if OFF_CAMERA_PTR and OFF_VIEW_MATRIX:
+            cam_ptr = _read_ptr(scanner, cgame_ptr + OFF_CAMERA_PTR)
+            if is_valid_ptr(cam_ptr):
+                matrix_data = scanner.read_mem(cam_ptr + OFF_VIEW_MATRIX, 64)
+                if matrix_data and len(matrix_data) >= 64:
+                    values = struct.unpack("<16f", matrix_data[:64])
+                    non_zero = sum(1 for v in values if math.isfinite(v) and abs(v) > 1e-6)
+                    if non_zero >= 6 and all(math.isfinite(v) and abs(v) <= 1e6 for v in values):
+                        LAST_CGAME_PTR = cgame_ptr
+                        return cgame_ptr
+
+        # Keep best fallback if matrix cannot be validated yet.
+        if fallback_cgame_ptr == 0:
+            vtable_ptr = _read_ptr(scanner, cgame_ptr)
+            if is_valid_ptr(vtable_ptr):
+                fallback_cgame_ptr = cgame_ptr
+
+    if is_valid_ptr(fallback_cgame_ptr):
+        LAST_CGAME_PTR = fallback_cgame_ptr
+        return fallback_cgame_ptr
+
+    if is_valid_ptr(LAST_CGAME_PTR):
+        return LAST_CGAME_PTR
+    return 0
 
 def get_view_matrix(scanner, cgame_base):
-    if cgame_base == 0: return None
-    raw_cam_ptr = scanner.read_mem(cgame_base + OFF_CAMERA_PTR, 8)
-    if not raw_cam_ptr or len(raw_cam_ptr) < 8: return None
-    camera_ptr = struct.unpack("<Q", raw_cam_ptr)[0]
-    if camera_ptr == 0: return None
-    matrix_data = scanner.read_mem(camera_ptr + OFF_VIEW_MATRIX, 64)
-    if not matrix_data or len(matrix_data) < 64: return None
-    return struct.unpack("<16f", matrix_data)
+    global LAST_VIEW_MATRIX
+    if cgame_base == 0:
+        return LAST_VIEW_MATRIX
+
+    def _matrix_ok(values):
+        if len(values) != 16:
+            return False
+        if not all(math.isfinite(v) for v in values):
+            return False
+        if any(abs(v) > 1e6 for v in values):
+            return False
+        non_zero = sum(1 for v in values if abs(v) > 1e-6)
+        return non_zero >= 6
+
+    cam_offsets = [OFF_CAMERA_PTR]
+    if 0x670 not in cam_offsets:
+        cam_offsets.append(0x670)
+
+    matrix_offsets = [OFF_VIEW_MATRIX]
+    if 0x1C0 not in matrix_offsets:
+        matrix_offsets.append(0x1C0)
+
+    for cam_off in cam_offsets:
+        camera_ptr = _read_ptr(scanner, cgame_base + cam_off)
+        if not is_valid_ptr(camera_ptr):
+            continue
+
+        camera_candidates = [camera_ptr]
+        nested_ptr = _read_ptr(scanner, camera_ptr)
+        if is_valid_ptr(nested_ptr):
+            camera_candidates.append(nested_ptr)
+
+        for cam_ptr in camera_candidates:
+            for matrix_off in matrix_offsets:
+                matrix_data = scanner.read_mem(cam_ptr + matrix_off, 64)
+                if not matrix_data or len(matrix_data) < 64:
+                    continue
+                values = struct.unpack("<16f", matrix_data)
+                if not _matrix_ok(values):
+                    continue
+                LAST_VIEW_MATRIX = values
+                return values
+
+    return LAST_VIEW_MATRIX
 
 def get_unit_pos(scanner, u_ptr):
     if u_ptr == 0: return None
