@@ -4643,6 +4643,9 @@ mt=fff | raw_ptr=[A0 74 1B 3A 00 00 00 00] | mov_ptr=0x3a1b74a0 | raw_vel=[00 00
 ============================================="
 
 
+=============================================================================================================================
+
+
 xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python unit_kind_dumper.py
 [*] 🚀 เริ่ม UNIT KIND DUMPER (extended)...
 

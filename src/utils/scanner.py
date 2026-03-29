@@ -240,20 +240,38 @@ def init_dynamic_offsets(scanner, base_address):
                 if unit_count > 0 and mul.is_valid_ptr(array_ptr):
                     struct_score += 2
 
+            live_score, live_units = mul._score_cgame_live(scanner, cgame_ptr)
+
             manager_candidates.append({
                 "target_addr": target_addr,
                 "dynamic_offset": target_addr - base_address,
                 "votes": count,
                 "cgame_ptr": cgame_ptr,
                 "struct_score": struct_score,
+                "live_score": live_score,
+                "live_units": live_units,
             })
 
     if manager_candidates:
-        best_manager = max(manager_candidates, key=lambda c: (c["struct_score"], c["votes"]))
+        def _manager_rank(c):
+            return (
+                1 if c["live_units"] > 0 else 0,
+                c["live_score"],
+                c["struct_score"],
+                c["votes"],
+            )
+
+        ranked_candidates = sorted(manager_candidates, key=_manager_rank, reverse=True)
+        best_manager = ranked_candidates[0]
+        mul.MANAGER_CANDIDATE_OFFSETS = [c["dynamic_offset"] for c in ranked_candidates[:12]]
         mul.MANAGER_OFFSET = best_manager["dynamic_offset"]
         manager_ok = True
-        print(f"  [+] BINGO! CGame = {hex(mul.MANAGER_OFFSET)} (votes {best_manager['votes']}, score={best_manager['struct_score']})")
+        print(
+            f"  [+] BINGO! CGame = {hex(mul.MANAGER_OFFSET)} "
+            f"(votes {best_manager['votes']}, score={best_manager['struct_score']}, live={best_manager['live_units']})"
+        )
     else:
+        mul.MANAGER_CANDIDATE_OFFSETS = []
         print("  [-] CGame not found")
 
     # ---------------------------------------------------------
@@ -414,19 +432,35 @@ def init_dynamic_offsets(scanner, base_address):
         validated_managers.append(candidate)
 
     if validated_managers:
-        best_valid = max(validated_managers, key=lambda c: (c["struct_score"], c["votes"]))
-        if mul.MANAGER_OFFSET != best_valid["dynamic_offset"]:
+        def _manager_rank(c):
+            return (
+                1 if c["live_units"] > 0 else 0,
+                c["live_score"],
+                c["struct_score"],
+                c["votes"],
+            )
+
+        best_valid = max(validated_managers, key=_manager_rank)
+        current_choice = next((c for c in manager_candidates if c["dynamic_offset"] == mul.MANAGER_OFFSET), None)
+
+        if current_choice and current_choice["live_units"] > 0 and best_valid["live_units"] == 0:
             print(
-                f"  [+] ✅ REFINED! CGame = {hex(best_valid['dynamic_offset'])} "
-                f"(votes {best_valid['votes']}, score={best_valid['struct_score']})"
+                f"  [+] ✅ KEEP CGame = {hex(current_choice['dynamic_offset'])} "
+                f"(live={current_choice['live_units']}) | reject refined live=0"
             )
         else:
-            print(
-                f"  [+] ✅ VALIDATED! CGame = {hex(best_valid['dynamic_offset'])} "
-                f"(votes {best_valid['votes']}, score={best_valid['struct_score']})"
-            )
-        mul.MANAGER_OFFSET = best_valid["dynamic_offset"]
-        manager_ok = True
+            if mul.MANAGER_OFFSET != best_valid["dynamic_offset"]:
+                print(
+                    f"  [+] ✅ REFINED! CGame = {hex(best_valid['dynamic_offset'])} "
+                    f"(votes {best_valid['votes']}, score={best_valid['struct_score']}, live={best_valid['live_units']})"
+                )
+            else:
+                print(
+                    f"  [+] ✅ VALIDATED! CGame = {hex(best_valid['dynamic_offset'])} "
+                    f"(votes {best_valid['votes']}, score={best_valid['struct_score']}, live={best_valid['live_units']})"
+                )
+            mul.MANAGER_OFFSET = best_valid["dynamic_offset"]
+            manager_ok = True
     else:
         print("  [!] ⚠️ ยังไม่พบ manager candidate ที่อ่าน View Matrix ได้แน่ชัด")
 

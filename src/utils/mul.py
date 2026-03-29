@@ -14,6 +14,7 @@ except Exception:
 GHIDRA_BASE         = 0x400000
 DAT_MANAGER         = 0x941b280
 MANAGER_OFFSET      = DAT_MANAGER - GHIDRA_BASE
+MANAGER_CANDIDATE_OFFSETS = []
 DAT_CONTROLLED_UNIT = 0x981dfc8
 
 OFF_CAMERA_PTR      = 0
@@ -474,42 +475,126 @@ def _read_velocity_by_profile(scanner, u_ptr, profile_name):
         )
     return (0.0, 0.0, 0.0)
 
+
+def _score_cgame_live(scanner, cgame_ptr):
+    total_units = 0
+    score = 0
+
+    for unit_off, _ in (OFF_AIR_UNITS, OFF_GROUND_UNITS):
+        raw_array_ptr = scanner.read_mem(cgame_ptr + unit_off, 8)
+        raw_count = scanner.read_mem(cgame_ptr + unit_off + 16, 4)
+        if not raw_array_ptr or len(raw_array_ptr) < 8 or not raw_count or len(raw_count) < 4:
+            continue
+
+        array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
+        count = struct.unpack("<I", raw_count)[0]
+
+        if 0 <= count <= 2048:
+            score += 1
+        if count > 0 and count < 2048 and is_valid_ptr(array_ptr):
+            score += 2
+            total_units += count
+
+            sample_n = min(count, 48)
+            ptr_data = scanner.read_mem(array_ptr, sample_n * 8)
+            if ptr_data and len(ptr_data) >= sample_n * 8:
+                valid_units = 0
+                for i in range(sample_n):
+                    u_ptr = struct.unpack_from("<Q", ptr_data, i * 8)[0]
+                    if is_valid_ptr(u_ptr):
+                        valid_units += 1
+                if valid_units:
+                    score += min(valid_units, 10)
+
+    if total_units > 0:
+        score += min(total_units, 80) // 8
+
+    return score, total_units
+
+
+def _manager_offsets():
+    offsets = []
+
+    def _add(off):
+        if isinstance(off, int) and 0 < off < 0x20000000 and off not in offsets:
+            offsets.append(off)
+
+    _add(MANAGER_OFFSET)
+    _add(DAT_MANAGER - GHIDRA_BASE)
+    for off in MANAGER_CANDIDATE_OFFSETS:
+        _add(off)
+
+    return offsets
+
+
 def get_cgame_base(scanner, base_addr):
     global LAST_CGAME_PTR
 
-    default_manager_offset = DAT_MANAGER - GHIDRA_BASE
-    candidate_offsets = [MANAGER_OFFSET]
-    if default_manager_offset not in candidate_offsets:
-        candidate_offsets.append(default_manager_offset)
+    candidate_offsets = _manager_offsets()
+    if not candidate_offsets:
+        candidate_offsets = [DAT_MANAGER - GHIDRA_BASE]
 
-    fallback_cgame_ptr = 0
+    best_candidate = None
+    best_rank = (-1, -1, -1, -1, -1, -1, -1)
 
-    for offset in candidate_offsets:
+    for idx, offset in enumerate(candidate_offsets):
         cgame_ptr = _read_ptr(scanner, base_addr + offset)
         if not is_valid_ptr(cgame_ptr):
             continue
 
-        # Prefer candidates that can produce a plausible view matrix.
-        if OFF_CAMERA_PTR and OFF_VIEW_MATRIX:
-            cam_ptr = _read_ptr(scanner, cgame_ptr + OFF_CAMERA_PTR)
-            if is_valid_ptr(cam_ptr):
-                matrix_data = scanner.read_mem(cam_ptr + OFF_VIEW_MATRIX, 64)
-                if matrix_data and len(matrix_data) >= 64:
+        vtable_ok = is_valid_ptr(_read_ptr(scanner, cgame_ptr))
+        live_score, total_units = _score_cgame_live(scanner, cgame_ptr)
+
+        matrix_ok = False
+        cam_offsets = [OFF_CAMERA_PTR]
+        if 0x670 not in cam_offsets:
+            cam_offsets.append(0x670)
+        matrix_offsets = [OFF_VIEW_MATRIX]
+        if 0x1C0 not in matrix_offsets:
+            matrix_offsets.append(0x1C0)
+
+        for cam_off in cam_offsets:
+            cam_ptr = _read_ptr(scanner, cgame_ptr + cam_off)
+            if not is_valid_ptr(cam_ptr):
+                continue
+
+            camera_candidates = [cam_ptr]
+            nested_ptr = _read_ptr(scanner, cam_ptr)
+            if is_valid_ptr(nested_ptr):
+                camera_candidates.append(nested_ptr)
+
+            for cam_candidate in camera_candidates:
+                for mat_off in matrix_offsets:
+                    matrix_data = scanner.read_mem(cam_candidate + mat_off, 64)
+                    if not matrix_data or len(matrix_data) < 64:
+                        continue
                     values = struct.unpack("<16f", matrix_data[:64])
                     non_zero = sum(1 for v in values if math.isfinite(v) and abs(v) > 1e-6)
                     if non_zero >= 6 and all(math.isfinite(v) and abs(v) <= 1e6 for v in values):
-                        LAST_CGAME_PTR = cgame_ptr
-                        return cgame_ptr
+                        matrix_ok = True
+                        break
+                if matrix_ok:
+                    break
+            if matrix_ok:
+                break
 
-        # Keep best fallback if matrix cannot be validated yet.
-        if fallback_cgame_ptr == 0:
-            vtable_ptr = _read_ptr(scanner, cgame_ptr)
-            if is_valid_ptr(vtable_ptr):
-                fallback_cgame_ptr = cgame_ptr
+        rank = (
+            1 if matrix_ok and total_units > 0 else 0,
+            1 if total_units > 0 else 0,
+            1 if matrix_ok else 0,
+            live_score,
+            total_units,
+            1 if vtable_ok else 0,
+            -idx,
+        )
 
-    if is_valid_ptr(fallback_cgame_ptr):
-        LAST_CGAME_PTR = fallback_cgame_ptr
-        return fallback_cgame_ptr
+        if best_candidate is None or rank > best_rank:
+            best_candidate = cgame_ptr
+            best_rank = rank
+
+    if is_valid_ptr(best_candidate):
+        LAST_CGAME_PTR = best_candidate
+        return best_candidate
 
     if is_valid_ptr(LAST_CGAME_PTR):
         return LAST_CGAME_PTR
@@ -578,7 +663,7 @@ def get_all_units(scanner, cgame_base):
         if raw_array_ptr and raw_count:
             array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
             count = struct.unpack("<I", raw_count)[0]
-            if 0 < count < 250 and is_valid_ptr(array_ptr):
+            if 0 < count <= 2048 and is_valid_ptr(array_ptr):
                 ptr_data = scanner.read_mem(array_ptr, count * 8)
                 if ptr_data:
                       for i in range(count):
