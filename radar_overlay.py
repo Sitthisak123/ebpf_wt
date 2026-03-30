@@ -20,17 +20,24 @@ from src.utils.scanner import *
 from src.utils.mul import *
 from src.utils.debug import *
 
-COLOR_INFO_TEXT      = (255, 228, 64, 255)   
-COLOR_BARREL_LINE    = (0, 255, 0, 255)      
-COLOR_BOX_TARGET     = (255, 255, 0, 200)     
-COLOR_TEXT_GROUND    = (255, 196, 0, 255)    
-COLOR_TEXT_AIR       = (255, 196, 0, 255)   
-COLOR_RELOAD_BG      = (0, 0, 0, 180)        
-COLOR_RELOAD_READY   = (255, 0, 0, 200)      
-COLOR_RELOAD_LOADING = (255, 165, 0, 200)    
-COLOR_PREDICTION     = (50, 50, 255, 255)    
-COLOR_FLIGHT_PATH    = (255, 200, 0, 150)    
-COLOR_FPS_GOOD       = (0, 255, 0, 255)      
+COLOR_INFO_TEXT         = (255, 228, 64, 255)   
+COLOR_BARREL_LINE       = (0, 255, 0, 255)      
+COLOR_BOX_TARGET        = (255, 255, 0, 200)
+COLOR_BOX_SELECT_TARGET = (255, 255, 0, 200)
+COLOR_TEXT_GROUND       = (255, 196, 0, 255)    
+COLOR_TEXT_AIR          = (255, 196, 0, 255)   
+COLOR_RELOAD_BG         = (0, 0, 0, 180)        
+COLOR_RELOAD_READY      = (255, 0, 0, 200)      
+COLOR_RELOAD_LOADING    = (255, 165, 0, 200)    
+COLOR_PREDICTION        = (50, 50, 255, 255)    
+COLOR_FLIGHT_PATH       = (255, 200, 0, 150)    
+COLOR_FPS_GOOD          = (0, 255, 0, 255)
+COLOR_THREAD_TEXT       = (255, 0, 0, 50)
+COLOR_THREAD_TEXT2      = (255, 0, 0, 255)
+COLOR_THREAD_WARNING    = (255, 0, 0, 100)
+COLOR_THREAD_WARNING2   = (255, 0, 0, 255) 
+COLOR_THREAD_ALERT      = (255, 180, 0, 80)
+COLOR_THREAD_ALERT2     = (255, 180, 0, 255)
 
 BULLET_GRAVITY       = 9.80665   
 
@@ -265,9 +272,8 @@ class ESPOverlay(QWidget):
 
             painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
             painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}")
-            painter.setPen(QColor(0, 255, 255, 255))
-            painter.drawText(20, 115, f"🧠 AI Tracking : 6 Threads Active (Decay={self.dynamic_decay:.3f})")
             painter.setPen(QColor(*COLOR_INFO_TEXT))
+            painter.drawText(20, 115, f"🧠 AI Tracking : 6 Threads Active (Decay={self.dynamic_decay:.3f})")
 
             all_units_data = get_all_units(self.scanner, cgame_base)
             all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
@@ -448,7 +454,7 @@ class ESPOverlay(QWidget):
                         corners_3d = calculate_3d_box_corners(pos, box_data[1], box_data[2], box_data[3])
                         pts = [p for c in corners_3d if (p := world_to_screen(view_matrix, c[0], c[1], c[2], self.screen_width, self.screen_height)) and p[2] >= 0.001]
                         if len(pts) == 8:
-                            box_color = QColor(255, 0, 255, 255) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
+                            box_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
                             painter.setPen(QPen(box_color, 2))
                             for e1, e2 in [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]: 
                                 painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
@@ -528,20 +534,20 @@ class ESPOverlay(QWidget):
                             dot_text = "⚠️ THREAT!"
                             dot_x = int(avg_x - fm.boundingRect(dot_text).width() / 2) 
                             dot_y = text_y - 14 
-                            painter.setPen(QColor(255, 0, 0, 50))
+                            painter.setPen(QColor(*COLOR_THREAD_TEXT))
                             for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
                                 painter.drawText(dot_x + ox, dot_y + oy, dot_text)
-                            painter.setPen(QColor(255, 0, 0, 255))
+                            painter.setPen(QColor(*COLOR_THREAD_TEXT2))
                             painter.drawText(dot_x, dot_y, dot_text)
-                            painter.setPen(QPen(QColor(255, 0, 0, 100), 5, Qt.DashLine))
+                            painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT), 5, Qt.DashLine))
                             painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
-                            painter.setPen(QPen(QColor(255, 0, 0, 255), 2, Qt.DashLine))
+                            painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT2), 2, Qt.DashLine))
                             painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
                             
                         elif warning_level == 1:
-                            painter.setPen(QPen(QColor(255, 180, 0, 80), 5))
+                            painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING), 5))
                             painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
-                            painter.setPen(QPen(QColor(255, 180, 0, 255), 2))
+                            painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING2), 2))
                             painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
 
                     painter.setPen(QColor(*COLOR_TEXT_AIR) if display_is_air else QColor(*COLOR_TEXT_GROUND))
