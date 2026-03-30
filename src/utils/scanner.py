@@ -6,6 +6,32 @@ import struct
 import subprocess
 from collections import Counter
 
+# =========================================================
+# 🧬 DNA PATTERNS CONFIGURATION (Global)
+# =========================================================
+# 1️⃣ Core Engine Pointers
+PAT_CGAME_MANAGER = ["48 8B 05 ? ? ? ? 48 85 C0", "48 8B 3D ? ? ? ? 48 85 FF"]
+PAT_MY_UNIT       = "4C 8B 25 ? ? ? ? 4D 85 E4 74 ? 41 0F B7 44 24 08"
+
+# 2️⃣ Unit Structure (Physical)
+PAT_UNIT_X        = ["48 8D B3 ? ? ? ?", "48 8D BB ? ? ? ?"]
+PAT_UNIT_BBMIN    = ["0F 28 8B ? ? ? ?", "0F 28 83 ? ? ? ?"]
+
+# 3️⃣ Unit Status & Info
+PAT_UNIT_INFO     = ["48 8B 80 ? ? ? ?", "48 8B 83 ? ? ? ?"]
+PAT_UNIT_TEAM     = ["0F B6 83 ? ? ? ?", "0F B6 B3 ? ? ? ?", "0F B6 BB ? ? ? ?"]
+PAT_UNIT_STATE    = ["48 8D 93 ? ? ? ?", "48 8D 8B ? ? ? ?"]
+PAT_UNIT_RELOAD   = "38 83 ? ? ? ? 74 ? 48 8d bb"
+
+# 4️⃣ Physics & Movement (High Precision)
+PAT_AIR_VEL       = "0F 10 ? 18 03 00 00 0F 10 ? 24 03 00 00"
+PAT_AIR_MOVEMENT  = "8B 7B ? F3 0F 10 8D ? ? FF FF 85 FF 0F 88"
+PAT_GROUND_SMART  = "49 8B 84 24 ? ? ? ?"
+
+# 5️⃣ Visual System (View Matrix)
+PAT_CAMERA_DNA    = "89 8A ?? ?? 00 00 48 8B 88 ?? ?? 00 00 0F 11 92 ?? ?? 00 00"
+PAT_MATRIX_CHAIN  = "41 88 B4 14 ?? ?? ?? ?? 41 88 B4 14 ?? ?? ?? ??"
+
 # ==========================================
 # 🛠️ คลาสสำหรับอ่าน Memory & Pattern Scanning
 # ==========================================
@@ -266,6 +292,14 @@ def _looks_like_view_matrix(matrix_data):
     non_zero = sum(1 for v in values if abs(v) > 1e-6)
     return non_zero >= 6
 
+def _handle_fallback(name, current_val):
+    if current_val == 0:
+        print(f"  [!] ❌ CRITICAL: สแกนหา {name} ไม่สำเร็จ และไม่มีค่า Persistence (0) -> ต้องปิดโปรแกรม")
+        import sys
+        sys.exit(1)
+    print(f"  [!] ⚠️ หา {name} ไม่เจอ ใช้ค่า Persistence: {hex(current_val)}")
+    return current_val
+
 # ==========================================
 # 🚀 ระบบตั้งค่า Offset อัตโนมัติ (Master Auto-Updater)
 # ==========================================
@@ -282,10 +316,9 @@ def init_dynamic_offsets(scanner, base_address):
     # 🎯 Phase 1: สแกนหา CGame Base (DAT_MANAGER)
     # ---------------------------------------------------------
     print("[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...")
-    patterns_manager = ["48 8B 05 ? ? ? ? 48 85 C0", "48 8B 3D ? ? ? ? 48 85 FF"]
     all_manager_targets = []
     manager_candidates = []
-    for p in patterns_manager:
+    for p in PAT_CGAME_MANAGER:
         all_manager_targets.extend(scanner.find_all_patterns(p))
 
     if all_manager_targets:
@@ -325,43 +358,26 @@ def init_dynamic_offsets(scanner, base_address):
             })
 
     if manager_candidates:
-        def _manager_rank(c):
-            return (
-                1 if c["live_units"] > 0 else 0,
-                c["live_score"],
-                c["struct_score"],
-                c["votes"],
-            )
-
-        ranked_candidates = sorted(manager_candidates, key=_manager_rank, reverse=True)
-        best_manager = ranked_candidates[0]
-        mul.MANAGER_CANDIDATE_OFFSETS = [c["dynamic_offset"] for c in ranked_candidates[:12]]
+        best_manager = max(manager_candidates, key=lambda c: (c["live_units"], c["votes"]))
         mul.MANAGER_OFFSET = best_manager["dynamic_offset"]
         manager_ok = True
-        print(
-            f"  [+] BINGO! CGame = {hex(mul.MANAGER_OFFSET)} "
-            f"(votes {best_manager['votes']}, score={best_manager['struct_score']}, live={best_manager['live_units']})"
-        )
+        print(f"  [+] BINGO! CGame = {hex(mul.MANAGER_OFFSET)} (live={best_manager['live_units']})")
     else:
-        mul.MANAGER_CANDIDATE_OFFSETS = []
-        print("  [-] CGame not found")
+        mul.MANAGER_OFFSET = _handle_fallback("CGame Base", mul.MANAGER_OFFSET)
+        manager_ok = True
 
     # ---------------------------------------------------------
-    # 🎯 Phase 2: สแกนหาตัวละครของเรา (DAT_CONTROLLED_UNIT)
+    # 🎯 Phase 2: ค้นหา My Unit (DAT_CONTROLLED)
     # ---------------------------------------------------------
     print("[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...")
-    patterns_hero = ["4C 8B 25 ? ? ? ? 4D 85 E4 74 ? 41 0F B7 44 24 08", "48 8B 05 ? ? ? ? 48 39 C3 74 ? 48 8B 05 ? ? ? ? 80 B8"]
-    found_hero_targets = []
-    for p in patterns_hero:
-        for t in scanner.find_all_patterns(p):
-            ghidra_offset = (t - base_address) + 0x400000
-            if 0x8000000 < ghidra_offset < 0xC000000:
-                found_hero_targets.append(ghidra_offset)
-                
-    if found_hero_targets:
-        top_target, votes = Counter(found_hero_targets).most_common(1)[0]
-        print(f"  [+] ✅ BINGO! My Unit = {hex(top_target)} (โหวต {votes} เสียง)")
-        mul.DAT_CONTROLLED_UNIT = top_target
+    found_hero = scanner.find_all_patterns(PAT_MY_UNIT)
+    if found_hero:
+        top_target = Counter(found_hero).most_common(1)[0][0]
+        mul.DAT_CONTROLLED_UNIT = (top_target - base_address) + 0x400000
+        hero_ok = True
+        print(f"  [+] ✅ BINGO! My Unit = {hex(mul.DAT_CONTROLLED_UNIT)}")
+    else:
+        mul.DAT_CONTROLLED_UNIT = _handle_fallback("My Unit", mul.DAT_CONTROLLED_UNIT)
         hero_ok = True
 
     # ---------------------------------------------------------
@@ -369,45 +385,38 @@ def init_dynamic_offsets(scanner, base_address):
     # ---------------------------------------------------------
     print("[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...")
     
-    # 1️⃣ สแกนหา OFF_UNIT_X (จากคำสั่ง LEA RSI/RDI, [RBX + ?])
-    x_patterns = ["48 8D B3 ? ? ? ?", "48 8D BB ? ? ? ?"]
-    x_candidates = []
-    for p in x_patterns:
-        x_candidates.extend(scanner.find_all_struct_offsets(p, offset_index=3))
-        
-    valid_x = [val for val in x_candidates if 0xA00 <= val <= 0xF00] # พิกัดมักจะอยู่ระหว่าง 0xA00 ถึง 0xF00
+    # 1️⃣ สแกนหา OFF_UNIT_X
+    x_cands = []
+    for p in PAT_UNIT_X: x_cands.extend(scanner.find_all_struct_offsets(p, 3))
+    valid_x = [v for v in x_cands if 0xA00 <= v <= 0xF00]
     if valid_x:
-        top_x, votes = Counter(valid_x).most_common(1)[0]
-        print(f"  [+] ✅ BINGO! UNIT_X = {hex(top_x)} (หมุน = {hex(top_x - 0x24)}) (โหวต {votes} เสียง)")
-        mul.OFF_UNIT_X = top_x
-        mul.OFF_UNIT_ROTATION = top_x - 0x24
+        top_x = Counter(valid_x).most_common(1)[0][0]
+        mul.OFF_UNIT_X, mul.OFF_UNIT_ROTATION = top_x, top_x - 0x24
+        print(f"  [+] ✅ BINGO! UNIT_X = {hex(top_x)}")
     else:
-        print("  [-] ❌ หา UNIT_X ไม่เจอ")
+        mul.OFF_UNIT_X = _handle_fallback("UNIT_X", mul.OFF_UNIT_X)
+        mul.OFF_UNIT_ROTATION = mul.OFF_UNIT_X - 0x24
 
-    # 2️⃣ สแกนหา OFF_UNIT_BBMIN (จากข้อมูล Ghidra ของท่าน: MOVAPS XMM1, [RBX + ?] หรือ MOVAPS XMM0)
-    bbox_patterns = ["0F 28 8B ? ? ? ?", "0F 28 83 ? ? ? ?"]
-    bbox_candidates = []
-    for p in bbox_patterns:
-        bbox_candidates.extend(scanner.find_all_struct_offsets(p, offset_index=3))
-        
-    valid_bbox = [val for val in bbox_candidates if 0x100 <= val <= 0x300] # BBox มักจะอยู่ระหว่าง 0x100 ถึง 0x300
+    # 2️⃣ สแกนหา OFF_UNIT_BBMIN
+    bbox_cands = []
+    for p in PAT_UNIT_BBMIN: bbox_cands.extend(scanner.find_all_struct_offsets(p, 3))
+    valid_bbox = [v for v in bbox_cands if 0x100 <= v <= 0x300]
     if valid_bbox:
-        top_bbox, votes = Counter(valid_bbox).most_common(1)[0]
-        print(f"  [+] ✅ BINGO! BBMIN = {hex(top_bbox)} (BBMAX = {hex(top_bbox + 0xC)}) (โหวต {votes} เสียง)")
-        mul.OFF_UNIT_BBMIN = top_bbox
-        mul.OFF_UNIT_BBMAX = top_bbox + 0xC
+        top_bbox = Counter(valid_bbox).most_common(1)[0][0]
+        mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX = top_bbox, top_bbox + 0xC
+        print(f"  [+] ✅ BINGO! BBMIN = {hex(top_bbox)}")
     else:
-        print("  [-] ❌ หา BBMIN ไม่เจอ")
+        mul.OFF_UNIT_BBMIN = _handle_fallback("BBMIN", mul.OFF_UNIT_BBMIN)
+        mul.OFF_UNIT_BBMAX = mul.OFF_UNIT_BBMIN + 0xC
 
     # ---------------------------------------------------------
     # 🎯 Phase 4: สแกนหาข้อมูลสถานะ (State, Team, Info, Reload)
     # ---------------------------------------------------------
     print("[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...")
 
-    # 1️⃣ หา OFF_UNIT_INFO (0xFC0)
-    info_patterns = ["48 8B 80 ? ? ? ?", "48 8B 83 ? ? ? ?"]
+    # 1️⃣ หา OFF_UNIT_INFO
     info_cands = []
-    for p in info_patterns: info_cands.extend(scanner.find_all_struct_offsets(p, 3))
+    for p in PAT_UNIT_INFO: info_cands.extend(scanner.find_all_struct_offsets(p, 3))
     valid_info = [v for v in info_cands if 0xF00 <= v <= 0x1000]
     if valid_info:
         top_info, votes = Counter(valid_info).most_common(1)[0]
@@ -415,10 +424,9 @@ def init_dynamic_offsets(scanner, base_address):
         print(f"  [+] ✅ BINGO! INFO = {hex(top_info)} (โหวต {votes} เสียง)")
     else: print("  [-] ❌ หา INFO ไม่เจอ")
 
-    # 2️⃣ หา OFF_UNIT_TEAM (0xFB0)
-    team_patterns = ["0F B6 83 ? ? ? ?", "0F B6 B3 ? ? ? ?", "0F B6 BB ? ? ? ?"]
+    # 2️⃣ หา OFF_UNIT_TEAM
     team_cands = []
-    for p in team_patterns: team_cands.extend(scanner.find_all_struct_offsets(p, 3))
+    for p in PAT_UNIT_TEAM: team_cands.extend(scanner.find_all_struct_offsets(p, 3))
     valid_team = [v for v in team_cands if 0xF00 <= v <= 0x1000]
     if valid_team:
         top_team, votes = Counter(valid_team).most_common(1)[0]
@@ -426,10 +434,9 @@ def init_dynamic_offsets(scanner, base_address):
         print(f"  [+] ✅ BINGO! TEAM = {hex(top_team)} (โหวต {votes} เสียง)")
     else: print("  [-] ❌ หา TEAM ไม่เจอ")
 
-    # 3️⃣ หา OFF_UNIT_STATE (0xF30)
-    state_patterns = ["48 8D 93 ? ? ? ?", "48 8D 8B ? ? ? ?"]
+    # 3️⃣ หา OFF_UNIT_STATE
     state_cands = []
-    for p in state_patterns: state_cands.extend(scanner.find_all_struct_offsets(p, 3))
+    for p in PAT_UNIT_STATE: state_cands.extend(scanner.find_all_struct_offsets(p, 3))
     valid_state = [v for v in state_cands if 0xE00 <= v <= 0x1000]
     if valid_state:
         top_state, votes = Counter(valid_state).most_common(1)[0]
@@ -437,16 +444,12 @@ def init_dynamic_offsets(scanner, base_address):
         print(f"  [+] ✅ BINGO! STATE = {hex(top_state)} (โหวต {votes} เสียง)")
     else: print("  [-] ❌ หา STATE ไม่เจอ")
 
-    # 4️⃣ หา OFF_UNIT_RELOAD (0xAB0)
-    # 🧬 DNA ใหม่: 38 83 b0 0a 00 00 74 1d 48 8d bb 90 0a 00 00
-    reload_patterns = ["38 83 ? ? ? ? 74 ? 48 8d bb"]
-    reload_cands = []
-    for p in reload_patterns: reload_cands.extend(scanner.find_all_struct_offsets(p, 2))
+    # 4️⃣ หา OFF_UNIT_RELOAD
+    reload_cands = scanner.find_all_struct_offsets(PAT_UNIT_RELOAD, 2)
     valid_reload = [v for v in reload_cands if 0x900 <= v <= 0xC00]
     if valid_reload:
         top_reload, votes = Counter(valid_reload).most_common(1)[0]
         mul.OFF_UNIT_RELOAD = top_reload
-        # 💡 RELOADING อยู่ก่อนหน้า RELOAD 0x11C bytes เสมอ!
         mul.OFF_UNIT_RELOADING = top_reload - 0x11C
         print(f"  [+] ✅ BINGO! RELOAD = {hex(top_reload)} (RELOADING = {hex(top_reload - 0x11C)}) (โหวต {votes} เสียง)")
     else: print("  [-] ❌ หา RELOAD ไม่เจอ")
