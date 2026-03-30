@@ -463,8 +463,8 @@ def init_dynamic_offsets(scanner, base_address):
         print(f"  [!] ⚠️ หา AIR_VEL ไม่เจอ ใช้ค่า Persistence: {hex(mul.OFF_AIR_VEL)}")
 
     # 6️⃣ หา OFF_AIR_MOVEMENT (0x18) - 🆕 High Precision (Byte)
-    # 🧬 DNA: 8B 7B 18 ... F3 0F 10 80 18 03 00 00
-    air_mov_dna = "8B 7B ? ? ? ? ? ? F3 0F 10 ? 18 03 00 00"
+    # 🎯 AIR_MOVEMENT (0x18) - 🆕 DNA: MOV EDI, [RBX+18]; MOVSS XMM1, [RBP-40C]; TEST EDI, EDI
+    air_mov_dna = "8B 7B ? F3 0F 10 8D ? ? FF FF 85 FF 0F 88"
     air_mov_cands = scanner.find_byte_struct_offset(air_mov_dna, 2)
     if air_mov_cands:
         top_mov, votes = Counter(air_mov_cands).most_common(1)[0]
