@@ -755,7 +755,10 @@ class ESPOverlay(QWidget):
                         from src.utils.mul import get_unit_detailed_dna
                         dna = get_unit_detailed_dna(self.scanner, u_ptr)
                         if dna:
-                            out += f"🧬 DNA        : NATION:{dna['nation_id']} | STATUS:{dna['status']} | KEY:{dna['name_key']}\n"
+                            invul_str = " [GOD MODE]" if dna['is_invul'] else ""
+                            out += f"🧬 DNA        : NATION:{dna['nation_id']} | CLASS:{dna['class_id']} | STATE:{dna['state']}{invul_str}\n"
+                            out += f"🏷️ UNIT       : {dna['short_name']} ({dna['family']})\n"
+                            out += f"📛 KEY        : {dna['name_key']}\n"
                         
                         out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
                         out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f}) | SRC:{vel_source}\n"

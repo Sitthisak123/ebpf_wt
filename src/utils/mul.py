@@ -28,11 +28,15 @@ OFF_UNIT_BBMAX      = 0
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
 OFF_UNIT_STATE      = 0         # สถานะรถถัง (เป็น/ตาย)
 OFF_UNIT_TEAM       = 0         # ทีม (มิตร/ศัตรู)
-OFF_UNIT_INFO       = 0         # 🎯 Pointer ไปหาข้อมูลรถถัง (เปลี่ยนจาก 0xFC8 เป็น 0xFC0)
-OFF_INFO_NAME_KEY   = 0x40      # 📛 [DNA] Key สำหรับชื่อจริง (Localized Name)
-OFF_UNIT_NATION     = 0x98c     # 🏳️ [DNA] ID ประเทศ (Nation ID)
-OFF_INFO_STATUS     = 0x290     # 📊 [DNA] สถานะพิเศษ (Rank/Level)
+OFF_UNIT_INFO       = 0xfc0        # 🎯 ฐานข้อมูล Unit Info
+OFF_INFO_NAME_KEY   = 0x40         # 📛 Key สำหรับชื่อจริง (Localized)
+OFF_INFO_SHORT_NAME = 0x28         # 🏷️ ชื่อย่อยูนิต (เช่น T-34-85)
+OFF_INFO_FAMILY     = 0x38         # 📂 ตระกูลยูนิต (เช่น exp_tank)
+OFF_INFO_STATUS     = 0x290        # 📊 สถานะพิเศษ (Class ID)
+OFF_UNIT_NATION     = 0x98c        # 🏳️ ID ประเทศ
+OFF_UNIT_INVUL      = 0xe58        # 🛡️ สถานะอมตะ (Is Invulnerable)
 OFF_UNIT_CLASS_PTR  = 0      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
+
 OFF_UNIT_TYPE_PTR   = 0      # 🎯 Pointer ไปหาชนิด (เช่น exp_tank)
 OFF_UNIT_NAME_PTR   = 0      # 🎯 Pointer ไปหาชื่อย่อ (เช่น ussr_2s38)
 OFF_UNIT_RELOADING  = 0
@@ -936,34 +940,59 @@ def get_unit_status(scanner, u_ptr):
 def get_unit_detailed_dna(scanner, u_ptr):
     """
     🧬 ดึงข้อมูล DNA เชิงลึกของยูนิต
-    1. INFO PTR (0xFC0)
-    2. NAME KEY (0x40 ใน Info)
-    3. NATION ID (0x98C ใน Unit)
-    4. STATUS (0x290 ใน Info)
     """
     try:
-        dna = {"info_ptr": 0, "name_key": "None", "nation_id": -1, "status": -1}
+        dna = {
+            "info_ptr": 0, 
+            "name_key": "None",
+            "short_name": "None",
+            "family": "None",
+            "nation_id": -1, 
+            "class_id": -1,
+            "is_invul": False,
+            "state": -1
+        }
         
-        # 1. INFO PTR
+        # 1. NATION ID
+        nation_raw = scanner.read_mem(u_ptr + OFF_UNIT_NATION, 4)
+        dna["nation_id"] = struct.unpack("<i", nation_raw)[0] if nation_raw else -1
+        
+        # 2. INVULNERABLE
+        invul_raw = scanner.read_mem(u_ptr + OFF_UNIT_INVUL, 1)
+        dna["is_invul"] = bool(invul_raw[0]) if invul_raw else False
+        
+        # 3. STATE
+        state_raw = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 4)
+        dna["state"] = struct.unpack("<i", state_raw)[0] if state_raw else -1
+
+        # 4. INFO POINTER ข้อมูลภายใน
         info_ptr_raw = scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8)
         if info_ptr_raw:
             info_ptr = struct.unpack("<Q", info_ptr_raw)[0]
             if is_valid_ptr(info_ptr):
                 dna["info_ptr"] = info_ptr
                 
-                # 2. NAME KEY (Localized Name Key)
+                # Name Key
                 key_ptr_raw = scanner.read_mem(info_ptr + OFF_INFO_NAME_KEY, 8)
                 if key_ptr_raw:
                     key_ptr = struct.unpack("<Q", key_ptr_raw)[0]
                     dna["name_key"] = _read_c_string(scanner, key_ptr) or "None"
                 
-                # 4. STATUS (Rank/Level)
-                status_raw = scanner.read_mem(info_ptr + OFF_INFO_STATUS, 4)
-                dna["status"] = struct.unpack("<i", status_raw)[0] if status_raw else -1
+                # Short Name
+                short_ptr_raw = scanner.read_mem(info_ptr + OFF_INFO_SHORT_NAME, 8)
+                if short_ptr_raw:
+                    short_ptr = struct.unpack("<Q", short_ptr_raw)[0]
+                    dna["short_name"] = _read_c_string(scanner, short_ptr) or "None"
+                
+                # Family
+                family_ptr_raw = scanner.read_mem(info_ptr + OFF_INFO_FAMILY, 8)
+                if family_ptr_raw:
+                    family_ptr = struct.unpack("<Q", family_ptr_raw)[0]
+                    dna["family"] = _read_c_string(scanner, family_ptr) or "None"
 
-        # 3. NATION ID
-        nation_raw = scanner.read_mem(u_ptr + OFF_UNIT_NATION, 4)
-        dna["nation_id"] = struct.unpack("<i", nation_raw)[0] if nation_raw else -1
+                # Class ID
+                class_raw = scanner.read_mem(info_ptr + OFF_INFO_STATUS, 4)
+                dna["class_id"] = struct.unpack("<i", class_raw)[0] if class_raw else -1
         
         return dna
     except: return None

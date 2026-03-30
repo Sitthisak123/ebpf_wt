@@ -22,6 +22,7 @@ PAT_UNIT_INFO     = ["48 8B 80 ? ? ? ?", "48 8B 83 ? ? ? ?"]
 PAT_UNIT_TEAM     = ["0F B6 83 ? ? ? ?", "0F B6 B3 ? ? ? ?", "0F B6 BB ? ? ? ?"]
 PAT_UNIT_STATE    = ["48 8D 93 ? ? ? ?", "48 8D 8B ? ? ? ?"]
 PAT_UNIT_RELOAD   = "38 83 ? ? ? ? 74 ? 48 8d bb"
+PAT_UNIT_INVUL    = "80 BB ? ? ? ? 00 74 ? 48 8B 83 ? ? ? ? 48 85 C0" # DNA สำหรับเช็คสถานะอมตะ
 
 # 4️⃣ Physics & Movement (High Precision)
 PAT_AIR_VEL       = "0F 10 ? 18 03 00 00 0F 10 ? 24 03 00 00"
