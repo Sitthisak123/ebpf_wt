@@ -909,8 +909,9 @@ def get_unit_status(scanner, u_ptr):
                             raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
                             unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
                                 
-        reload_raw = scanner.read_mem(u_ptr + OFF_UNIT_RELOAD, 4)
-        reload_val = struct.unpack("<i", reload_raw)[0] if reload_raw else -1
+        # 🎯 ดึงสถานะ Reload (ตอนนี้เป็น 1 ไบต์: 0-16)
+        reload_raw = scanner.read_mem(u_ptr + OFF_UNIT_RELOAD, 1)
+        reload_val = struct.unpack("<B", reload_raw)[0] if reload_raw else -1
         return team, state, unit_name, reload_val
     except: return None
     

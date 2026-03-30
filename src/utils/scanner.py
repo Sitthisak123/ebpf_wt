@@ -366,9 +366,10 @@ def init_dynamic_offsets(scanner, base_address):
     else: print("  [-] ❌ หา STATE ไม่เจอ")
 
     # 4️⃣ หา OFF_UNIT_RELOAD (0xAB0)
-    reload_patterns = ["48 C7 83 ? ? ? ? 00 00 00 00"]
+    # 🧬 DNA ใหม่: 38 83 b0 0a 00 00 74 1d 48 8d bb 90 0a 00 00
+    reload_patterns = ["38 83 ? ? ? ? 74 ? 48 8d bb"]
     reload_cands = []
-    for p in reload_patterns: reload_cands.extend(scanner.find_all_struct_offsets(p, 3))
+    for p in reload_patterns: reload_cands.extend(scanner.find_all_struct_offsets(p, 2))
     valid_reload = [v for v in reload_cands if 0x900 <= v <= 0xC00]
     if valid_reload:
         top_reload, votes = Counter(valid_reload).most_common(1)[0]
