@@ -24,6 +24,9 @@ PROJ_BALLISTICS_FIELDS = [
     ("velRange_y", 0x28, "f"),
 ]
 
+POINTER_SCAN_LIMIT = 0x400
+OWNER_SUBSCAN_LIMIT = 0x100
+
 
 def hex_dump(data, base_offset=0):
     lines = []
@@ -52,6 +55,18 @@ def read_f32(scanner, addr):
     return value
 
 
+def is_reasonable_float(value, low=None, high=None):
+    if value is None:
+        return False
+    if not (value == value):
+        return False
+    if low is not None and value < low:
+        return False
+    if high is not None and value > high:
+        return False
+    return True
+
+
 def decode_proj_ballistics(scanner, struct_addr):
     decoded = {}
     for name, off, fmt in PROJ_BALLISTICS_FIELDS:
@@ -64,6 +79,82 @@ def decode_proj_ballistics(scanner, struct_addr):
     return decoded
 
 
+def score_props_match(reference, candidate):
+    score = 0
+    matched = []
+
+    checks = [
+        ("mass", 0.001),
+        ("caliber", 0.0005),
+        ("cx", 0.001),
+        ("maxDistance", 2.0),
+    ]
+
+    for field, tolerance in checks:
+        ref_value = reference.get(field)
+        cand_value = candidate.get(field)
+        if not is_reasonable_float(ref_value) or not is_reasonable_float(cand_value):
+            continue
+        if abs(ref_value - cand_value) <= tolerance:
+            score += 3
+            matched.append(field)
+
+    if is_reasonable_float(candidate.get("mass"), 0.0001, 200.0):
+        score += 1
+    if is_reasonable_float(candidate.get("caliber"), 0.001, 1.0):
+        score += 1
+    if is_reasonable_float(candidate.get("cx"), 0.0001, 10.0):
+        score += 1
+    if is_reasonable_float(candidate.get("maxDistance"), 0.0, 100000.0):
+        score += 1
+
+    return score, matched
+
+
+def find_upstream_owner_candidates(scanner, weapon_ptr, reference_props):
+    candidates = []
+    seen = set()
+
+    for ptr_off in range(0, POINTER_SCAN_LIMIT, 8):
+        ptr_value = read_u64(scanner, weapon_ptr + ptr_off)
+        if not mul.is_valid_ptr(ptr_value):
+            continue
+
+        for suboff in range(0, OWNER_SUBSCAN_LIMIT, 4):
+            struct_addr = ptr_value + suboff
+            if struct_addr in seen:
+                continue
+            seen.add(struct_addr)
+
+            candidate_props = decode_proj_ballistics(scanner, struct_addr)
+            score, matched = score_props_match(reference_props, candidate_props)
+            if score < 8:
+                continue
+
+            raw = scanner.read_mem(struct_addr, 0x30) or b""
+            candidates.append(
+                {
+                    "weapon_ptr_field_off": ptr_off,
+                    "owner_ptr": ptr_value,
+                    "embedded_struct_off": suboff,
+                    "struct_addr": struct_addr,
+                    "score": score,
+                    "matched_fields": matched,
+                    "proj_ballistics_fields": candidate_props,
+                    "proj_ballistics_hex": hex_dump(raw, suboff) if raw else "",
+                }
+            )
+
+    candidates.sort(
+        key=lambda item: (
+            -item["score"],
+            item["embedded_struct_off"],
+            item["weapon_ptr_field_off"],
+        )
+    )
+    return candidates[:12]
+
+
 def dump_weapon_block(scanner, weapon_ptr):
     weapon_raw = scanner.read_mem(weapon_ptr + 0x2040, 0x60) or b""
     props_addr = weapon_ptr + PROJ_BALLISTICS_OFF
@@ -71,6 +162,7 @@ def dump_weapon_block(scanner, weapon_ptr):
 
     muzzle_velocity = read_f32(scanner, weapon_ptr + MUZZLE_VELOCITY_OFF)
     proj_props = decode_proj_ballistics(scanner, props_addr)
+    upstream_candidates = find_upstream_owner_candidates(scanner, weapon_ptr, proj_props)
 
     return {
         "weapon_ptr": weapon_ptr,
@@ -78,6 +170,7 @@ def dump_weapon_block(scanner, weapon_ptr):
         "muzzle_velocity": muzzle_velocity,
         "proj_ballistics_addr": props_addr,
         "proj_ballistics_fields": proj_props,
+        "upstream_owner_candidates": upstream_candidates,
         "weapon_window_hex": hex_dump(weapon_raw, 0x2040) if weapon_raw else "",
         "proj_ballistics_hex": hex_dump(props_raw, 0x0000) if props_raw else "",
     }
@@ -146,6 +239,33 @@ def write_dump_files(payload):
                 payload["proj_ballistics_hex"],
             ]
         )
+        candidates = payload.get("upstream_owner_candidates") or []
+        if candidates:
+            lines.extend(
+                [
+                    "",
+                    "UPSTREAM OWNER CANDIDATES",
+                ]
+            )
+            for idx, cand in enumerate(candidates, 1):
+                cfields = cand["proj_ballistics_fields"]
+                lines.extend(
+                    [
+                        (
+                            f"[{idx}] field_off={hex(cand['weapon_ptr_field_off'])} "
+                            f"owner_ptr={hex(cand['owner_ptr'])} "
+                            f"embedded_off={hex(cand['embedded_struct_off'])} "
+                            f"struct_addr={hex(cand['struct_addr'])} "
+                            f"score={cand['score']} matched={','.join(cand['matched_fields'])}"
+                        ),
+                        (
+                            f"    mass={cfields['mass']} caliber={cfields['caliber']} "
+                            f"cx={cfields['cx']} maxDistance={cfields['maxDistance']}"
+                        ),
+                    ]
+                )
+                if cand["proj_ballistics_hex"]:
+                    lines.append(cand["proj_ballistics_hex"])
 
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -205,6 +325,19 @@ def main():
             f"    velRange    : ({dump['proj_ballistics_fields']['velRange_x']}, "
             f"{dump['proj_ballistics_fields']['velRange_y']})"
         )
+        candidates = dump.get("upstream_owner_candidates") or []
+        if candidates:
+            print("[*] Upstream owner candidates:")
+            for idx, cand in enumerate(candidates[:5], 1):
+                print(
+                    f"    [{idx}] field_off={hex(cand['weapon_ptr_field_off'])} "
+                    f"owner={hex(cand['owner_ptr'])} "
+                    f"embedded_off={hex(cand['embedded_struct_off'])} "
+                    f"score={cand['score']} "
+                    f"matched={','.join(cand['matched_fields'])}"
+                )
+        else:
+            print("[*] Upstream owner candidates: none matched current heuristics")
 
         json_path, txt_path = write_dump_files(payload)
         print("-" * 80)
