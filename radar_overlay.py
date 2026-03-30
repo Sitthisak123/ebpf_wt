@@ -750,6 +750,13 @@ class ESPOverlay(QWidget):
                         out += "-" * 64 + "\n"
                         out += f"🎯 [TARGET]   : {clean_name.upper()} {'[LOCKED]':>35}\n"
                         out += f"🧷 Ptr/Off    : UNIT:{hex(u_ptr)} | INFO:{hex(info_ptr) if info_ptr else '0x0'} | MOV:{hex(mov_ptr) if mov_ptr else '0x0'} @ {hex(mov_off)}\n"
+                        
+                        # 🧬 [DNA] ดึงและแสดงข้อมูลเชิงลึก
+                        from src.utils.mul import get_unit_detailed_dna
+                        dna = get_unit_detailed_dna(self.scanner, u_ptr)
+                        if dna:
+                            out += f"🧬 DNA        : NATION:{dna['nation_id']} | STATUS:{dna['status']} | KEY:{dna['name_key']}\n"
+                        
                         out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
                         out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f}) | SRC:{vel_source}\n"
                         out += f"📡 Vel Check  : raw={raw_mag:>6.1f} km/h | pos={pos_mag:>6.1f} km/h | PTR:{hex(u_ptr)}\n"
