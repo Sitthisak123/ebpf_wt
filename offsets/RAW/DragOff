@@ -1,0 +1,30 @@
+ The real ballistic drag-related offsets I confirmed are:
+
+  - ballistics::ProjBallisticsProperties::mass = 0x04
+  - ballistics::ProjBallisticsProperties::caliber = 0x08
+  - ballistics::ProjBallisticsProperties::cx = 0x0C
+  - ballistics::ProjBallisticsProperties::maxDistance = 0x10
+  - ballistics::ProjBallisticsProperties::splinterMass = 0x1C
+  - ballistics::ProjBallisticsProperties::velRange = 0x24
+  
+  This comes from FUN_01d84880, which is the member-registration function
+  for ::ballistics::ProjBallisticsProperties.
+  
+  So if by dragOff the source/origin field for projectile drag
+  coefficient, the offset is:
+
+  - dragOff = 0x0C as cx
+
+Also relevant runtime fields:
+
+  - ballistics::ProjectileBallistics::kv = 0x10
+  - ballistics::ProjectileBallistics::ag = 0x14
+  - ballistics::ProjectileBallistics::state = 0x18
+  - ballistics::ProjectileBallistics::prev = 0x34
+
+  Those come from FUN_01d637c0.
+
+  Short version:
+
+  - Raw drag coefficient field: 0x0C (cx)
+  - Derived runtime drag term: 0x10 (kv
