@@ -42,13 +42,13 @@ COLOR_THREAD_ALERT2     = (255, 180, 0, 255)
 BULLET_GRAVITY       = 9.80665   
 
 BOT_KEYWORDS = [
-    "speaker", "water", "panzerzug", "windmill", "dummy", "dummy_plane",
-    "unit_fulda_windmill", "airfield", "noground", "fortification",
-    "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery",
-    "infantry", "freighter", "hangar", "technic", "vent", "railway", "freight",
+    # "speaker", "water", "panzerzug", "windmill", "dummy", "dummy_plane",
+    # "unit_fulda_windmill", "airfield", "noground", "fortification",
+    # "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery",
+    # "infantry", "freighter", "hangar", "technic", "vent", "railway", "freight",
 ]
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
-MAX_GROUND_TARGET_DISTANCE = 7000.0
+MAX_GROUND_TARGET_DISTANCE = 10000.0
 MAX_AIR_TARGET_DISTANCE = 18000.0
 ORIGIN_GHOST_RADIUS = 35.0
 ORIGIN_GHOST_MY_DIST_MIN = 250.0
