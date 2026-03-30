@@ -29,7 +29,7 @@ COLOR_TEXT_AIR          = (255, 196, 20, 230)
 COLOR_RELOAD_BG         = (0, 0, 0, 180)        
 COLOR_RELOAD_READY      = (255, 0, 0, 200)      
 COLOR_RELOAD_LOADING    = (255, 165, 0, 200)    
-COLOR_PREDICTION        = (50, 50, 255, 255)    
+COLOR_PREDICTION        = (255, 255, 255, 255)    
 COLOR_FLIGHT_PATH       = (255, 200, 0, 150)    
 COLOR_FPS_GOOD          = (0, 255, 0, 255)
 COLOR_THREAD_TEXT       = (255, 0, 0, 50)
@@ -641,7 +641,7 @@ class ESPOverlay(QWidget):
                         t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
 
                     # =========================================================
-                    # 🚀 WT TRUE BALLISTICS SOLVER (Lanz-Odermatt & DeMarre)
+                    # 🚀 WT TRUE BALLISTICS SOLVER (Lanz-Odermatt & SPAAG Radar)
                     # =========================================================
                     altitude = max(0.0, my_pos[1])
                     rho = 1.225 * math.pow(max(1.0 - (2.25577e-5 * altitude), 0.0), 4.2561)
@@ -674,12 +674,13 @@ class ESPOverlay(QWidget):
                     final_x, final_y, final_z = t_x, t_y, t_z
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
                     
+                    # 🔄 Iterative TOF Solver (วนลูป 4 รอบเพื่อความนิ่ง)
                     for _ in range(4):
                         if physics_is_air:
-                            a_term = (self.dynamic_decay * best_t - 1.0 + math.exp(-self.dynamic_decay * best_t)) / (self.dynamic_decay**2) if best_t > 0 else 0.0
-                            pred_x = t_x + (vx * best_t) + (ax * a_term * turn_boost)
-                            pred_y = t_y + (vy * best_t) + (ay * a_term * turn_boost)
-                            pred_z = t_z + (vz * best_t) + (az * a_term * turn_boost)
+                            # 🎯 SPAAG Radar Prediction: P_pred = P + (V*t) + (0.5*A*t^2)
+                            pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
+                            pred_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
+                            pred_z = t_z + (vz * best_t) + (0.5 * az * (best_t ** 2))
                         else:
                             pred_x = t_x + (vx * best_t)
                             pred_y = t_y + (vy * best_t)
@@ -692,6 +693,7 @@ class ESPOverlay(QWidget):
                         
                         if current_bullet_speed > 0:
                             if k > 0.000001:
+                                # 💨 Air Drag TOF: t = (e^(K * distance) - 1) / (K * Muzzle_Velocity)
                                 kx = min(k * d_imp, 5.0) 
                                 best_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
                             else:
@@ -701,6 +703,7 @@ class ESPOverlay(QWidget):
                             
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
 
+                    # 📉 Gravity Drop Compensation: 0.5 * g * t^2
                     gravity_offset = 0.5 * BULLET_GRAVITY * (best_t ** 2)
                     final_y += (gravity_offset - sight_drop_comp)
                     
@@ -807,17 +810,17 @@ class ESPOverlay(QWidget):
                     pass
 
             # ========================================================
-            # 🚀 FLIGHT PATH SIMULATION RENDERER
+            # 🚀 FLIGHT PATH SIMULATION RENDERER (SPAAG VERSION)
             # ========================================================
             if active_flight_data:
                 c_pos, c_v, c_a = active_flight_data['pos'], active_flight_data['v'], active_flight_data['a']
                 path_pts = []
                 for step in range(30): 
                     t_sim = step * 0.1
-                    a_term = (self.dynamic_decay * t_sim - 1.0 + math.exp(-self.dynamic_decay * t_sim)) / (self.dynamic_decay**2) if t_sim > 0 else 0.0
-                    p_x = c_pos[0] + c_v[0] * t_sim + c_a[0] * a_term
-                    p_y = c_pos[1] + c_v[1] * t_sim + c_a[1] * a_term
-                    p_z = c_pos[2] + c_v[2] * t_sim + c_a[2] * a_term
+                    # 🎯 ทำนายจุดตกในแต่ละช่วงเวลาด้วย P_pred = P + (V*t) + (0.5*A*t^2)
+                    p_x = c_pos[0] + (c_v[0] * t_sim) + (0.5 * c_a[0] * (t_sim ** 2))
+                    p_y = c_pos[1] + (c_v[1] * t_sim) + (0.5 * c_a[1] * (t_sim ** 2))
+                    p_z = c_pos[2] + (c_v[2] * t_sim) + (0.5 * c_a[2] * (t_sim ** 2))
                     
                     scr = world_to_screen(view_matrix, p_x, p_y, p_z, self.screen_width, self.screen_height)
                     if scr and scr[2] > 0: path_pts.append((scr[0], scr[1]))
