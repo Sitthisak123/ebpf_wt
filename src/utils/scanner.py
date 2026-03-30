@@ -132,6 +132,58 @@ class MemoryScanner:
         
     def find_all_struct_offsets(self, pattern_hex, offset_index=3):
         """ค้นหาลายนิ้วมือโครงสร้างรถถัง (Struct) แล้วคืนค่าตัวเลขระยะห่าง"""
+        # ... (เหมือนเดิม) ...
+        return self._do_struct_scan(pattern_hex, offset_index)
+
+    def find_offset_with_skip(self, anchor_pattern, target_offset_hex, max_skip=40):
+        """
+        ค้นหา Offset ปริศนา โดยอิงจาก 'จุดยึด' (Anchor) ที่เรารู้อยู่แล้ว
+        รองรับทั้ง 1-byte และ 4-byte offsets ตามมาตรฐาน x86-64
+        """
+        results = []
+        try:
+            with open(f"/proc/{self.pid}/maps", "r") as f:
+                for line in f:
+                    if "aces" in line and "r-xp" in line:
+                        parts = line.split()
+                        start_addr, end_addr = [int(x, 16) for x in parts[0].split("-")]
+                        os.lseek(self.mem_fd, start_addr, os.SEEK_SET)
+                        chunk = os.read(self.mem_fd, end_addr - start_addr)
+                        
+                        target_bytes = struct.pack("<i", target_offset_hex)
+                        idx = 0
+                        while True:
+                            idx = chunk.find(target_bytes, idx + 1)
+                            if idx == -1: break
+                            
+                            # ตรวจสอบว่าข้างหน้าเป็น MOV ยอดนิยมหรือไม่
+                            is_mov = False
+                            if idx >= 3 and chunk[idx-3] == 0x0F and chunk[idx-2] in [0x10, 0x11, 0x12, 0x28]: is_mov = True
+                            elif idx >= 4 and chunk[idx-4] == 0xF3 and chunk[idx-3] == 0x0F: is_mov = True
+                            
+                            if is_mov:
+                                search_start = max(0, idx - max_skip - 7)
+                                back_chunk = chunk[search_start : idx]
+                                for i in range(len(back_chunk) - 3, -1, -1):
+                                    # MOV R, [R + off] โครงสร้าง: [Prefix] [Opcode 8B] [ModR/M] [Offset]
+                                    if back_chunk[i] == 0x8B:
+                                        prefix = back_chunk[i-1] if i > 0 else 0
+                                        if prefix in [0x48, 0x4C, 0x49]:
+                                            modrm = back_chunk[i+1]
+                                            # ModR/M: 0x40-0x7F = 1-byte offset, 0x80-0xBF = 4-byte offset
+                                            if 0x40 <= modrm <= 0x7F:
+                                                off = back_chunk[i+2]
+                                                results.append(off)
+                                                break
+                                            elif 0x80 <= modrm <= 0xBF:
+                                                if i + 6 < len(back_chunk):
+                                                    off = struct.unpack("<i", back_chunk[i+2 : i+6])[0]
+                                                    results.append(off)
+                                                    break
+            return results
+        except: return []
+
+    def _do_struct_scan(self, pattern_hex, offset_index):
         regex_bytes = b""
         for chunk in pattern_hex.split():
             if chunk == "?" or chunk == "??": regex_bytes += b"."
@@ -139,7 +191,6 @@ class MemoryScanner:
                 b = bytes([int(chunk, 16)])
                 if b in b".^$*+?{}\\[]|()": regex_bytes += b"\\" + b
                 else: regex_bytes += b
-
         results = []
         try:
             with open(f"/proc/{self.pid}/maps", "r") as f:
@@ -149,13 +200,11 @@ class MemoryScanner:
                         start_addr, end_addr = [int(x, 16) for x in parts[0].split("-")]
                         os.lseek(self.mem_fd, start_addr, os.SEEK_SET)
                         mem_dump = os.read(self.mem_fd, end_addr - start_addr)
-                        
                         for match in re.finditer(regex_bytes, mem_dump, re.DOTALL):
                             match_offset = match.start()
-                            # 🎯 ดึงเลข 4 Bytes ออกมาเป็น Offset เลย!
                             struct_offset = struct.unpack("<i", mem_dump[match_offset + offset_index : match_offset + offset_index + 4])[0]
                             results.append(struct_offset)
-        except Exception as e: pass
+        except: pass
         return results
 
     def __del__(self):
@@ -381,7 +430,6 @@ def init_dynamic_offsets(scanner, base_address):
 
     # 5️⃣ หา OFF_AIR_VEL (0x318)
     # 🧬 DNA: 0F 10 ?? 18 03 00 00 0F 10 ?? 24 03 00 00 (จาก 025effcb)
-    # นี่คือการโหลด Velocity และ Omega ของเครื่องบินมาพร้อมกัน
     air_vel_dna = "0F 10 ? 18 03 00 00 0F 10 ? 24 03 00 00"
     air_vel_cands = scanner.find_all_struct_offsets(air_vel_dna, 3)
     if air_vel_cands:
@@ -391,10 +439,39 @@ def init_dynamic_offsets(scanner, base_address):
     else:
         print(f"  [!] ⚠️ หา AIR_VEL ไม่เจอ ใช้ค่า Persistence: {hex(mul.OFF_AIR_VEL)}")
 
+    # 6️⃣ หา OFF_AIR_MOVEMENT (0x18) - 🆕 High Precision DNA
+    # 🧬 DNA: 48 8B ?? ?? ?? ?? ?? 0F 10 ?? 18 03 00 00 (สุ่ม 3 ไบต์กลาง)
+    # เราจะสแกนหาจุดที่ MOV R, [R + off] ตามด้วย MOVUPS XMM, [R + 0x318]
+    air_mov_dna = "48 8B ? ? 0F 10 ? 18 03 00 00"
+    air_mov_cands = scanner.find_all_struct_offsets(air_mov_dna, 3) # สกัดจาก MOV byte 3
+    # กรองเอาค่า 0x10-0x30
+    valid_air_mov = [v for v in air_mov_cands if 0x10 <= v <= 0x30]
+    if valid_air_mov:
+        top_mov = Counter(valid_air_mov).most_common(1)[0][0]
+        mul.OFF_AIR_MOVEMENT = top_mov
+        print(f"  [+] ✅ BINGO! AIR_MOVEMENT = {hex(mul.OFF_AIR_MOVEMENT)} (โหวต {Counter(valid_air_mov).most_common(1)[0][1]} เสียง)")
+    else:
+        mul.OFF_AIR_MOVEMENT = 0x18 # Fallback
+        print(f"  [!] ⚠️ หา AIR_MOVEMENT ไม่เจอ ใช้ค่า Persistence: {hex(mul.OFF_AIR_MOVEMENT)}")
+
+    # 7️⃣ หา OFF_GROUND_SMART (0x1DF8) - 🆕 New Smart Pointer DNA
+    # 🧬 DNA: MOV R64, [Unit + 0x1DF8]; ... ; MOVSS XMM, [R64 + 0x54]
+    smart_cands = scanner.find_offset_with_skip(None, 0x54, max_skip=40)
+    valid_smart = [v for v in smart_cands if 0x1D00 <= v <= 0x1E00]
+    if valid_smart:
+        top_smart = Counter(valid_smart).most_common(1)[0][0]
+        # เราเก็บค่านี้ไว้ในตัวแปรชั่วคราว หรืออัปเดต MUL ตรงๆ
+        # เนื่องจากโครงสร้าง MUL ปัจจุบันใช้ OFF_GROUND_MOVEMENT เป็นหลัก
+        # ผมจะขออัปเดตพอยเตอร์หลักของ Ground เป็นตัวนี้ครับ
+        mul.OFF_GROUND_MOVEMENT = top_smart
+        print(f"  [+] ✅ BINGO! GROUND_SMART_PTR = {hex(top_smart)} (โหวต {Counter(valid_smart).most_common(1)[0][1]} เสียง)")
+    else:
+        print(f"  [!] ⚠️ หา GROUND_SMART ไม่เจอ ใช้ค่า Persistence: 0x1df8")
+
     # ---------------------------------------------------------
-    # 🎯 Phase 6: ค้นหา View Matrix (0x1C0) - แบบ Persistence
+    # 🎯 Phase 8: ค้นหา View Matrix (0x1C0) - แบบ Persistence
     # ---------------------------------------------------------
-    print("[*] 🔍 6/6 ค้นหา Visual System (Triple-Chain DNA)...")
+    print("[*] 🔍 8/8 ค้นหา Visual System (Triple-Chain DNA)...")
     
     # 🎯 DNA ลายเซ็นต์ดิจิทัลของระบบกล้อง (สกัดจาก Snippet 01642041)
     # บรรทัด 1: 89 8A EC 06 00 00 (MOV [RDX+6EC], ECX)

@@ -331,16 +331,14 @@ VELOCITY_PROFILES = {
         "requested_label": "GROUND",
         "primary": {
             "label": "GROUND_PRIMARY",
-            "mov_off": lambda: OFF_GROUND_MOVEMENT,
-            "vel_off": lambda: OFF_GROUND_VEL,
+            "mov_off": 0x1DF8,
+            "vel_off": 0x54,
             "fmt": "fff",
-            "shuffle": (0, 1, 2), # 🎯 REVERT: Use original order
-            "negate": (True, False, True), # 🎯 FIX: Invert X and Z to point ahead
             "max_speed": 200.0,
         },
         "fallbacks": [
-            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x0068, "fmt": "ddd", "shuffle": (0, 1, 2), "negate": (True, False, True), "max_speed": 200.0},
-            {"label": "GROUND_ALT2", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "shuffle": (0, 1, 2), "negate": (True, False, True), "max_speed": 200.0},
+            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x40, "fmt": "fff", "max_speed": 200.0},
+            {"label": "GROUND_ALT2", "mov_off": lambda: OFF_GROUND_MOVEMENT, "vel_off": 0x68, "fmt": "ddd", "max_speed": 200.0},
         ],
     },
 }
