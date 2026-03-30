@@ -4742,3 +4742,21 @@ QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
 KeyboardInterrupt
 Aborted
 xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ 
+
+
+
+
+ not work: "[Pasted Text: 39 lines]" now i reverted it ,
+ create pattern(DNA) scanner for "# 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)       
+   OFF_UNIT_STATE      = 0         # สถานะรถถัง (เป็น/ตาย)                        
+   OFF_UNIT_TEAM       = 0         # ทีม (มิตร/ศัตรู)                               
+   OFF_UNIT_INFO       = 0xfc0        # 🎯 ฐานข้อมูล Unit Info                    
+   OFF_INFO_NAME_KEY   = 0x40         # 📛 Key สำหรับชื่อจริง (Localized)            
+   OFF_INFO_SHORT_NAME = 0x28         # 🏷️ ชื่อย่อยูนิต (เช่น T-34-85)                
+   OFF_INFO_FAMILY     = 0x38         # 📂 ตระกูลยูนิต (เช่น exp_tank)              
+   OFF_INFO_STATUS     = 0x290        # 📊 สถานะพิเศษ (Class ID)                 
+   OFF_UNIT_NATION     = 0x98c        # 🏳️ ID ประเทศ                            
+   OFF_UNIT_INVUL      = 0xe58        # 🛡️ สถานะอมตะ (Is Invulnerable)          
+   OFF_UNIT_CLASS_PTR  = 0      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank,      
+   Medium tank)                                                                 
+   " for offset that not exist you can use ghidra anytime       

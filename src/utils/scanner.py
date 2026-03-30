@@ -19,12 +19,19 @@ PAT_UNIT_BBMIN    = ["0F 28 8B ? ? ? ?", "0F 28 83 ? ? ? ?"]
 
 # 3️⃣ Unit Status & Info
 PAT_UNIT_INFO     = ["48 8B 80 ? ? ? ?", "48 8B 83 ? ? ? ?"]
-PAT_UNIT_TEAM     = ["0F B6 83 ? ? ? ?", "0F B6 B3 ? ? ? ?", "0F B6 BB ? ? ? ?"]
-PAT_UNIT_STATE    = ["48 8D 93 ? ? ? ?", "48 8D 8B ? ? ? ?"]
+PAT_UNIT_TEAM     = ["0F B6 83 B0 0F 00 00", "0F B6 83 ? ? 00 00"] # DNA: Team (0xFB0)
+PAT_UNIT_STATE    = ["83 BB 30 0F 00 00 01", "83 BB ? ? 00 00 01"] # DNA: State (0xF30)
+PAT_UNIT_NATION   = "48 63 83 8c 09 00 00" # DNA: Nation (0x98C)
+PAT_UNIT_INVUL    = "80 BB 58 0E 00 00 00" # DNA: Invulnerable (0xE58)
 PAT_UNIT_RELOAD   = "38 83 ? ? ? ? 74 ? 48 8d bb"
-PAT_UNIT_INVUL    = "80 BB ? ? ? ? 00 74 ? 48 8B 83 ? ? ? ? 48 85 C0" # DNA สำหรับเช็คสถานะอมตะ
 
-# 4️⃣ Physics & Movement (High Precision)
+# 4️⃣ Unit Internal Details (Inside Info Struct)
+PAT_INFO_CLASS_ID = "48 63 80 90 02 00 00" # DNA: Class ID (0x290)
+PAT_INFO_SHORT    = "48 8B 40 28"           # DNA: Short Name (0x28)
+PAT_INFO_FAMILY   = "48 8B 40 38"           # DNA: Family (0x38)
+PAT_INFO_NAME_KEY = "48 8B 70 40"           # DNA: Name Key (0x40)
+
+# 5️⃣ Physics & Movement (High Precision)
 PAT_AIR_VEL       = "0F 10 ? 18 03 00 00 0F 10 ? 24 03 00 00"
 PAT_AIR_MOVEMENT  = "8B 7B ? F3 0F 10 8D ? ? FF FF 85 FF 0F 88"
 PAT_GROUND_SMART  = "49 8B 84 24 ? ? ? ?"
@@ -437,8 +444,8 @@ def init_dynamic_offsets(scanner, base_address):
 
     # 3️⃣ หา OFF_UNIT_STATE
     state_cands = []
-    for p in PAT_UNIT_STATE: state_cands.extend(scanner.find_all_struct_offsets(p, 3))
-    valid_state = [v for v in state_cands if 0xE00 <= v <= 0x1000]
+    for p in PAT_UNIT_STATE: state_cands.extend(scanner.find_all_struct_offsets(p, 2))
+    valid_state = [v for v in state_cands if 0xF00 <= v <= 0x1000]
     if valid_state:
         top_state, votes = Counter(valid_state).most_common(1)[0]
         mul.OFF_UNIT_STATE = top_state
