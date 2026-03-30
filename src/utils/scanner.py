@@ -379,10 +379,22 @@ def init_dynamic_offsets(scanner, base_address):
         print(f"  [+] ✅ BINGO! RELOAD = {hex(top_reload)} (RELOADING = {hex(top_reload - 0x11C)}) (โหวต {votes} เสียง)")
     else: print("  [-] ❌ หา RELOAD ไม่เจอ")
 
+    # 5️⃣ หา OFF_AIR_VEL (0x318)
+    # 🧬 DNA: 0F 10 ?? 18 03 00 00 0F 10 ?? 24 03 00 00 (จาก 025effcb)
+    # นี่คือการโหลด Velocity และ Omega ของเครื่องบินมาพร้อมกัน
+    air_vel_dna = "0F 10 ? 18 03 00 00 0F 10 ? 24 03 00 00"
+    air_vel_cands = scanner.find_all_struct_offsets(air_vel_dna, 3)
+    if air_vel_cands:
+        top_vel = Counter(air_vel_cands).most_common(1)[0][0]
+        mul.OFF_AIR_VEL = top_vel
+        print(f"  [+] ✅ BINGO! AIR_VEL = {hex(mul.OFF_AIR_VEL)} (โหวต {Counter(air_vel_cands).most_common(1)[0][1]} เสียง)")
+    else:
+        print(f"  [!] ⚠️ หา AIR_VEL ไม่เจอ ใช้ค่า Persistence: {hex(mul.OFF_AIR_VEL)}")
+
     # ---------------------------------------------------------
-    # 🎯 Phase 5: ค้นหา View Matrix (0x1C0) - แบบ Persistence
+    # 🎯 Phase 6: ค้นหา View Matrix (0x1C0) - แบบ Persistence
     # ---------------------------------------------------------
-    print("[*] 🔍 5/5 ค้นหา Visual System (Triple-Chain DNA)...")
+    print("[*] 🔍 6/6 ค้นหา Visual System (Triple-Chain DNA)...")
     
     # 🎯 DNA ลายเซ็นต์ดิจิทัลของระบบกล้อง (สกัดจาก Snippet 01642041)
     # บรรทัด 1: 89 8A EC 06 00 00 (MOV [RDX+6EC], ECX)
