@@ -57,7 +57,6 @@ ORIGIN_GHOST_MY_DIST_MIN = 250.0
 # 1.0 = ปกติ (ตามที่ AI คำนวณ)
 # 1.15 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 15%
 # 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
-turn_boost = 1.8
 DEBUG_LOG_INTERVAL = 0.5
 
 # ========================================================
@@ -83,6 +82,186 @@ def is_ground_threat(barrel_base, barrel_tip, target_pos):
     return yaw_angle <= .3 and -2.0 <= pitch_diff <= 6
 
 
+def _read_ptr_fast(scanner, addr):
+    try:
+        raw = scanner.read_mem(addr, 8)
+        if not raw or len(raw) < 8:
+            return 0
+        return struct.unpack("<Q", raw)[0]
+    except Exception:
+        return 0
+
+
+def _read_f32_fast(scanner, addr, default=0.0):
+    try:
+        raw = scanner.read_mem(addr, 4)
+        if not raw or len(raw) < 4:
+            return default
+        value = struct.unpack("<f", raw)[0]
+        return value if math.isfinite(value) else default
+    except Exception:
+        return default
+
+
+def _smoothstep(edge0, edge1, x):
+    if edge1 <= edge0:
+        return 1.0 if x >= edge0 else 0.0
+    t = max(0.0, min(1.0, (x - edge0) / (edge1 - edge0)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _air_density_from_altitude(altitude):
+    alt = max(0.0, altitude)
+    return 1.225 * math.pow(max(1.0 - (2.25577e-5 * alt), 0.0), 4.2561)
+
+
+def _read_ballistic_profile(scanner, cgame_base):
+    profile = {
+        "weapon_ptr": 0,
+        "speed": 1000.0,
+        "mass": 0.0,
+        "caliber": 0.0,
+        "cx": 0.0,
+        "max_distance": 0.0,
+        "vel_range": (0.0, 0.0),
+    }
+    weapon_ptr = _read_ptr_fast(scanner, cgame_base + OFF_WEAPON_PTR)
+    if not is_valid_ptr(weapon_ptr):
+        return profile
+
+    props_base = weapon_ptr + (OFF_BULLET_MASS - 4)
+    speed = _read_f32_fast(scanner, weapon_ptr + OFF_BULLET_SPEED, 1000.0)
+    mass = _read_f32_fast(scanner, weapon_ptr + OFF_BULLET_MASS, 0.0)
+    caliber = _read_f32_fast(scanner, weapon_ptr + OFF_BULLET_CALIBER, 0.0)
+    cx = _read_f32_fast(scanner, weapon_ptr + OFF_BULLET_CD, 0.0)
+    max_distance = _read_f32_fast(scanner, props_base + 0x10, 0.0)
+    vel_min = _read_f32_fast(scanner, props_base + 0x24, 0.0)
+    vel_max = _read_f32_fast(scanner, props_base + 0x28, 0.0)
+
+    if not (50.0 <= speed <= 3000.0):
+        speed = 1000.0
+    if not (0.005 <= mass <= 200.0):
+        mass = 0.0
+    if not (0.001 <= caliber <= 0.5):
+        caliber = 0.0
+    if not (0.01 <= cx <= 3.0):
+        cx = 0.0
+    if vel_min < 0.0 or vel_min > 4000.0:
+        vel_min = 0.0
+    if vel_max < vel_min or vel_max > 4000.0:
+        vel_max = max(vel_min, 0.0)
+
+    profile.update({
+        "weapon_ptr": weapon_ptr,
+        "speed": speed,
+        "mass": mass,
+        "caliber": caliber,
+        "cx": cx,
+        "max_distance": max_distance,
+        "vel_range": (vel_min, vel_max),
+    })
+    return profile
+
+
+def _make_ballistic_model(profile, altitude):
+    speed = max(profile.get("speed", 1000.0), 1.0)
+    mass = max(profile.get("mass", 0.0), 0.001)
+    caliber = max(profile.get("caliber", 0.0), 0.001)
+    cx = profile.get("cx", 0.0)
+    if cx <= 0.0:
+        cx = 0.24 if speed >= 1200.0 else 0.35
+
+    rho = _air_density_from_altitude(altitude)
+    area = math.pi * ((caliber * 0.5) ** 2)
+    base_k = (0.5 * rho * cx * area) / mass
+    vel_lo, vel_hi = profile.get("vel_range", (0.0, 0.0))
+    if vel_hi <= vel_lo:
+        vel_lo = speed * 0.34
+        vel_hi = speed * 0.48
+
+    return {
+        "speed": speed,
+        "mass": mass,
+        "caliber": caliber,
+        "cx": cx,
+        "rho": rho,
+        "base_k": max(base_k, 1e-7),
+        "vel_lo": max(0.0, vel_lo),
+        "vel_hi": max(max(vel_lo, vel_hi), vel_lo + 1.0),
+        "max_distance": max(profile.get("max_distance", 0.0), 0.0),
+    }
+
+
+def _drag_band_factor(model, speed):
+    vel_lo = model["vel_lo"]
+    vel_hi = model["vel_hi"]
+    band = _smoothstep(vel_lo, vel_hi, speed)
+    mach = speed / 343.0
+    transonic = _smoothstep(0.78, 1.22, mach)
+    supersonic = _smoothstep(1.15, 2.6, mach)
+    factor = 0.84 + (0.18 * band) + (0.12 * transonic) - (0.06 * supersonic)
+    if model["speed"] >= 1200.0:
+        factor *= 0.92
+    return max(0.55, min(1.18, factor))
+
+
+def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
+    if horizontal_range <= 0.001:
+        return 0.0, 0.0, model["speed"]
+
+    vx = model["speed"] * math.cos(zero_pitch)
+    vy = -model["speed"] * math.sin(zero_pitch)
+    x = 0.0
+    y_down = 0.0
+    t = 0.0
+    prev_x = 0.0
+    prev_y = 0.0
+    prev_t = 0.0
+    prev_speed = model["speed"]
+
+    while x < horizontal_range and t < 12.0:
+        speed_mag = math.hypot(vx, vy)
+        if speed_mag < 25.0:
+            break
+
+        dt = max(0.003, min(0.012, 4.0 / (speed_mag + 1.0)))
+        drag_scale = model["base_k"] * _drag_band_factor(model, speed_mag)
+        ax = -drag_scale * speed_mag * vx
+        ay = (drag_scale * speed_mag * -vy) + BULLET_GRAVITY
+
+        prev_x = x
+        prev_y = y_down
+        prev_t = t
+        prev_speed = speed_mag
+
+        vx += ax * dt
+        vy += ay * dt
+        x += vx * dt
+        y_down += vy * dt
+        t += dt
+
+    if x > prev_x and x >= horizontal_range:
+        frac = (horizontal_range - prev_x) / max(x - prev_x, 1e-6)
+        t = prev_t + ((t - prev_t) * frac)
+        y_down = prev_y + ((y_down - prev_y) * frac)
+        speed_mag = prev_speed + ((math.hypot(vx, vy) - prev_speed) * frac)
+    else:
+        speed_mag = math.hypot(vx, vy)
+
+    return t, y_down, speed_mag
+
+
+def _solve_zero_pitch(zeroing_distance, model):
+    if zeroing_distance <= 1.0:
+        return 0.0
+
+    pitch = 0.0
+    for _ in range(5):
+        _, y_down, _ = _simulate_projectile_range(zeroing_distance, model, pitch)
+        pitch += math.atan2(y_down, max(zeroing_distance, 1.0)) * 0.92
+    return max(-0.08, min(0.18, pitch))
+
+
 class ESPOverlay(QWidget):
     def __init__(self, scanner, base_address):
         super().__init__()
@@ -106,8 +285,10 @@ class ESPOverlay(QWidget):
         self.target_cycle_index = 0
         self.q_pressed_last = False
         self.last_debug_log_time = 0.0
+        self.last_dashboard_text = ""
         self.console_initialized = False
         self.dead_unit_latch = set()
+        self.ballistic_zero_cache = {}
 
         self._update_screen_metrics()
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -264,11 +445,12 @@ class ESPOverlay(QWidget):
                 dprint("อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป", force=False)
                 return
 
-            current_bullet_speed = get_bullet_speed(self.scanner, cgame_base)
+            ballistic_profile = _read_ballistic_profile(self.scanner, cgame_base)
+            current_bullet_speed = ballistic_profile["speed"]
             current_zeroing = get_sight_compensation_factor(self.scanner, self.base_address)
-            current_bullet_mass = get_bullet_mass(self.scanner, cgame_base)
-            current_bullet_cd = get_bullet_cd(self.scanner, cgame_base)
-            current_bullet_caliber = get_bullet_caliber(self.scanner, cgame_base)
+            current_bullet_mass = ballistic_profile["mass"]
+            current_bullet_cd = ballistic_profile["cx"]
+            current_bullet_caliber = ballistic_profile["caliber"]
 
             painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
             painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}")
@@ -644,38 +826,31 @@ class ESPOverlay(QWidget):
                     # 🚀 WT TRUE BALLISTICS SOLVER (Lanz-Odermatt & SPAAG Radar)
                     # =========================================================
                     altitude = max(0.0, my_pos[1])
-                    rho = 1.225 * math.pow(max(1.0 - (2.25577e-5 * altitude), 0.0), 4.2561)
-                    
-                    is_sub_caliber = (current_bullet_speed >= 1200.0)
-                    if is_sub_caliber:
-                        eff_cd = current_bullet_cd if current_bullet_cd > 0 else 0.20
-                        eff_caliber = current_bullet_caliber if current_bullet_caliber < 0.05 else current_bullet_caliber * 0.25
-                    else:
-                        eff_cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
-                        eff_caliber = current_bullet_caliber
+                    ballistic_model = _make_ballistic_model(ballistic_profile, altitude)
+                    zero_cache_key = (
+                        round(ballistic_model["speed"], 1),
+                        round(ballistic_model["mass"], 4),
+                        round(ballistic_model["caliber"], 5),
+                        round(ballistic_model["cx"], 4),
+                        round(ballistic_model["vel_lo"], 1),
+                        round(ballistic_model["vel_hi"], 1),
+                        round(current_zeroing, 1),
+                        int(altitude // 100),
+                    )
+                    zero_pitch = self.ballistic_zero_cache.get(zero_cache_key)
+                    if zero_pitch is None:
+                        zero_pitch = _solve_zero_pitch(current_zeroing, ballistic_model)
+                        self.ballistic_zero_cache[zero_cache_key] = zero_pitch
+                        if len(self.ballistic_zero_cache) > 64:
+                            self.ballistic_zero_cache.clear()
 
-                    area = math.pi * ((eff_caliber / 2.0) ** 2)
-                    base_k = (0.5 * rho * eff_cd * area) / current_bullet_mass if current_bullet_mass > 0.001 else 0.0001
-                    
-                    avg_speed = current_bullet_speed * (1.0 - min(dist / 5000.0, 0.4))
-                    mach = avg_speed / 343.0
-                    
-                    if mach > 2.5:    mach_mult = 0.35 + (1.0 / mach) 
-                    elif mach > 1.2:  mach_mult = 0.95                
-                    elif mach > 0.8:  mach_mult = 0.9                
-                    else:             mach_mult = 0.85                
-
-                    k = base_k * mach_mult
-
-                    t_sight = current_zeroing / current_bullet_speed if current_bullet_speed > 0 else 0
-                    sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
-                    
                     best_t = dist / current_bullet_speed if current_bullet_speed > 0 else 0.1
                     final_x, final_y, final_z = t_x, t_y, t_z
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
                     
                     # 🔄 Iterative TOF Solver (วนลูป 4 รอบเพื่อความนิ่ง)
-                    for _ in range(4):
+                    bullet_drop = 0.0
+                    for _ in range(5):
                         if physics_is_air:
                             # 🎯 SPAAG Radar Prediction: P_pred = P + (V*t) + (0.5*A*t^2)
                             pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
@@ -687,25 +862,23 @@ class ESPOverlay(QWidget):
                             pred_z = t_z + (vz * best_t)
                         
                         dx_imp = pred_x - (my_pos[0] + my_vx * best_t)
-                        dy_imp = pred_y - (my_pos[1] + 1.5 + my_vy * best_t)
                         dz_imp = pred_z - (my_pos[2] + my_vz * best_t)
-                        d_imp = math.sqrt(dx_imp**2 + dy_imp**2 + dz_imp**2)
-                        
-                        if current_bullet_speed > 0:
-                            if k > 0.000001:
-                                # 💨 Air Drag TOF: t = (e^(K * distance) - 1) / (K * Muzzle_Velocity)
-                                kx = min(k * d_imp, 5.0) 
-                                best_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
-                            else:
-                                best_t = d_imp / current_bullet_speed
+                        horizontal_imp = math.hypot(dx_imp, dz_imp)
+
+                        if current_bullet_speed > 0 and horizontal_imp > 0.01:
+                            best_t, bullet_drop, _ = _simulate_projectile_range(
+                                horizontal_imp,
+                                ballistic_model,
+                                zero_pitch,
+                            )
                         else:
                             best_t = 999.0
+                            bullet_drop = 0.0
                             
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
 
-                    # 📉 Gravity Drop Compensation: 0.5 * g * t^2
-                    gravity_offset = 0.5 * BULLET_GRAVITY * (best_t ** 2)
-                    final_y += (gravity_offset - sight_drop_comp)
+                    gravity_offset = bullet_drop
+                    final_y += bullet_drop
                     
                     final_x -= (my_vx * best_t)
                     final_y -= (my_vy * best_t)
@@ -735,12 +908,6 @@ class ESPOverlay(QWidget):
                         except:
                             mov_ptr = 0
                         # ใช้ ANSI Code ย้อน Cursor ไปบนสุด และล้างถึงท้ายหน้าจอ (\033[H\033[J)
-                        if not self.console_initialized:
-                            sys.stdout.write("\033[2J\033[H")
-                            self.console_initialized = True
-                        else:
-                            sys.stdout.write("\033[H\033[J")
-                        
                         my_speed = math.sqrt(my_vx**2 + my_vy**2 + my_vz**2) * 3.6
                         target_speed = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                         accel_mag = math.sqrt(ax**2 + ay**2 + az**2)
@@ -769,13 +936,26 @@ class ESPOverlay(QWidget):
                         out += f"🌪️ Accel      : {accel_mag:>6.2f} m/s² | A:({ax:>6.2f}, {ay:>6.2f}, {az:>6.2f})\n"
                         out += "-" * 64 + "\n"
                         out += f"📉 [BALLISTICS]\n"
-                        out += f"🔫 Bullet     : Spd:{current_bullet_speed:.0f} m/s | CD:{current_bullet_cd:.2f} | Mass:{current_bullet_mass:.2f}\n"
-                        out += f"📉 Drop       : Gravity: +{gravity_offset:>5.2f} m | Zeroing: -{sight_drop_comp:>5.2f} m\n"
+                        vel_lo, vel_hi = ballistic_profile["vel_range"]
+                        out += f"🔫 Bullet     : Spd:{current_bullet_speed:.0f} m/s | CD:{current_bullet_cd:.2f} | Mass:{current_bullet_mass:.2f} | Cal:{current_bullet_caliber:.3f}\n"
+                        out += f"📉 Drop       : Bullet: +{gravity_offset:>5.2f} m | Zero: {math.degrees(zero_pitch):>5.2f} deg | VRange:{vel_lo:.0f}-{vel_hi:.0f}\n"
                         out += "================================================================\n"
                         out += " [Q] Cycle Targets | [Ctrl+C] Exit\n"
-                        
-                        sys.stdout.write(out)
-                        sys.stdout.flush()
+
+                        should_refresh_console = (
+                            (curr_t - self.last_debug_log_time) >= DEBUG_LOG_INTERVAL
+                            or out != self.last_dashboard_text
+                        )
+                        if should_refresh_console:
+                            if not self.console_initialized:
+                                sys.stdout.write("\033[2J\033[H")
+                                self.console_initialized = True
+                            else:
+                                sys.stdout.write("\033[H\033[J")
+                            sys.stdout.write(out)
+                            sys.stdout.flush()
+                            self.last_debug_log_time = curr_t
+                            self.last_dashboard_text = out
 
                     # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
                     if all(math.isfinite(c) for c in [final_x, final_y, final_z]):

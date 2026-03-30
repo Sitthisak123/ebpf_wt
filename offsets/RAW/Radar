@@ -1,0 +1,68 @@
+Found the original SPAAG/gyro lead logic.
+
+  The key path is:
+
+  1. FUN_01604780
+     This is the runtime caller that prepares target/shooter state and then
+     calls the gyro solver.
+     Near the end it calls:
+     FUN_05209910(..., param_1 + 0x2000, ..., cVar3, bVar5 ^ 1, bVar4 ^ 1)
+     So the calculator state lives at this + 0x2000.
+  2. FUN_052090f0
+     Constructor/init for that calculator state.
+     It seeds the state from global gyro config:
+      - DAT_09784740 = ticksBetweenBulletsTraceShoots
+      - DAT_09784744 = filtered omega coefficient
+      - default ranges/timers/flags
+  3. FUN_052094c0
+     Reset/reinit for the same state.
+  4. FUN_05204590
+     Global config loader for CannonGyroSight.
+     It reads:
+      - omegaFilterTau
+      - distanceDefault
+      - timeOfFlightMax
+      - bulletAoa
+      - bulletDrag
+      - bulletGravity
+  5. FUN_05209910
+     This is the real lead-mark / forestall solver.
+
+  What FUN_05209910 does, in plain terms:
+
+  - Builds shooter transform / gun basis.
+  - Computes target-relative geometry.
+  - Maintains filtered angular state using DAT_09784744 (omegaFilterTau derived
+    coefficient).
+  - Computes intercept / aim point.
+  - If bulletAoa is enabled, it uses an intercept helper FUN_051fd5f0.
+  - If bulletDrag is disabled, it falls back to a simpler ballistic correction
+    path.
+  - If bulletDrag is enabled, it runs a heavier solver:
+      - clamps time with DAT_0978474c (timeOfFlightMax)
+      - uses DAT_09784751 / DAT_09784752 as drag/gravity toggles
+      - searches over 8 quaternion/sign candidates
+      - picks the candidate with minimum error
+      - finalizes with FUN_051fe2e0
+  - If drag is off but gravity is on, it uses FUN_051fd4f0 for the simpler drop
+    correction path.
+
+  The strongest evidence this is the SPAAG lead code:
+
+  - It is fed from CannonGyroSight config.
+  - It is called from the runtime sight update path.
+  - It directly consumes timeOfFlightMax, bulletAoa, bulletDrag, bulletGravity.
+  - It outputs filtered aim/forestall vectors into the calculator state at
+    +0x114, +0x118, +0x11a, flags at +0x113, +0x117.
+
+  Useful symbol names to apply next:
+
+  - FUN_05204590 -> ballistics::loadCannonGyroSightConfig
+  - FUN_052090f0 -> ballistics::CannonGyroCalculator::init
+  - FUN_052094c0 -> ballistics::CannonGyroCalculator::reset
+  - FUN_05209910 -> ballistics::CannonGyroCalculator::updateAimPrediction
+  - FUN_01604780 -> updateForestall or updateGyroLeadMark
+
+  Short logic summary:
+  updateForestall -> CannonGyroCalculator::updateAimPrediction -> solve
+  intercept -> apply AOA/drag/gravity options -> write forestall point

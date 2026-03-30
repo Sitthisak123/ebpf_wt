@@ -28,3 +28,6 @@ Also relevant runtime fields:
 
   - Raw drag coefficient field: 0x0C (cx)
   - Derived runtime drag term: 0x10 (kv
+
+
+  

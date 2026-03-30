@@ -3,7 +3,7 @@
 
 GEMINI.md
 GhidrAssistMCP
-codex.log
-gemini.log
+codex*.log
+gemini*.log
 dumps
 .gemini
