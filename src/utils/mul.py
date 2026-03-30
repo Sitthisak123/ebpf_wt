@@ -334,11 +334,13 @@ VELOCITY_PROFILES = {
             "mov_off": lambda: OFF_GROUND_MOVEMENT,
             "vel_off": lambda: OFF_GROUND_VEL,
             "fmt": "fff",
+            "shuffle": (0, 1, 2), # 🎯 REVERT: Use original order
+            "negate": (True, False, True), # 🎯 FIX: Invert X and Z to point ahead
             "max_speed": 200.0,
         },
         "fallbacks": [
-            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
-            {"label": "GROUND_ALT2", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
+            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x0068, "fmt": "ddd", "shuffle": (0, 1, 2), "negate": (True, False, True), "max_speed": 200.0},
+            {"label": "GROUND_ALT2", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "shuffle": (0, 1, 2), "negate": (True, False, True), "max_speed": 200.0},
         ],
     },
 }
@@ -419,6 +421,21 @@ def _try_read_velocity(scanner, u_ptr, spec):
         return None, ("velocity bytes unreadable", raw_ptr, base_ptr, data, None)
 
     decoded = tuple(float(v) for v in struct.unpack("<" + spec["fmt"], data[:spec["size"]]))
+    
+    # 🎯 Apply axis shuffle if defined
+    if "shuffle" in spec:
+        s = spec["shuffle"]
+        decoded = (decoded[s[0]], decoded[s[1]], decoded[s[2]])
+        
+    # 🎯 Apply negation if defined
+    if "negate" in spec:
+        n = spec["negate"]
+        decoded = (
+            -decoded[0] if n[0] else decoded[0],
+            -decoded[1] if n[1] else decoded[1],
+            -decoded[2] if n[2] else decoded[2]
+        )
+
     if not all(math.isfinite(v) for v in decoded):
         return None, ("decoded non-finite vector", raw_ptr, base_ptr, data, decoded)
 
