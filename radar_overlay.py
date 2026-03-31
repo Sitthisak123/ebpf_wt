@@ -827,54 +827,75 @@ class ESPOverlay(QWidget):
                     # =========================================================
                     altitude = max(0.0, my_pos[1])
                     ballistic_model = _make_ballistic_model(ballistic_profile, altitude)
-                    zero_cache_key = (
-                        round(ballistic_model["speed"], 1),
-                        round(ballistic_model["mass"], 4),
-                        round(ballistic_model["caliber"], 5),
-                        round(ballistic_model["cx"], 4),
-                        round(ballistic_model["vel_lo"], 1),
-                        round(ballistic_model["vel_hi"], 1),
-                        round(current_zeroing, 1),
-                        int(altitude // 100),
-                    )
-                    zero_pitch = self.ballistic_zero_cache.get(zero_cache_key)
-                    if zero_pitch is None:
-                        zero_pitch = _solve_zero_pitch(current_zeroing, ballistic_model)
-                        self.ballistic_zero_cache[zero_cache_key] = zero_pitch
-                        if len(self.ballistic_zero_cache) > 64:
-                            self.ballistic_zero_cache.clear()
+                    is_active_target = (u_ptr == active_target_ptr)
 
                     best_t = dist / current_bullet_speed if current_bullet_speed > 0 else 0.1
                     final_x, final_y, final_z = t_x, t_y, t_z
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
-                    
-                    # 🔄 Iterative TOF Solver (วนลูป 4 รอบเพื่อความนิ่ง)
                     bullet_drop = 0.0
-                    for _ in range(5):
-                        if physics_is_air:
-                            # 🎯 SPAAG Radar Prediction: P_pred = P + (V*t) + (0.5*A*t^2)
-                            pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
-                            pred_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
-                            pred_z = t_z + (vz * best_t) + (0.5 * az * (best_t ** 2))
-                        else:
-                            pred_x = t_x + (vx * best_t)
-                            pred_y = t_y + (vy * best_t)
-                            pred_z = t_z + (vz * best_t)
+
+                    if is_active_target:
+                        zero_cache_key = (
+                            round(ballistic_model["speed"], 1),
+                            round(ballistic_model["mass"], 4),
+                            round(ballistic_model["caliber"], 5),
+                            round(ballistic_model["cx"], 4),
+                            round(ballistic_model["vel_lo"], 1),
+                            round(ballistic_model["vel_hi"], 1),
+                            round(current_zeroing, 1),
+                            int(altitude // 100),
+                        )
+                        zero_pitch = self.ballistic_zero_cache.get(zero_cache_key)
+                        if zero_pitch is None:
+                            zero_pitch = _solve_zero_pitch(current_zeroing, ballistic_model)
+                            self.ballistic_zero_cache[zero_cache_key] = zero_pitch
+                            if len(self.ballistic_zero_cache) > 64:
+                                self.ballistic_zero_cache.clear()
+
+                        # 🔄 Iterative TOF Solver (High-Precision for Active Target)
+                        for _ in range(3):
+                            if physics_is_air:
+                                pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
+                                pred_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
+                                pred_z = t_z + (vz * best_t) + (0.5 * az * (best_t ** 2))
+                            else:
+                                pred_x = t_x + (vx * best_t)
+                                pred_y = t_y + (vy * best_t)
+                                pred_z = t_z + (vz * best_t)
+                            
+                            dx_imp = pred_x - (my_pos[0] + my_vx * best_t)
+                            dz_imp = pred_z - (my_pos[2] + my_vz * best_t)
+                            horizontal_imp = math.hypot(dx_imp, dz_imp)
+
+                            if current_bullet_speed > 0 and horizontal_imp > 0.01:
+                                best_t, bullet_drop, _ = _simulate_projectile_range(
+                                    horizontal_imp,
+                                    ballistic_model,
+                                    zero_pitch,
+                                )
+                            else:
+                                best_t = 999.0
+                                bullet_drop = 0.0
+                            final_x, final_y, final_z = pred_x, pred_y, pred_z
+                    else:
+                        # 🎯 Lightweight Solver for other units (Background ESP)
+                        pred_x = t_x + (vx * best_t)
+                        pred_y = t_y + (vy * best_t)
+                        pred_z = t_z + (vz * best_t)
                         
                         dx_imp = pred_x - (my_pos[0] + my_vx * best_t)
                         dz_imp = pred_z - (my_pos[2] + my_vz * best_t)
-                        horizontal_imp = math.hypot(dx_imp, dz_imp)
+                        d_imp = math.hypot(dx_imp, dz_imp)
 
-                        if current_bullet_speed > 0 and horizontal_imp > 0.01:
-                            best_t, bullet_drop, _ = _simulate_projectile_range(
-                                horizontal_imp,
-                                ballistic_model,
-                                zero_pitch,
-                            )
+                        if current_bullet_speed > 0:
+                            best_t = d_imp / current_bullet_speed
+                            bullet_drop = 0.5 * BULLET_GRAVITY * (best_t ** 2)
+                            t_sight = current_zeroing / current_bullet_speed
+                            bullet_drop -= (0.5 * BULLET_GRAVITY * (t_sight**2))
                         else:
                             best_t = 999.0
                             bullet_drop = 0.0
-                            
+                        
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
 
                     gravity_offset = bullet_drop
