@@ -909,6 +909,7 @@ class ESPOverlay(QWidget):
                     final_x, final_y, final_z = t_x, t_y, t_z
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
                     bullet_drop = 0.0
+                    zero_pitch = 0.0
 
                     if is_active_target and leadmark_in_range:
                         zero_cache_key = (
