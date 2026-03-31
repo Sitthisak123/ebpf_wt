@@ -4,6 +4,7 @@ import re
 import math
 import struct
 import subprocess
+import errno
 from collections import Counter
 
 # =========================================================
@@ -47,17 +48,50 @@ class MemoryScanner:
     def __init__(self, pid):
         self.pid = pid
         self.mem_fd = os.open(f"/proc/{pid}/mem", os.O_RDONLY)
+        self.closed = False
+        self.last_error = ""
 
     def read_mem(self, address, size):
+        if self.closed:
+            self.last_error = "scanner_closed"
+            return None
         if address is None or address <= 0x10000:
             return None
         try:
             os.lseek(self.mem_fd, address, os.SEEK_SET)
             return os.read(self.mem_fd, size)
-        except OSError:
+        except OSError as e:
+            self.last_error = f"{e.__class__.__name__}: errno={getattr(e, 'errno', '?')} msg={e}"
+            # Invalid candidate pointers/offset probes can legitimately fail during scans.
+            # Only mark the scanner dead for hard descriptor/process failures.
+            if getattr(e, "errno", None) in (errno.ESRCH, errno.EBADF):
+                self.close()
             return None
+        except Exception as e:
+            self.last_error = f"{e.__class__.__name__}: {e}"
+            return None
+
+    def is_alive(self):
+        if self.closed:
+            return False
+        try:
+            os.kill(self.pid, 0)
+            return os.path.exists(f"/proc/{self.pid}/mem")
+        except OSError as e:
+            self.last_error = f"process_check_failed: errno={getattr(e, 'errno', '?')} msg={e}"
+            return False
+        except Exception as e:
+            self.last_error = f"process_check_exception: {e}"
+            return False
+
+    def close(self):
+        if self.closed:
+            return
+        try:
+            os.close(self.mem_fd)
         except Exception:
-            return None
+            pass
+        self.closed = True
 
     def find_all_patterns(self, pattern_hex):
         """ค้นหาลายนิ้วมือหาตัวแปร Global (DAT_MANAGER, MY_UNIT)"""
@@ -265,8 +299,7 @@ class MemoryScanner:
         return results
 
     def __del__(self):
-        try: os.close(self.mem_fd)
-        except: pass
+        self.close()
 
 def get_game_pid():
     try:

@@ -3,6 +3,7 @@ import math
 import time
 import struct
 import os
+import traceback
 
 try:
     import keyboard
@@ -90,6 +91,7 @@ ORIGIN_GHOST_MY_DIST_MIN = 250.0
 # 1.15 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 15%
 # 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
 DEBUG_LOG_INTERVAL = 0.5
+INVALID_RUNTIME_FRAME_LIMIT = 20
 
 # ========================================================
 # 🚨 DUAL THREAT WARNING SYSTEM (จากเวอร์ชันเก่า)
@@ -328,6 +330,8 @@ class ESPOverlay(QWidget):
         self.console_initialized = False
         self.dead_unit_latch = set()
         self.ballistic_zero_cache = {}
+        self.invalid_runtime_frames = 0
+        self.shutdown_requested = False
 
         self._update_screen_metrics()
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -338,6 +342,46 @@ class ESPOverlay(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(12) 
+
+    def _fatal_shutdown(self, reason, detail=""):
+        if self.shutdown_requested:
+            return
+        self.shutdown_requested = True
+
+        print("\n" + "=" * 72)
+        print("❌ OVERLAY AUTO-SHUTDOWN")
+        print("=" * 72)
+        print(f"Reason : {reason}")
+        if detail:
+            print(detail)
+        print(f"PID    : {getattr(self.scanner, 'pid', 0)}")
+        print(f"CGame  : {hex(self.last_cgame_base) if self.last_cgame_base else '0x0'}")
+        print(
+            "Offsets: "
+            f"UNIT_X={hex(OFF_UNIT_X)} "
+            f"INFO={hex(OFF_UNIT_INFO)} "
+            f"TEAM={hex(OFF_UNIT_TEAM)} "
+            f"STATE={hex(OFF_UNIT_STATE)} "
+            f"CAM={hex(OFF_CAMERA_PTR)} "
+            f"VM={hex(OFF_VIEW_MATRIX)}"
+        )
+        print("=" * 72)
+
+        try:
+            self.timer.stop()
+        except Exception:
+            pass
+        try:
+            self.scanner.close()
+        except Exception:
+            pass
+        try:
+            self.close()
+        except Exception:
+            pass
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
 
     def _update_screen_metrics(self):
         screen = self.screen() or QApplication.primaryScreen()
@@ -435,6 +479,8 @@ class ESPOverlay(QWidget):
         return chosen_vel
 
     def paintEvent(self, event):
+        if self.shutdown_requested:
+            return
         self._update_screen_metrics()
         if self.width() != self.screen_width or self.height() != self.screen_height:
             self.setGeometry(0, 0, self.screen_width, self.screen_height)
@@ -465,12 +511,30 @@ class ESPOverlay(QWidget):
             except: pass
 
         try:
+            if not self.scanner.is_alive():
+                self._fatal_shutdown(
+                    "game_process_closed_or_memory_unavailable",
+                    f"Scanner error: {getattr(self.scanner, 'last_error', 'unknown')}",
+                )
+                return
+
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             
             # 🐞 แทรก Debug: เช็ค CGame
             if cgame_base == 0: 
+                self.invalid_runtime_frames += 1
                 dprint("CGame Base is 0! ข้ามการวาดรูป", force=False)
+                if self.invalid_runtime_frames >= INVALID_RUNTIME_FRAME_LIMIT:
+                    self._fatal_shutdown(
+                        "invalid_runtime_state_cgame_base_zero",
+                        (
+                            f"CGame stayed 0 for {self.invalid_runtime_frames} frames.\n"
+                            f"BaseAddr={hex(self.base_address)} "
+                            f"ManagerOff={hex(MANAGER_OFFSET)} "
+                            f"ScannerErr={getattr(self.scanner, 'last_error', '')}"
+                        ),
+                    )
                 return
 
             if cgame_base != self.last_cgame_base:
@@ -481,8 +545,19 @@ class ESPOverlay(QWidget):
             
             # 🐞 แทรก Debug: เช็ค View Matrix
             if not view_matrix: 
+                self.invalid_runtime_frames += 1
                 dprint("อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป", force=False)
+                if self.invalid_runtime_frames >= INVALID_RUNTIME_FRAME_LIMIT:
+                    self._fatal_shutdown(
+                        "invalid_runtime_state_view_matrix_unreadable",
+                        (
+                            f"View matrix unreadable for {self.invalid_runtime_frames} frames.\n"
+                            f"CGame={hex(cgame_base)} CAM={hex(OFF_CAMERA_PTR)} VM={hex(OFF_VIEW_MATRIX)} "
+                            f"ScannerErr={getattr(self.scanner, 'last_error', '')}"
+                        ),
+                    )
                 return
+            self.invalid_runtime_frames = 0
 
             ballistic_profile = _read_ballistic_profile(self.scanner, cgame_base)
             leadmark_range_limit = _get_leadmark_range_limit(ballistic_profile)
@@ -543,11 +618,13 @@ class ESPOverlay(QWidget):
                     status = get_unit_status(self.scanner, u_ptr)
                     if not status: continue
                     profile = get_unit_filter_profile(self.scanner, u_ptr)
+                    dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
                     
                     # Store only necessary info
                     self.profile_cache[u_ptr] = {
                         'status': status,
                         'profile': profile,
+                        'dna': dna,
                         'is_air_resolved': (profile.get("kind") == "air") if profile.get("kind") else is_air
                     }
                     cached_prof = self.profile_cache[u_ptr]
@@ -575,12 +652,22 @@ class ESPOverlay(QWidget):
                 if ("air_defence/" in profile_path) or ("structures/" in profile_path) or ("dummy_plane" in profile_path): continue
 
                 resolved_is_air = cached_prof['is_air_resolved']
-                resolved_name = unit_name
+                dna = cached_prof.get('dna') or {}
+                short_name = (dna.get("short_name") or "").strip()
+                family_name = (dna.get("family") or "").strip()
+                name_key = (dna.get("name_key") or "").strip()
+
+                resolved_name = short_name
+                if (not resolved_name) or (resolved_name.lower() in ("none", "unknown", "c")):
+                    resolved_name = unit_name
                 if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
                     resolved_name = profile.get("display_name") or "unknown"
 
                 runtime_filter_blob = " ".join((
                     (resolved_name or ""),
+                    short_name,
+                    family_name,
+                    name_key,
                     (profile.get("display_name") or ""),
                     (profile.get("unit_key") or ""),
                     (profile.get("path") or ""),
@@ -1049,8 +1136,11 @@ class ESPOverlay(QWidget):
                         out += f"🧷 Ptr/Off    : UNIT:{hex(u_ptr)} | INFO:{hex(info_ptr) if info_ptr else '0x0'} | MOV:{hex(mov_ptr) if mov_ptr else '0x0'} @ {hex(mov_off)}\n"
                         
                         # 🧬 [DNA] ดึงและแสดงข้อมูลเชิงลึก
-                        from src.utils.mul import get_unit_detailed_dna
-                        dna = get_unit_detailed_dna(self.scanner, u_ptr)
+                        dna = (self.profile_cache.get(u_ptr) or {}).get('dna')
+                        if not dna:
+                            dna = get_unit_detailed_dna(self.scanner, u_ptr)
+                            if u_ptr in self.profile_cache:
+                                self.profile_cache[u_ptr]['dna'] = dna or {}
                         if dna:
                             invul_str = " [GOD MODE]" if dna['is_invul'] else ""
                             out += f"🧬 DNA        : NATION:{dna['nation_id']} | CLASS:{dna['class_id']} | STATE:{dna['state']}{invul_str}\n"
@@ -1161,7 +1251,10 @@ class ESPOverlay(QWidget):
                 del self.vel_window[ptr]
 
         except Exception as e: 
-            print(f"Main loop error: {e}")
+            self._fatal_shutdown(
+                f"main_loop_exception: {e.__class__.__name__}",
+                traceback.format_exc(),
+            )
         finally: 
             painter.end()
 
@@ -1179,5 +1272,6 @@ if __name__ == '__main__':
         overlay.show()
         sys.exit(app.exec_())
     except Exception as e: 
-        print(f"Error starting Overlay: {e}")
+        print("Error starting Overlay:")
+        print(traceback.format_exc())
         sys.exit(1)
