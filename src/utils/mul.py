@@ -120,6 +120,7 @@ NON_PLAYABLE_NAME_HINTS = (
     "dummy",
     "windmill",
     "airfield",
+    "noground",
     "_noground",
 )
 

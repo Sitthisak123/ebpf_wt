@@ -65,6 +65,14 @@ BOT_KEYWORDS = [
     # "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery",
     # "infantry", "freighter", "hangar", "technic", "vent", "railway", "freight",
 ]
+NON_PLAYABLE_RUNTIME_HINTS = (
+    "dummy",
+    "airfield",
+    "noground",
+    "air_defence",
+    "fortification",
+    "structure",
+)
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
 MAX_GROUND_TARGET_DISTANCE = 10000.0
 MAX_AIR_TARGET_DISTANCE = 18000.0
@@ -564,6 +572,16 @@ class ESPOverlay(QWidget):
                 resolved_name = unit_name
                 if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
                     resolved_name = profile.get("display_name") or "unknown"
+
+                runtime_filter_blob = " ".join((
+                    (resolved_name or ""),
+                    (profile.get("display_name") or ""),
+                    (profile.get("unit_key") or ""),
+                    (profile.get("path") or ""),
+                    (profile.get("tag") or ""),
+                )).lower()
+                if any(h in runtime_filter_blob for h in NON_PLAYABLE_RUNTIME_HINTS):
+                    continue
 
                 pos = get_unit_pos(self.scanner, u_ptr)
                 if not pos: continue
