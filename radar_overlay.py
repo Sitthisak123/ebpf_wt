@@ -1,4 +1,3 @@
-
 import sys
 import math
 import time
@@ -516,7 +515,6 @@ class ESPOverlay(QWidget):
                 
                 u_team, u_state, unit_name, reload_val = cached_prof['status']
                 # Update dynamic status part (reload and state) only if needed or every few frames
-                # For now, we update status every frame but keep profile static
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
                 u_team, u_state, unit_name, reload_val = status
@@ -621,7 +619,7 @@ class ESPOverlay(QWidget):
             for u_ptr, raw_name, reload_val, is_air_target, pos, dist_to_me in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
                 try:
-                    box_data = get_unit_3d_box_data(self.scanner, u_ptr)
+                    box_data = get_unit_3d_box_data(self.scanner, u_ptr, is_air_target)
                     pos = box_data[0] if box_data else pos
                     if not pos: continue
                     
@@ -637,7 +635,7 @@ class ESPOverlay(QWidget):
                     avg_x, avg_y, min_y = 0, 0, 0
 
                     if box_data:
-                        corners_3d = calculate_3d_box_corners(pos, box_data[1], box_data[2], box_data[3])
+                        corners_3d = calculate_3d_box_corners(pos, box_data[1], box_data[2], box_data[3], is_air_target)
                         pts = [p for c in corners_3d if (p := world_to_screen(view_matrix, c[0], c[1], c[2], self.screen_width, self.screen_height)) and p[2] >= 0.001]
                         if len(pts) == 8:
                             box_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)

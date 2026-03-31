@@ -704,70 +704,86 @@ def get_all_units(scanner, cgame_base):
         refined.append((u_ptr, is_air))
     return refined
 
-def get_unit_3d_box_data(scanner, u_ptr):
+def get_unit_3d_box_data(scanner, u_ptr, is_air=False):
     if u_ptr == 0: return None
+    
+    # 📍 พิกัดตัวละคร (Unit Position)
     pos_data = scanner.read_mem(u_ptr + OFF_UNIT_X, 12)
     if not pos_data or len(pos_data) < 12: return None
-    pos = struct.unpack("<fff", pos_data) 
-    
+    pos = struct.unpack("<fff", pos_data)
+
+    # 📍 การหมุน (Rotation Matrix)
     rot_data = scanner.read_mem(u_ptr + OFF_UNIT_ROTATION, 36)
     if not rot_data or len(rot_data) < 36: return None
     R = struct.unpack("<9f", rot_data)
 
-    # 🎯 1. ระบบค้นหา Bounding Box อัตโนมัติ (แก้ปัญหากล่องเป็นเสา/สลับแกน)
-    # ระบบจะสแกนหาช่วง 0x200 - 0x300 เพื่อหากล่องที่มีสัดส่วน "รถถัง" ของจริง
-    best_bmin, best_bmax = None, None
-    bbox_area = scanner.read_mem(u_ptr + 0x200, 0x100)
-    if bbox_area:
-        for i in range(0, len(bbox_area) - 24, 4):
-            bmin = struct.unpack_from("<fff", bbox_area, i)
-            bmax = struct.unpack_from("<fff", bbox_area, i + 12)
-            
-            dx = bmax[0] - bmin[0]
-            dy = bmax[1] - bmin[1]
-            dz = bmax[2] - bmin[2]
-            
-            # กรองสัดส่วน: กว้าง(X) 1.5-15m, สูง(Y) 0.5-10m, ยาว(Z) 2.0-20m
-            # และ ความสูง (Y) ต้องน้อยกว่าความกว้างและยาว (กล่องจะได้ไม่เป็นเสา!)
-            if 1.5 < dx < 15.0 and 0.5 < dy < 10.0 and 2.0 < dz < 20.0:
-                if dx > dy and dz > dy: 
-                    best_bmin, best_bmax = bmin, bmax
-                    break # เจอสัดส่วนที่ถูกต้องแล้ว หยุดหาทันที
-                    
-    # ถ้าหาไม่เจอ ให้ใช้ค่า Default เพื่อไม่ให้แอปแครช
-    if not best_bmin:
-        best_bmin = (-2.0, -1.0, -3.0)
-        best_bmax = (2.0, 1.5, 3.0)
+    # 📍 [BINGO] Bounding Box - ใช้ Offset ที่แน่นอนจาก Ghidra/Reference
+    # OFF_UNIT_BBMIN = 0x240
+    # OFF_UNIT_BBMAX = 0x24C
+    bbox_data = scanner.read_mem(u_ptr + 0x240, 24)
+    if bbox_data and len(bbox_data) == 24:
+        bmin = struct.unpack_from("<fff", bbox_data, 0)
+        bmax = struct.unpack_from("<fff", bbox_data, 12)
         
+        # ตรวจสอบความถูกต้องเบื้องต้น (Sanity Check)
+        dx, dy, dz = bmax[0]-bmin[0], bmax[1]-bmin[1], bmax[2]-bmin[2]
+        if 0.5 < dx < 100.0 and 0.2 < dy < 40.0:
+            return pos, bmin, bmax, R
+
+    # Fallback กรณีอ่านไม่ได้ (ใช้ค่ากลางมาตรฐาน)
+    if is_air:
+        best_bmin, best_bmax = (-8.0, -2.0, -6.0), (8.0, 3.0, 6.0)
+    else:
+        best_bmin, best_bmax = (-1.8, -0.8, -3.0), (1.8, 1.6, 3.0)
+
     return pos, best_bmin, best_bmax, R
 
-def calculate_3d_box_corners(pos, bmin, bmax, R):
-    local_center = [(bmin[i] + bmax[i]) * 0.5 for i in range(3)]
-    local_ext = [(bmax[i] - bmin[i]) * 0.5 for i in range(3)]
-    axisX, axisY, axisZ = [R[0], R[1], R[2]], [R[3], R[4], R[5]], [R[6], R[7], R[8]]
-    def normalize(v):
-        length = math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
-        if length > 1e-12: return [v[0]/length, v[1]/length, v[2]/length]
-        return [0.0, 0.0, 0.0]
-    axisX, axisY, axisZ = normalize(axisX), normalize(axisY), normalize(axisZ)
-    worldCenter = [
-        pos[0] + axisX[0]*local_center[0] + axisY[0]*local_center[1] + axisZ[0]*local_center[2],
-        pos[1] + axisX[1]*local_center[0] + axisY[1]*local_center[1] + axisZ[1]*local_center[2],
-        pos[2] + axisX[2]*local_center[0] + axisY[2]*local_center[1] + axisZ[2]*local_center[2]
+def calculate_3d_box_corners(pos, bmin, bmax, R, is_air=False):
+    # 🎯 FIX: แยกการจัดการแกนระหว่าง Ground และ Air
+    if not is_air:
+        # --- 🚜 Logic สำหรับรถถัง (ผ่านการยืนยันแล้วว่าตรง) ---
+        ax = [R[0], R[3], R[6]] # Transpose
+        ay = [R[1], R[4], R[7]]
+        az = [R[2], R[5], R[8]]
+        ax, az = az, ax # 🔄 Swap X/Z สำหรับรถถัง
+    else:
+        # --- ✈️ Logic สำหรับเครื่องบิน ---
+        # เครื่องบินมักใช้แกนตรง (Column-Major) และไม่ต้องสลับ X/Z
+        ax = [R[0], R[1], R[2]]
+        ay = [R[3], R[4], R[5]]
+        az = [R[6], R[7], R[8]]
+
+    l_min = bmin
+    l_max = bmax
+    
+    local_center = [(l_min[i] + l_max[i]) * 0.5 for i in range(3)]
+    local_ext = [(l_max[i] - l_min[i]) * 0.5 for i in range(3)]
+    
+    # 🚀 World Center Calculation
+    wc = [
+        pos[0] + ax[0]*local_center[0] + ay[0]*local_center[1] + az[0]*local_center[2],
+        pos[1] + ax[1]*local_center[0] + ay[1]*local_center[1] + az[1]*local_center[2],
+        pos[2] + ax[2]*local_center[0] + ay[2]*local_center[1] + az[2]*local_center[2]
     ]
-    ex = [axisX[i] * local_ext[0] for i in range(3)]
-    ey = [axisY[i] * local_ext[1] for i in range(3)]
-    ez = [axisZ[i] * local_ext[2] for i in range(3)]
+    
+    # 🚜 ชดเชยความสูงเฉพาะรถถัง (ป้องกันกล่องจมดิน)
+    if not is_air and l_min[1] < -0.1:
+        wc[1] -= (l_min[1] * 0.8)
+
+    # 📐 Axis Extents
+    ex = [ax[i] * local_ext[0] for i in range(3)]
+    ey = [ay[i] * local_ext[1] for i in range(3)]
+    ez = [az[i] * local_ext[2] for i in range(3)]
+    
     corners = []
-    signs = [(-1, -1, -1), ( 1, -1, -1), ( 1,  1, -1), (-1,  1, -1), (-1, -1,  1), ( 1, -1,  1), ( 1,  1,  1), (-1,  1,  1)]
-    for sx, sy, sz in signs:
+    s = [(-1,-1,-1), (1,-1,-1), (1,1,-1), (-1,1,-1), (-1,-1,1), (1,-1,1), (1,1,1), (-1,1,1)]
+    for sx, sy, sz in s:
         corners.append((
-            worldCenter[0] + sx*ex[0] + sy*ey[0] + sz*ez[0],
-            worldCenter[1] + sx*ex[1] + sy*ey[1] + sz*ez[1],
-            worldCenter[2] + sx*ex[2] + sy*ey[2] + sz*ez[2]
+            wc[0] + sx*ex[0] + sy*ey[0] + sz*ez[0],
+            wc[1] + sx*ex[1] + sy*ey[1] + sz*ez[1],
+            wc[2] + sx*ex[2] + sy*ey[2] + sz*ez[2]
         ))
     return corners
-
 def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
     try:
         # 🛡️ แก้จาก vm เป็น matrix
