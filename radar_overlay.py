@@ -1,3 +1,4 @@
+
 import sys
 import math
 import time
@@ -269,6 +270,7 @@ class ESPOverlay(QWidget):
         self.scanner = scanner
         self.base_address = base_address
         self.max_reload_cache = {}
+        self.profile_cache = {} # 🛡️ New Profile Cache
         self.last_my_unit = 0 
         self.vel_window = {} 
         self.velocity_cache = {}
@@ -492,11 +494,34 @@ class ESPOverlay(QWidget):
                 self.last_my_unit = my_unit
 
             valid_targets = []
+            current_seen_ptrs = set()
             for u_ptr, is_air in all_units_data:
                 if u_ptr == my_unit: continue 
+                current_seen_ptrs.add(u_ptr)
+                
+                # 🛡️ Cache-based Profile & Status Retrieval
+                cached_prof = self.profile_cache.get(u_ptr)
+                if not cached_prof:
+                    status = get_unit_status(self.scanner, u_ptr)
+                    if not status: continue
+                    profile = get_unit_filter_profile(self.scanner, u_ptr)
+                    
+                    # Store only necessary info
+                    self.profile_cache[u_ptr] = {
+                        'status': status,
+                        'profile': profile,
+                        'is_air_resolved': (profile.get("kind") == "air") if profile.get("kind") else is_air
+                    }
+                    cached_prof = self.profile_cache[u_ptr]
+                
+                u_team, u_state, unit_name, reload_val = cached_prof['status']
+                # Update dynamic status part (reload and state) only if needed or every few frames
+                # For now, we update status every frame but keep profile static
                 status = get_unit_status(self.scanner, u_ptr)
                 if not status: continue
                 u_team, u_state, unit_name, reload_val = status
+                cached_prof['status'] = status # Sync dynamic parts
+                
                 if u_state >= 1:
                     self.dead_unit_latch.add(u_ptr)
                     continue
@@ -504,62 +529,41 @@ class ESPOverlay(QWidget):
                     continue
                 if u_team == 0 or (my_team != 0 and u_team == my_team): continue
 
-                profile = get_unit_filter_profile(self.scanner, u_ptr)
-                if profile.get("skip"):
-                    continue
+                profile = cached_prof['profile']
+                if profile.get("skip"): continue
+                
                 profile_tag = (profile.get("tag") or "").lower()
                 profile_path = (profile.get("path") or "").lower()
-                if profile_tag in ("exp_aaa", "exp_fortification", "exp_structure", "exp_zero"):
-                    continue
-                if ("air_defence/" in profile_path) or ("structures/" in profile_path) or ("dummy_plane" in profile_path):
-                    continue
-                if (not profile_tag) and (not profile_path):
-                    continue
+                if profile_tag in ("exp_aaa", "exp_fortification", "exp_structure", "exp_zero"): continue
+                if ("air_defence/" in profile_path) or ("structures/" in profile_path) or ("dummy_plane" in profile_path): continue
 
-                resolved_is_air = is_air
-                if profile.get("kind") == "air":
-                    resolved_is_air = True
-                elif profile.get("kind") == "ground":
-                    resolved_is_air = False
-
+                resolved_is_air = cached_prof['is_air_resolved']
                 resolved_name = unit_name
                 if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
-                    resolved_name = profile.get("display_name") or resolved_name
-                if not resolved_name:
-                    resolved_name = "unknown"
-
-                if profile.get("kind") is None and resolved_name.lower() in ("unknown", "c", "none"):
-                    continue
-
-                unit_name_lower = resolved_name.lower()
-                if any(kw in unit_name_lower for kw in BOT_KEYWORDS): continue
+                    resolved_name = profile.get("display_name") or "unknown"
 
                 pos = get_unit_pos(self.scanner, u_ptr)
-                if not pos:
-                    continue
+                if not pos: continue
 
-                # ตัดยูนิตผี/ดัมมีที่ตำแหน่งค้างใกล้ origin (0,0,0)
-                pos_origin_dist = math.sqrt(pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2])
+                # Position checks (Origin ghost / Distance)
+                pos_origin_dist = math.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
                 if pos_origin_dist <= ORIGIN_GHOST_RADIUS:
-                    my_origin_dist = 0.0
-                    if my_pos:
-                        my_origin_dist = math.sqrt(
-                            my_pos[0] * my_pos[0] + my_pos[1] * my_pos[1] + my_pos[2] * my_pos[2]
-                        )
-                    if my_origin_dist >= ORIGIN_GHOST_MY_DIST_MIN:
+                    if my_pos and math.sqrt(my_pos[0]**2 + my_pos[1]**2 + my_pos[2]**2) >= ORIGIN_GHOST_MY_DIST_MIN:
                         continue
 
                 dist_to_me = 0.0
                 if my_pos:
-                    dx = pos[0] - my_pos[0]
-                    dy = pos[1] - my_pos[1]
-                    dz = pos[2] - my_pos[2]
-                    dist_to_me = math.sqrt(dx * dx + dy * dy + dz * dz)
-                    max_dist = MAX_AIR_TARGET_DISTANCE if resolved_is_air else MAX_GROUND_TARGET_DISTANCE
-                    if dist_to_me > max_dist:
+                    dx, dy, dz = pos[0]-my_pos[0], pos[1]-my_pos[1], pos[2]-my_pos[2]
+                    dist_to_me = math.sqrt(dx*dx + dy*dy + dz*dz)
+                    if dist_to_me > (MAX_AIR_TARGET_DISTANCE if resolved_is_air else MAX_GROUND_TARGET_DISTANCE):
                         continue
 
                 valid_targets.append((u_ptr, resolved_name, reload_val, resolved_is_air, pos, dist_to_me))
+            
+            # 🧹 Clean up Profile Cache for missing units
+            for ptr in list(self.profile_cache.keys()):
+                if ptr not in current_seen_ptrs:
+                    del self.profile_cache[ptr]
             
             dprint_frame_stats(
                 self.current_fps, 
