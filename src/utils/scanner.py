@@ -411,11 +411,11 @@ def init_dynamic_offsets(scanner, base_address):
     valid_bbox = [v for v in bbox_cands if 0x100 <= v <= 0x300]
     if valid_bbox:
         top_bbox = Counter(valid_bbox).most_common(1)[0][0]
-        mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX = top_bbox, top_bbox + 0xC
+        mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX = top_bbox, top_bbox + 0x10
         print(f"  [+] ✅ BINGO! BBMIN = {hex(top_bbox)}")
     else:
         mul.OFF_UNIT_BBMIN = _handle_fallback("BBMIN", mul.OFF_UNIT_BBMIN)
-        mul.OFF_UNIT_BBMAX = mul.OFF_UNIT_BBMIN + 0xC
+        mul.OFF_UNIT_BBMAX = mul.OFF_UNIT_BBMIN + 0x10
 
     # ---------------------------------------------------------
     # 🎯 Phase 4: สแกนหาข้อมูลสถานะ (State, Team, Info, Reload)

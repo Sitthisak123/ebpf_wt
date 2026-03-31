@@ -43,19 +43,20 @@ COLOR_AXIS_Y            = (64, 255, 64, 255)
 COLOR_AXIS_Z            = (64, 160, 255, 255)
 
 BULLET_GRAVITY       = 9.80665   
-DEBUG_DRAW_LOCAL_AXES = True
-DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = True
+
+DEBUG_DRAW_LOCAL_AXES = False
+DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = False
 DEBUG_AXIS_LENGTH_GROUND = 2.4
 DEBUG_AXIS_LENGTH_AIR = 8.0
 DEBUG_AXIS_LABELS_GROUND = {
+    "X": "X/L",
+    "Y": "Y/H",
+    "Z": "Z/F",
+}
+DEBUG_AXIS_LABELS_AIR = {
     "X": "X/F",
     "Y": "Y/H",
     "Z": "Z/L",
-}
-DEBUG_AXIS_LABELS_AIR = {
-    "X": "X",
-    "Y": "Y",
-    "Z": "Z",
 }
 
 BOT_KEYWORDS = [
@@ -207,6 +208,13 @@ def _make_ballistic_model(profile, altitude):
         "vel_hi": max(max(vel_lo, vel_hi), vel_lo + 1.0),
         "max_distance": max(profile.get("max_distance", 0.0), 0.0),
     }
+
+
+def _get_leadmark_range_limit(profile):
+    max_distance = max(profile.get("max_distance", 0.0), 0.0)
+    if max_distance <= 1.0:
+        return 0.0
+    return max_distance * 0.8
 
 
 def _drag_band_factor(model, speed):
@@ -463,6 +471,7 @@ class ESPOverlay(QWidget):
                 return
 
             ballistic_profile = _read_ballistic_profile(self.scanner, cgame_base)
+            leadmark_range_limit = _get_leadmark_range_limit(ballistic_profile)
             current_bullet_speed = ballistic_profile["speed"]
             current_zeroing = get_sight_compensation_factor(self.scanner, self.base_address)
             current_bullet_mass = ballistic_profile["mass"]
@@ -885,6 +894,10 @@ class ESPOverlay(QWidget):
                     else:
                         t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
 
+                    leadmark_in_range = (
+                        leadmark_range_limit <= 0.0 or dist <= leadmark_range_limit
+                    )
+
                     # =========================================================
                     # 🚀 WT TRUE BALLISTICS SOLVER (Lanz-Odermatt & SPAAG Radar)
                     # =========================================================
@@ -897,7 +910,7 @@ class ESPOverlay(QWidget):
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
                     bullet_drop = 0.0
 
-                    if is_active_target:
+                    if is_active_target and leadmark_in_range:
                         zero_cache_key = (
                             round(ballistic_model["speed"], 1),
                             round(ballistic_model["mass"], 4),
@@ -940,7 +953,7 @@ class ESPOverlay(QWidget):
                                 best_t = 999.0
                                 bullet_drop = 0.0
                             final_x, final_y, final_z = pred_x, pred_y, pred_z
-                    else:
+                    elif leadmark_in_range:
                         # 🎯 Lightweight Solver for other units (Background ESP)
                         pred_x = t_x + (vx * best_t)
                         pred_y = t_y + (vy * best_t)
@@ -960,6 +973,11 @@ class ESPOverlay(QWidget):
                             bullet_drop = 0.0
                         
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
+                    else:
+                        best_t = 0.0
+                        bullet_drop = 0.0
+                        gravity_offset = 0.0
+                        final_x, final_y, final_z = t_x, t_y, t_z
 
                     gravity_offset = bullet_drop
                     final_y += bullet_drop
@@ -1014,10 +1032,14 @@ class ESPOverlay(QWidget):
                             out += f"🏷️ UNIT       : {dna['short_name']} ({dna['family']})\n"
                             out += f"📛 KEY        : {dna['name_key']}\n"
                         
+                        range_limit_text = (
+                            f"{leadmark_range_limit:.0f}m" if leadmark_range_limit > 0.0 else "OFF"
+                        )
                         out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
                         out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f}) | SRC:{vel_source}\n"
                         out += f"📡 Vel Check  : raw={raw_mag:>6.1f} km/h | pos={pos_mag:>6.1f} km/h | PTR:{hex(u_ptr)}\n"
                         out += f"🌪️ Accel      : {accel_mag:>6.2f} m/s² | A:({ax:>6.2f}, {ay:>6.2f}, {az:>6.2f})\n"
+                        out += f"🎯 Lead Limit : {range_limit_text} | InRange:{'Y' if leadmark_in_range else 'N'}\n"
                         out += "-" * 64 + "\n"
                         out += f"📉 [BALLISTICS]\n"
                         vel_lo, vel_hi = ballistic_profile["vel_range"]
@@ -1040,7 +1062,7 @@ class ESPOverlay(QWidget):
                             self.last_debug_log_time = curr_t
 
                     # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
-                    if all(math.isfinite(c) for c in [final_x, final_y, final_z]):
+                    if leadmark_in_range and all(math.isfinite(c) for c in [final_x, final_y, final_z]):
                         pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, self.screen_width, self.screen_height)
                         
                         if pred_screen and pred_screen[2] > 0:

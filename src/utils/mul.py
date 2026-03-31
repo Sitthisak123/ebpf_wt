@@ -24,6 +24,7 @@ OFF_UNIT_X          = 0
 OFF_UNIT_ROTATION   = 0
 OFF_UNIT_BBMIN      = 0
 OFF_UNIT_BBMAX      = 0
+_BBOX_FALLBACK_LOGGED = set()
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
 OFF_UNIT_STATE      = 0         # สถานะรถถัง (เป็น/ตาย)
@@ -135,6 +136,7 @@ def reset_runtime_caches(clear_view=False):
     global LAST_CGAME_PTR, LAST_VIEW_MATRIX
     UNIT_KIND_CACHE.clear()
     UNIT_FILTER_CACHE.clear()
+    _BBOX_FALLBACK_LOGGED.clear()
     if clear_view:
         LAST_CGAME_PTR = 0
         LAST_VIEW_MATRIX = None
@@ -718,25 +720,29 @@ def get_unit_3d_box_data(scanner, u_ptr, is_air=False):
     R = struct.unpack("<9f", rot_data)
 
     # 📍 Bounding Box - บาง build เก็บ BBMIN/BBMAX แยกกัน แม้ offset จะต่อกัน
+    def _valid_bbox(bmin, bmax):
+        dx, dy, dz = bmax[0] - bmin[0], bmax[1] - bmin[1], bmax[2] - bmin[2]
+        return 0.5 < dx < 100.0 and 0.2 < dy < 40.0 and 0.5 < dz < 100.0
+
     bmin_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 12) if OFF_UNIT_BBMIN else None
-    bmax_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMAX, 12) if OFF_UNIT_BBMAX else None
-
-    if bmin_data and len(bmin_data) == 12 and bmax_data and len(bmax_data) == 12:
+    if bmin_data and len(bmin_data) == 12:
         bmin = struct.unpack("<fff", bmin_data)
-        bmax = struct.unpack("<fff", bmax_data)
-
-        # ตรวจสอบความถูกต้องเบื้องต้น (Sanity Check)
-        dx, dy, dz = bmax[0]-bmin[0], bmax[1]-bmin[1], bmax[2]-bmin[2]
-        if 0.5 < dx < 100.0 and 0.2 < dy < 40.0 and 0.5 < dz < 100.0:
-            return pos, bmin, bmax, R
+        for bmax_off in (OFF_UNIT_BBMAX, OFF_UNIT_BBMIN + 0x10, OFF_UNIT_BBMIN + 0x0C):
+            if not bmax_off:
+                continue
+            bmax_data = scanner.read_mem(u_ptr + bmax_off, 12)
+            if not bmax_data or len(bmax_data) != 12:
+                continue
+            bmax = struct.unpack("<fff", bmax_data)
+            if _valid_bbox(bmin, bmax):
+                return pos, bmin, bmax, R
 
     # เผื่อ build ที่วาง BBMIN/BBMAX ติดกันจริง ค่อยลองอ่านรวดเดียวเป็น fallback
     bbox_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 24) if OFF_UNIT_BBMIN else None
     if bbox_data and len(bbox_data) == 24:
         bmin = struct.unpack_from("<fff", bbox_data, 0)
         bmax = struct.unpack_from("<fff", bbox_data, 12)
-        dx, dy, dz = bmax[0]-bmin[0], bmax[1]-bmin[1], bmax[2]-bmin[2]
-        if 0.5 < dx < 100.0 and 0.2 < dy < 40.0 and 0.5 < dz < 100.0:
+        if _valid_bbox(bmin, bmax):
             return pos, bmin, bmax, R
 
     # Fallback กรณีอ่านไม่ได้ (ใช้ค่ากลางมาตรฐาน)
@@ -745,11 +751,13 @@ def get_unit_3d_box_data(scanner, u_ptr, is_air=False):
     else:
         best_bmin, best_bmax = (-1.8, -0.8, -3.0), (1.8, 1.6, 3.0)
 
-    dprint(
-        f"BBOX FALLBACK | unit={hex(u_ptr)} | type={'AIR' if is_air else 'GROUND'} "
-        f"| bbmin_off={hex(OFF_UNIT_BBMIN)} | bbmax_off={hex(OFF_UNIT_BBMAX)}",
-        force=False,
-    )
+    if u_ptr not in _BBOX_FALLBACK_LOGGED:
+        _BBOX_FALLBACK_LOGGED.add(u_ptr)
+        dprint(
+            f"BBOX FALLBACK | unit={hex(u_ptr)} | type={'AIR' if is_air else 'GROUND'} "
+            f"| bbmin_off={hex(OFF_UNIT_BBMIN)} | bbmax_off={hex(OFF_UNIT_BBMAX)}",
+            force=False,
+        )
 
     return pos, best_bmin, best_bmax, R
 
