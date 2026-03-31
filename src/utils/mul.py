@@ -717,17 +717,15 @@ def get_unit_3d_box_data(scanner, u_ptr, is_air=False):
     if not rot_data or len(rot_data) < 36: return None
     R = struct.unpack("<9f", rot_data)
 
-    # 📍 [BINGO] Bounding Box - ใช้ Offset ที่แน่นอนจาก Ghidra/Reference
-    # OFF_UNIT_BBMIN = 0x240
-    # OFF_UNIT_BBMAX = 0x24C
-    bbox_data = scanner.read_mem(u_ptr + 0x240, 24)
+    # 📍 Bounding Box - ใช้ offset ที่สแกนได้จริง ไม่ hardcode
+    bbox_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 24)
     if bbox_data and len(bbox_data) == 24:
         bmin = struct.unpack_from("<fff", bbox_data, 0)
         bmax = struct.unpack_from("<fff", bbox_data, 12)
         
         # ตรวจสอบความถูกต้องเบื้องต้น (Sanity Check)
         dx, dy, dz = bmax[0]-bmin[0], bmax[1]-bmin[1], bmax[2]-bmin[2]
-        if 0.5 < dx < 100.0 and 0.2 < dy < 40.0:
+        if 0.5 < dx < 100.0 and 0.2 < dy < 40.0 and 0.5 < dz < 100.0:
             return pos, bmin, bmax, R
 
     # Fallback กรณีอ่านไม่ได้ (ใช้ค่ากลางมาตรฐาน)
@@ -739,25 +737,18 @@ def get_unit_3d_box_data(scanner, u_ptr, is_air=False):
     return pos, best_bmin, best_bmax, R
 
 def calculate_3d_box_corners(pos, bmin, bmax, R, is_air=False):
-    # 🎯 FIX: แยกการจัดการแกนระหว่าง Ground และ Air
-    if not is_air:
-        # --- 🚜 Logic สำหรับรถถัง (ผ่านการยืนยันแล้วว่าตรง) ---
-        ax = [R[0], R[3], R[6]] # Transpose
-        ay = [R[1], R[4], R[7]]
-        az = [R[2], R[5], R[8]]
-        ax, az = az, ax # 🔄 Swap X/Z สำหรับรถถัง
-    else:
-        # --- ✈️ Logic สำหรับเครื่องบิน ---
-        # เครื่องบินมักใช้แกนตรง (Column-Major) และไม่ต้องสลับ X/Z
-        ax = [R[0], R[1], R[2]]
-        ay = [R[3], R[4], R[5]]
-        az = [R[6], R[7], R[8]]
+    ax, ay, az = get_local_axes_from_rotation(R, is_air)
 
     l_min = bmin
     l_max = bmax
     
     local_center = [(l_min[i] + l_max[i]) * 0.5 for i in range(3)]
     local_ext = [(l_max[i] - l_min[i]) * 0.5 for i in range(3)]
+
+    # Ground units use unit position near the base/bottom border of the hull,
+    # so shift the box center upward from the base instead of trusting bbox Y center directly.
+    if not is_air:
+        local_center[1] = -l_min[1] + local_ext[1]
     
     # 🚀 World Center Calculation
     wc = [
@@ -765,10 +756,6 @@ def calculate_3d_box_corners(pos, bmin, bmax, R, is_air=False):
         pos[1] + ax[1]*local_center[0] + ay[1]*local_center[1] + az[1]*local_center[2],
         pos[2] + ax[2]*local_center[0] + ay[2]*local_center[1] + az[2]*local_center[2]
     ]
-    
-    # 🚜 ชดเชยความสูงเฉพาะรถถัง (ป้องกันกล่องจมดิน)
-    if not is_air and l_min[1] < -0.1:
-        wc[1] -= (l_min[1] * 0.8)
 
     # 📐 Axis Extents
     ex = [ax[i] * local_ext[0] for i in range(3)]
@@ -784,6 +771,31 @@ def calculate_3d_box_corners(pos, bmin, bmax, R, is_air=False):
             wc[2] + sx*ex[2] + sy*ey[2] + sz*ez[2]
         ))
     return corners
+
+
+def get_local_axes_from_rotation(R, is_air=False):
+    # ใช้ basis แบบเดียวกับกล่อง 3D เพื่อให้ debug axes ตรงกับ logic ปัจจุบัน
+    ax = [R[0], R[1], R[2]]
+    ay = [R[3], R[4], R[5]]
+    az = [R[6], R[7], R[8]]
+
+    def normalize(v):
+        length = math.sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]))
+        if length <= 1e-8:
+            return [0.0, 0.0, 0.0]
+        return [v[0] / length, v[1] / length, v[2] / length]
+
+    ax = normalize(ax)
+    ay = normalize(ay)
+    az = normalize(az)
+
+    # Ground mapping confirmed in-game:
+    # X = front, Z = left, Y = height
+    # Current raw matrix comes in swapped for X/Z, so fix it here once.
+    if not is_air:
+        ax, az = az, ax
+
+    return ax, ay, az
 def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
     try:
         # 🛡️ แก้จาก vm เป็น matrix

@@ -38,8 +38,25 @@ COLOR_THREAD_WARNING    = (255, 0, 0, 100)
 COLOR_THREAD_WARNING2   = (255, 0, 0, 255) 
 COLOR_THREAD_ALERT      = (255, 180, 0, 80)
 COLOR_THREAD_ALERT2     = (255, 180, 0, 255)
+COLOR_AXIS_X            = (255, 64, 64, 255)
+COLOR_AXIS_Y            = (64, 255, 64, 255)
+COLOR_AXIS_Z            = (64, 160, 255, 255)
 
 BULLET_GRAVITY       = 9.80665   
+DEBUG_DRAW_LOCAL_AXES = True
+DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = True
+DEBUG_AXIS_LENGTH_GROUND = 2.4
+DEBUG_AXIS_LENGTH_AIR = 8.0
+DEBUG_AXIS_LABELS_GROUND = {
+    "X": "X/F",
+    "Y": "Y/H",
+    "Z": "Z/L",
+}
+DEBUG_AXIS_LABELS_AIR = {
+    "X": "X",
+    "Y": "Y",
+    "Z": "Z",
+}
 
 BOT_KEYWORDS = [
     # "speaker", "water", "panzerzug", "windmill", "dummy", "dummy_plane",
@@ -657,6 +674,51 @@ class ESPOverlay(QWidget):
 
                     if not has_valid_box: continue 
                     
+                    should_draw_local_axes = (
+                        DEBUG_DRAW_LOCAL_AXES
+                        and box_data
+                        and u_ptr == active_target_ptr
+                        and ((not DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY) or (not is_air_target))
+                    )
+                    if should_draw_local_axes:
+                        axis_origin = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
+                        if axis_origin and axis_origin[2] > 0:
+                            axis_len = DEBUG_AXIS_LENGTH_AIR if is_air_target else DEBUG_AXIS_LENGTH_GROUND
+                            ax, ay, az = get_local_axes_from_rotation(box_data[3], is_air_target)
+                            axis_labels = DEBUG_AXIS_LABELS_AIR if is_air_target else DEBUG_AXIS_LABELS_GROUND
+                            axis_defs = [
+                                ("X", COLOR_AXIS_X, ax),
+                                ("Y", COLOR_AXIS_Y, ay),
+                                ("Z", COLOR_AXIS_Z, az),
+                            ]
+                            for axis_name, axis_color, axis_vec in axis_defs:
+                                end_pos = (
+                                    pos[0] + (axis_vec[0] * axis_len),
+                                    pos[1] + (axis_vec[1] * axis_len),
+                                    pos[2] + (axis_vec[2] * axis_len),
+                                )
+                                end_scr = world_to_screen(
+                                    view_matrix,
+                                    end_pos[0],
+                                    end_pos[1],
+                                    end_pos[2],
+                                    self.screen_width,
+                                    self.screen_height,
+                                )
+                                if end_scr and end_scr[2] > 0:
+                                    painter.setPen(QPen(QColor(*axis_color), 3))
+                                    painter.drawLine(
+                                        int(axis_origin[0]),
+                                        int(axis_origin[1]),
+                                        int(end_scr[0]),
+                                        int(end_scr[1]),
+                                    )
+                                    painter.drawText(
+                                        int(end_scr[0] + 4),
+                                        int(end_scr[1] - 4),
+                                        axis_labels.get(axis_name, axis_name),
+                                    )
+
                     # 🔫 วาดเส้นเล็งของปืนศัตรู
                     if barrel_data:
                         res_p1 = world_to_screen(view_matrix, barrel_data[0][0], barrel_data[0][1], barrel_data[0][2], self.screen_width, self.screen_height)
