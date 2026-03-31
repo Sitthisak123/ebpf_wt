@@ -717,13 +717,24 @@ def get_unit_3d_box_data(scanner, u_ptr, is_air=False):
     if not rot_data or len(rot_data) < 36: return None
     R = struct.unpack("<9f", rot_data)
 
-    # 📍 Bounding Box - ใช้ offset ที่สแกนได้จริง ไม่ hardcode
-    bbox_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 24)
+    # 📍 Bounding Box - บาง build เก็บ BBMIN/BBMAX แยกกัน แม้ offset จะต่อกัน
+    bmin_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 12) if OFF_UNIT_BBMIN else None
+    bmax_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMAX, 12) if OFF_UNIT_BBMAX else None
+
+    if bmin_data and len(bmin_data) == 12 and bmax_data and len(bmax_data) == 12:
+        bmin = struct.unpack("<fff", bmin_data)
+        bmax = struct.unpack("<fff", bmax_data)
+
+        # ตรวจสอบความถูกต้องเบื้องต้น (Sanity Check)
+        dx, dy, dz = bmax[0]-bmin[0], bmax[1]-bmin[1], bmax[2]-bmin[2]
+        if 0.5 < dx < 100.0 and 0.2 < dy < 40.0 and 0.5 < dz < 100.0:
+            return pos, bmin, bmax, R
+
+    # เผื่อ build ที่วาง BBMIN/BBMAX ติดกันจริง ค่อยลองอ่านรวดเดียวเป็น fallback
+    bbox_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 24) if OFF_UNIT_BBMIN else None
     if bbox_data and len(bbox_data) == 24:
         bmin = struct.unpack_from("<fff", bbox_data, 0)
         bmax = struct.unpack_from("<fff", bbox_data, 12)
-        
-        # ตรวจสอบความถูกต้องเบื้องต้น (Sanity Check)
         dx, dy, dz = bmax[0]-bmin[0], bmax[1]-bmin[1], bmax[2]-bmin[2]
         if 0.5 < dx < 100.0 and 0.2 < dy < 40.0 and 0.5 < dz < 100.0:
             return pos, bmin, bmax, R
@@ -733,6 +744,12 @@ def get_unit_3d_box_data(scanner, u_ptr, is_air=False):
         best_bmin, best_bmax = (-8.0, -2.0, -6.0), (8.0, 3.0, 6.0)
     else:
         best_bmin, best_bmax = (-1.8, -0.8, -3.0), (1.8, 1.6, 3.0)
+
+    dprint(
+        f"BBOX FALLBACK | unit={hex(u_ptr)} | type={'AIR' if is_air else 'GROUND'} "
+        f"| bbmin_off={hex(OFF_UNIT_BBMIN)} | bbmax_off={hex(OFF_UNIT_BBMAX)}",
+        force=False,
+    )
 
     return pos, best_bmin, best_bmax, R
 
@@ -745,10 +762,10 @@ def calculate_3d_box_corners(pos, bmin, bmax, R, is_air=False):
     local_center = [(l_min[i] + l_max[i]) * 0.5 for i in range(3)]
     local_ext = [(l_max[i] - l_min[i]) * 0.5 for i in range(3)]
 
-    # Ground units use unit position near the base/bottom border of the hull,
-    # so shift the box center upward from the base instead of trusting bbox Y center directly.
+    # Ground units use unit position on the bottom border of the hull.
+    # Force the bottom face of the 3D box to pass through the unit origin.
     if not is_air:
-        local_center[1] = -l_min[1] + local_ext[1]
+        local_center[1] = local_ext[1]
     
     # 🚀 World Center Calculation
     wc = [

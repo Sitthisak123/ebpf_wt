@@ -303,7 +303,6 @@ class ESPOverlay(QWidget):
         self.target_cycle_index = 0
         self.q_pressed_last = False
         self.last_debug_log_time = 0.0
-        self.last_dashboard_text = ""
         self.console_initialized = False
         self.dead_unit_latch = set()
         self.ballistic_zero_cache = {}
@@ -398,7 +397,7 @@ class ESPOverlay(QWidget):
             'chosen_vel': chosen_vel,
         }
 
-        if source != "raw" and u_ptr != 0:
+        if source not in ("raw", "ground_idle") and u_ptr != 0:
             msg = (
                 "VEL STABILIZED"
                 f" | unit={hex(u_ptr)}"
@@ -1029,7 +1028,6 @@ class ESPOverlay(QWidget):
 
                         should_refresh_console = (
                             (curr_t - self.last_debug_log_time) >= DEBUG_LOG_INTERVAL
-                            or out != self.last_dashboard_text
                         )
                         if should_refresh_console:
                             if not self.console_initialized:
@@ -1040,7 +1038,6 @@ class ESPOverlay(QWidget):
                             sys.stdout.write(out)
                             sys.stdout.flush()
                             self.last_debug_log_time = curr_t
-                            self.last_dashboard_text = out
 
                     # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
                     if all(math.isfinite(c) for c in [final_x, final_y, final_z]):
