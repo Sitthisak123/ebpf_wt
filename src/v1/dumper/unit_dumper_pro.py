@@ -86,8 +86,15 @@ def main():
                 if u['basic_status']:
                     f.write(f"   Name: {u['basic_status'][2]} | Team: {u['basic_status'][0]} | State: {u['basic_status'][1]}\n")
                 if u['dna']:
-                    f.write(f"   🧬 DNA: Nation:{u['dna']['nation_id']} | Status:{u['dna']['status']} | Key:{u['dna']['name_key']}\n")
-                    f.write(f"   📍 InfoPtr: {hex(u['dna']['info_ptr'])}\n")
+                    dna = u['dna']
+                    f.write(
+                        "   🧬 DNA: "
+                        f"Nation:{dna.get('nation_id', -1)} | "
+                        f"State:{dna.get('state', -1)} | "
+                        f"Class:{dna.get('class_id', -1)} | "
+                        f"Key:{dna.get('name_key', 'None')}\n"
+                    )
+                    f.write(f"   📍 InfoPtr: {hex(dna.get('info_ptr', 0))}\n")
                 if u['deep_info_hex']:
                     f.write("   --- [ INFO STRUCT DEEP DUMP ] ---\n")
                     f.write(u['deep_info_hex'] + "\n")

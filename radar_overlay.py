@@ -66,12 +66,18 @@ BOT_KEYWORDS = [
     # "infantry", "freighter", "hangar", "technic", "vent", "railway", "freight",
 ]
 NON_PLAYABLE_RUNTIME_HINTS = (
-    "dummy",
-    "airfield",
-    "noground",
-    "air_defence",
-    "fortification",
-    "structure",
+    # "dummy",
+    # "airfield",
+    # "noground",
+    # "air_defence",
+    # "fortification",
+    # "structure",
+    # "infantry",
+    # "controlled_",
+    # "controlled_technic",
+    # "technic",
+    # "birthday",
+    # "hangar",
 )
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
 MAX_GROUND_TARGET_DISTANCE = 10000.0

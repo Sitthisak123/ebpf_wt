@@ -113,6 +113,8 @@ NON_PLAYABLE_PATH_HINTS = (
     "/air_defence/",
     "structures/",
     "/structures/",
+    "infantry/",
+    "/infantry/",
     "dummy_plane",
 )
 
@@ -122,6 +124,11 @@ NON_PLAYABLE_NAME_HINTS = (
     "airfield",
     "noground",
     "_noground",
+    "controlled_",
+    "controlled_technic",
+    "technic",
+    "birthday",
+    "hangar",
 )
 
 NON_PLAYABLE_PATH_BLOCKLIST = (
@@ -129,6 +136,8 @@ NON_PLAYABLE_PATH_BLOCKLIST = (
     "/air_defence/",
     "structures/",
     "/structures/",
+    "infantry/",
+    "/infantry/",
     "dummy_plane",
 )
 
