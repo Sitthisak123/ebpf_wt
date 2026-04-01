@@ -98,6 +98,29 @@ GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
 GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
 GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
 
+#- อยากกดลงทุกระยะอีกหน่อย: เพิ่ม GROUND_HITPOINT_DROP_BASE
+#- อยากให้ระยะไกลลงมากขึ้น: เพิ่ม GROUND_HITPOINT_DROP_EXP
+#- อยากให้ correction โตเร็วขึ้นตั้งแต่ระยะกลาง: ลด GROUND_HITPOINT_DROP_RANGE
+"""
+- GROUND_HITPOINT_DROP_EXP
+    ตัวนี้มีผลกับระยะไกลโดยตรงมากที่สุด
+
+  - ถ้า hit point ระยะไกลยัง “สูงเกินจริง”
+    เพิ่ม GROUND_HITPOINT_DROP_EXP
+  - ถ้า hit point ระยะไกล “ต่ำเกินจริง”
+    ลด GROUND_HITPOINT_DROP_EXP
+
+  ส่วนอีก 2 ตัว:
+  - GROUND_HITPOINT_DROP_BASE
+    ใช้แก้ offset ทุกระยะ โดยเฉพาะระยะใกล้
+  - GROUND_HITPOINT_DROP_RANGE
+    ใช้คุมว่าผลของ correction จะโตเร็วหรือช้าเมื่อระยะเพิ่ม
+      - ลดค่า = correction มาแรงตั้งแต่ระยะกลาง
+      - เพิ่มค่า = correction ค่อยๆ โต
+"""
+GROUND_HITPOINT_DROP_BASE = 0.000
+GROUND_HITPOINT_DROP_EXP = 0.480        #ถ้าใกล้ๆ เกือบตรงแล้ว แต่ไกลยังเพี้ยนเล็กน้อย ให้จูนตัวนี้ก่อน`
+GROUND_HITPOINT_DROP_RANGE = 1600.0
 
 def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model, zero_pitch):
     if not target_pos or not fire_origin or bullet_speed <= 0.0:
@@ -123,7 +146,7 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
     return final_x, final_y, final_z
 
 
-def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_anchor_screen=None):
+def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_anchor_screen=None, distance_to_target=0.0):
     if not aim_screen or not leadmark_screen or not target_box_rect:
         return None
 
@@ -138,6 +161,10 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
         if min_x <= tx <= max_x and min_y <= ty <= max_y:
             anchor_u = (tx - min_x) / box_w
             anchor_v = (ty - min_y) / box_h
+
+    dist_t = max(0.0, min(1.0, distance_to_target / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
+    exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
+    anchor_v = min(0.98, anchor_v + GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t))
 
     virtual_min_x = leadmark_screen[0] - (anchor_u * box_w)
     virtual_max_x = virtual_min_x + box_w
@@ -1352,6 +1379,7 @@ class ESPOverlay(QWidget):
                                         target_anchor_screen[0],
                                         target_anchor_screen[1],
                                     ) if target_anchor_screen and target_anchor_screen[2] > 0 else None,
+                                    dist,
                                 )
                                 if mapped_hitpoint:
                                     hit_points_to_draw.append(mapped_hitpoint)
