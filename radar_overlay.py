@@ -94,6 +94,7 @@ ORIGIN_GHOST_MY_DIST_MIN = 250.0
 # 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
 DEBUG_LOG_INTERVAL = 0.5
 INVALID_RUNTIME_FRAME_LIMIT = 20
+STARTUP_LOADING_GRACE_SECONDS = 20.0
 GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
 GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
 GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
@@ -445,6 +446,7 @@ class ESPOverlay(QWidget):
         self.ballistic_zero_cache = {}
         self.invalid_runtime_frames = 0
         self.shutdown_requested = False
+        self.startup_time = time.time()
 
         self._update_screen_metrics()
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -624,13 +626,17 @@ class ESPOverlay(QWidget):
                 )
                 return
 
+            in_startup_grace = (curr_t - self.startup_time) < STARTUP_LOADING_GRACE_SECONDS
+
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             
             # 🐞 แทรก Debug: เช็ค CGame
             if cgame_base == 0: 
-                self.invalid_runtime_frames += 1
                 dprint("CGame Base is 0! ข้ามการวาดรูป", force=False)
+                if in_startup_grace:
+                    return
+                self.invalid_runtime_frames += 1
                 if self.invalid_runtime_frames >= INVALID_RUNTIME_FRAME_LIMIT:
                     self._fatal_shutdown(
                         "invalid_runtime_state_cgame_base_zero",
@@ -651,8 +657,10 @@ class ESPOverlay(QWidget):
             
             # 🐞 แทรก Debug: เช็ค View Matrix
             if not view_matrix: 
-                self.invalid_runtime_frames += 1
                 dprint("อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป", force=False)
+                if in_startup_grace:
+                    return
+                self.invalid_runtime_frames += 1
                 if self.invalid_runtime_frames >= INVALID_RUNTIME_FRAME_LIMIT:
                     self._fatal_shutdown(
                         "invalid_runtime_state_view_matrix_unreadable",
