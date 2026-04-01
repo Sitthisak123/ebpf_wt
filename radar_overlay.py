@@ -44,6 +44,8 @@ COLOR_AXIS_X            = (255, 64, 64, 255)
 COLOR_AXIS_Y            = (64, 255, 64, 255)
 COLOR_AXIS_Z            = (64, 160, 255, 255)
 COLOR_BOX_HITPOINT      = (255, 40, 40, 230)
+COLOR_CLASS_ICON_GROUND = (255, 215, 96, 235)
+COLOR_CLASS_ICON_AIR    = (120, 220, 255, 235)
 
 BULLET_GRAVITY       = 9.80665   
 
@@ -95,6 +97,13 @@ ORIGIN_GHOST_MY_DIST_MIN = 250.0
 DEBUG_LOG_INTERVAL = 0.5
 INVALID_RUNTIME_FRAME_LIMIT = 20
 STARTUP_LOADING_GRACE_SECONDS = 20.0
+DRAW_CLASS_ICON = True
+CLASS_ICON_SIZE = 15
+CLASS_ICON_LINE_GAP = 14
+DRAW_CLASS_ICON_DEBUG_TEXT = False
+CLASS_ICON_DEBUG_TEXT_GAP = 12
+DRAW_UNIT_FAMILY_OVERLAY_DEBUG = False
+UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
 GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
 GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
 GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
@@ -122,6 +131,21 @@ GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
 GROUND_HITPOINT_DROP_BASE = 0.000
 GROUND_HITPOINT_DROP_EXP = 0.480        #ถ้าใกล้ๆ เกือบตรงแล้ว แต่ไกลยังเพี้ยนเล็กน้อย ให้จูนตัวนี้ก่อน`
 GROUND_HITPOINT_DROP_RANGE = 1600.0
+
+UNIT_FAMILY_UNKNOWN = 0
+UNIT_FAMILY_AIR_FIGHTER = 1
+UNIT_FAMILY_AIR_BOMBER = 2
+UNIT_FAMILY_AIR_ATTACKER = 3
+UNIT_FAMILY_AIR_HELICOPTER = 4
+UNIT_FAMILY_GROUND_MEDIUM_TANK = 5
+UNIT_FAMILY_GROUND_HEAVY_TANK = 6
+UNIT_FAMILY_GROUND_TANK_DESTROYER = 7
+UNIT_FAMILY_GROUND_SPAA = 8
+UNIT_FAMILY_SHIP_BOAT = 9
+UNIT_FAMILY_SHIP_FRIGATE = 10
+UNIT_FAMILY_SHIP_DESTROYER = 11
+UNIT_FAMILY_SHIP_CRUISER = 12
+UNIT_FAMILY_SHIP_BATTLESHIP = 13
 
 def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model, zero_pitch):
     if not target_pos or not fire_origin or bullet_speed <= 0.0:
@@ -206,6 +230,270 @@ def _get_ground_target_aim_point(box_data, fallback_pos, distance_to_target):
         pos[1] + (ax[1] * local_x) + (ay[1] * local_y) + (az[1] * local_z),
         pos[2] + (ax[2] * local_x) + (ay[2] * local_y) + (az[2] * local_z),
     )
+
+
+def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, name_key, short_name, is_air):
+    family_tag = (family_name or profile_tag or "").lower()
+    token = " ".join((
+        family_name or "",
+        profile_tag or "",
+        profile_path or "",
+        unit_key or "",
+        name_key or "",
+        short_name or "",
+    )).lower()
+
+    if family_tag == "exp_helicopter":
+        return UNIT_FAMILY_AIR_HELICOPTER
+    if family_tag == "exp_bomber":
+        return UNIT_FAMILY_AIR_BOMBER
+    if family_tag in ("exp_assault", "exp_attacker"):
+        return UNIT_FAMILY_AIR_ATTACKER
+    if family_tag == "exp_fighter":
+        return UNIT_FAMILY_AIR_FIGHTER
+    if family_tag == "exp_spaa":
+        return UNIT_FAMILY_GROUND_SPAA
+    if family_tag in ("exp_tank_destroyer", "exp_tank_destr"):
+        return UNIT_FAMILY_GROUND_TANK_DESTROYER
+    if family_tag == "exp_heavy_tank":
+        return UNIT_FAMILY_GROUND_HEAVY_TANK
+    if family_tag == "exp_tank":
+        return UNIT_FAMILY_GROUND_MEDIUM_TANK
+    if family_tag == "exp_destroyer":
+        return UNIT_FAMILY_SHIP_DESTROYER
+    if family_tag == "exp_cruiser":
+        return UNIT_FAMILY_SHIP_CRUISER
+    if family_tag in ("exp_torpedo_gun_boat", "exp_gun_boat", "exp_torpedo_boat"):
+        return UNIT_FAMILY_SHIP_BOAT
+
+    if is_air:
+        if "helicopter" in token:
+            return UNIT_FAMILY_AIR_HELICOPTER
+        if "bomber" in token:
+            return UNIT_FAMILY_AIR_BOMBER
+        if "attacker" in token or "assault" in token:
+            return UNIT_FAMILY_AIR_ATTACKER
+        if "fighter" in token:
+            return UNIT_FAMILY_AIR_FIGHTER
+        return UNIT_FAMILY_AIR_FIGHTER
+
+    if (
+        "battleship" in token or
+        "battlecruiser" in token
+    ):
+        return UNIT_FAMILY_SHIP_BATTLESHIP
+    if "cruiser" in token:
+        return UNIT_FAMILY_SHIP_CRUISER
+    if "destroyer" in token:
+        return UNIT_FAMILY_SHIP_DESTROYER
+    if "frigate" in token:
+        return UNIT_FAMILY_SHIP_FRIGATE
+    if (
+        "torpedo_gun_boat" in token or
+        "gun_boat" in token or
+        "torpedo_boat" in token or
+        "type143" in token or
+        "s38" in token or
+        "lcs_" in token or
+        "ships/" in token
+    ):
+        return UNIT_FAMILY_SHIP_BOAT
+    if "spaa" in token:
+        return UNIT_FAMILY_GROUND_SPAA
+    if "tank_destroyer" in token or "tank_destr" in token:
+        return UNIT_FAMILY_GROUND_TANK_DESTROYER
+    if "heavy_tank" in token:
+        return UNIT_FAMILY_GROUND_HEAVY_TANK
+    if "tank" in token:
+        return UNIT_FAMILY_GROUND_MEDIUM_TANK
+    if not is_air:
+        return UNIT_FAMILY_GROUND_MEDIUM_TANK
+    return UNIT_FAMILY_UNKNOWN
+
+
+def _resolve_is_air_now(default_is_air, family_name, profile_tag, profile_path):
+    token = " ".join((
+        family_name or "",
+        profile_tag or "",
+        profile_path or "",
+    )).lower()
+
+    if any(k in token for k in ("exp_helicopter", "exp_fighter", "exp_bomber", "exp_assault", "exp_attacker")):
+        return True
+    if any(k in token for k in (
+        "exp_tank",
+        "exp_heavy_tank",
+        "exp_tank_destroyer",
+        "exp_tank_destr",
+        "exp_spaa",
+        "exp_destroyer",
+        "exp_cruiser",
+        "exp_torpedo_boat",
+        "exp_torpedo_gun_boat",
+        "exp_gun_boat",
+        "ships/",
+    )):
+        return False
+    return default_is_air
+
+
+def _draw_unit_class_icon(painter, center_x, center_y, unit_family, size):
+    half = max(5, int(size * 0.5))
+    is_air = unit_family in (
+        UNIT_FAMILY_AIR_FIGHTER,
+        UNIT_FAMILY_AIR_BOMBER,
+        UNIT_FAMILY_AIR_ATTACKER,
+        UNIT_FAMILY_AIR_HELICOPTER,
+    )
+    color = QColor(*(COLOR_CLASS_ICON_AIR if is_air else COLOR_CLASS_ICON_GROUND))
+    painter.setPen(QPen(color, 2))
+    painter.setBrush(Qt.NoBrush)
+
+    if unit_family == UNIT_FAMILY_GROUND_MEDIUM_TANK:
+        painter.drawRect(int(center_x - half), int(center_y - 2), int(half * 2), 5)
+        painter.drawRect(int(center_x - 4), int(center_y - 7), 8, 4)
+        painter.drawLine(int(center_x + 4), int(center_y - 5), int(center_x + half + 5), int(center_y - 5))
+        painter.drawLine(int(center_x - half), int(center_y + 4), int(center_x + half), int(center_y + 4))
+        return
+
+    if unit_family == UNIT_FAMILY_GROUND_HEAVY_TANK:
+        painter.drawRect(int(center_x - half), int(center_y - 3), int(half * 2), 7)
+        painter.drawRect(int(center_x - 5), int(center_y - 10), 10, 5)
+        painter.drawLine(int(center_x + 5), int(center_y - 8), int(center_x + half + 6), int(center_y - 8))
+        painter.drawLine(int(center_x - half + 1), int(center_y + 5), int(center_x + half - 1), int(center_y + 5))
+        painter.drawLine(int(center_x - half + 3), int(center_y + 8), int(center_x + half - 3), int(center_y + 8))
+        return
+
+    if unit_family == UNIT_FAMILY_GROUND_SPAA:
+        painter.drawRect(int(center_x - half), int(center_y - 3), int(half * 2), 6)
+        painter.drawRect(int(center_x - 4), int(center_y - 8), 8, 5)
+        painter.drawLine(int(center_x + 2), int(center_y - 7), int(center_x + half + 2), int(center_y - 10))
+        painter.drawLine(int(center_x - 2), int(center_y - 7), int(center_x - half - 2), int(center_y - 10))
+        painter.drawLine(int(center_x), int(center_y - 12), int(center_x), int(center_y - 4))
+        return
+
+    if unit_family == UNIT_FAMILY_GROUND_TANK_DESTROYER:
+        painter.drawLine(int(center_x - half), int(center_y + 3), int(center_x + half), int(center_y + 3))
+        painter.drawLine(int(center_x - half), int(center_y + 3), int(center_x - 2), int(center_y - 6))
+        painter.drawLine(int(center_x - 2), int(center_y - 6), int(center_x + half), int(center_y - 3))
+        painter.drawLine(int(center_x + 1), int(center_y - 5), int(center_x + half + 6), int(center_y - 7))
+        return
+
+    if unit_family == UNIT_FAMILY_SHIP_BOAT:
+        painter.drawLine(int(center_x - half), int(center_y + 2), int(center_x + half), int(center_y + 2))
+        painter.drawLine(int(center_x - half + 4), int(center_y + 2), int(center_x - 1), int(center_y - 4))
+        painter.drawLine(int(center_x + half - 4), int(center_y + 2), int(center_x + 1), int(center_y - 4))
+        painter.drawLine(int(center_x), int(center_y - 4), int(center_x), int(center_y - 9))
+        return
+
+    if unit_family == UNIT_FAMILY_SHIP_FRIGATE:
+        painter.drawLine(int(center_x - half), int(center_y + 2), int(center_x + half), int(center_y + 2))
+        painter.drawLine(int(center_x - half + 2), int(center_y + 2), int(center_x - 3), int(center_y - 6))
+        painter.drawLine(int(center_x + half - 3), int(center_y + 2), int(center_x + 3), int(center_y - 5))
+        painter.drawLine(int(center_x - 2), int(center_y - 6), int(center_x - 2), int(center_y - 12))
+        painter.drawLine(int(center_x + 3), int(center_y - 3), int(center_x + 3), int(center_y - 8))
+        return
+
+    if unit_family == UNIT_FAMILY_SHIP_DESTROYER:
+        painter.drawLine(int(center_x - half), int(center_y + 2), int(center_x + half), int(center_y + 2))
+        painter.drawLine(int(center_x - half + 2), int(center_y + 2), int(center_x - 3), int(center_y - 6))
+        painter.drawLine(int(center_x + half - 3), int(center_y + 2), int(center_x + 4), int(center_y - 3))
+        painter.drawLine(int(center_x - 2), int(center_y - 6), int(center_x - 2), int(center_y - 12))
+        painter.drawLine(int(center_x + 2), int(center_y - 4), int(center_x + 2), int(center_y - 9))
+        painter.drawLine(int(center_x - 6), int(center_y - 1), int(center_x - 1), int(center_y - 1))
+        return
+
+    if unit_family == UNIT_FAMILY_SHIP_CRUISER:
+        painter.drawLine(int(center_x - half), int(center_y + 2), int(center_x + half), int(center_y + 2))
+        painter.drawLine(int(center_x - half + 2), int(center_y + 2), int(center_x - 3), int(center_y - 7))
+        painter.drawLine(int(center_x + half - 3), int(center_y + 2), int(center_x + 3), int(center_y - 6))
+        painter.drawLine(int(center_x - 3), int(center_y - 7), int(center_x - 3), int(center_y - 13))
+        painter.drawLine(int(center_x + 1), int(center_y - 6), int(center_x + 1), int(center_y - 11))
+        painter.drawLine(int(center_x - 7), int(center_y - 2), int(center_x - 1), int(center_y - 2))
+        painter.drawLine(int(center_x + 1), int(center_y - 2), int(center_x + 7), int(center_y - 2))
+        return
+
+    if unit_family == UNIT_FAMILY_SHIP_BATTLESHIP:
+        painter.drawLine(int(center_x - half), int(center_y + 3), int(center_x + half), int(center_y + 3))
+        painter.drawLine(int(center_x - half + 2), int(center_y + 3), int(center_x - 4), int(center_y - 8))
+        painter.drawLine(int(center_x + half - 4), int(center_y + 3), int(center_x + 4), int(center_y - 8))
+        painter.drawLine(int(center_x - 4), int(center_y - 8), int(center_x - 4), int(center_y - 14))
+        painter.drawLine(int(center_x + 2), int(center_y - 8), int(center_x + 2), int(center_y - 13))
+        painter.drawLine(int(center_x - 7), int(center_y - 2), int(center_x - 1), int(center_y - 2))
+        painter.drawLine(int(center_x + 1), int(center_y - 2), int(center_x + 7), int(center_y - 2))
+        return
+
+    if unit_family == UNIT_FAMILY_AIR_HELICOPTER:
+        painter.drawEllipse(int(center_x - 5), int(center_y - 3), 10, 6)
+        painter.drawLine(int(center_x), int(center_y - 8), int(center_x), int(center_y - 2))
+        painter.drawLine(int(center_x - half), int(center_y - 10), int(center_x + half), int(center_y - 10))
+        painter.drawLine(int(center_x + 5), int(center_y), int(center_x + half + 4), int(center_y))
+        return
+
+    if unit_family == UNIT_FAMILY_AIR_BOMBER:
+        painter.drawLine(int(center_x), int(center_y - 10), int(center_x), int(center_y + 8))
+        painter.drawLine(int(center_x - half), int(center_y - 1), int(center_x + half), int(center_y - 1))
+        painter.drawLine(int(center_x - half + 2), int(center_y + 2), int(center_x - 2), int(center_y + 5))
+        painter.drawLine(int(center_x + half - 2), int(center_y + 2), int(center_x + 2), int(center_y + 5))
+        return
+
+    if unit_family == UNIT_FAMILY_AIR_ATTACKER:
+        painter.drawLine(int(center_x), int(center_y - 10), int(center_x), int(center_y + 8))
+        painter.drawLine(int(center_x - half), int(center_y + 1), int(center_x), int(center_y - 4))
+        painter.drawLine(int(center_x + half), int(center_y + 1), int(center_x), int(center_y - 4))
+        painter.drawLine(int(center_x - 7), int(center_y + 4), int(center_x - 3), int(center_y + 7))
+        painter.drawLine(int(center_x + 7), int(center_y + 4), int(center_x + 3), int(center_y + 7))
+        return
+
+    if unit_family == UNIT_FAMILY_AIR_FIGHTER:
+        painter.drawLine(int(center_x), int(center_y - 10), int(center_x), int(center_y + 8))
+        painter.drawLine(int(center_x - half), int(center_y), int(center_x), int(center_y - 6))
+        painter.drawLine(int(center_x + half), int(center_y), int(center_x), int(center_y - 6))
+        painter.drawLine(int(center_x - 4), int(center_y + 3), int(center_x + 4), int(center_y + 3))
+        return
+
+    painter.drawLine(int(center_x), int(center_y - 10), int(center_x), int(center_y + 8))
+    painter.drawLine(int(center_x - half), int(center_y), int(center_x), int(center_y - 4))
+    painter.drawLine(int(center_x + half), int(center_y), int(center_x), int(center_y - 4))
+    painter.drawLine(int(center_x - 4), int(center_y + 4), int(center_x + 4), int(center_y + 4))
+
+
+def _unit_family_debug_label(unit_family):
+    labels = {
+        UNIT_FAMILY_AIR_FIGHTER: "FG",
+        UNIT_FAMILY_AIR_BOMBER: "BM",
+        UNIT_FAMILY_AIR_ATTACKER: "AT",
+        UNIT_FAMILY_AIR_HELICOPTER: "HC",
+        UNIT_FAMILY_GROUND_MEDIUM_TANK: "MT",
+        UNIT_FAMILY_GROUND_HEAVY_TANK: "HT",
+        UNIT_FAMILY_GROUND_TANK_DESTROYER: "TD",
+        UNIT_FAMILY_GROUND_SPAA: "AA",
+        UNIT_FAMILY_SHIP_BOAT: "BT",
+        UNIT_FAMILY_SHIP_FRIGATE: "FF",
+        UNIT_FAMILY_SHIP_DESTROYER: "DD",
+        UNIT_FAMILY_SHIP_CRUISER: "CA",
+        UNIT_FAMILY_SHIP_BATTLESHIP: "BB",
+        UNIT_FAMILY_UNKNOWN: "??",
+    }
+    return labels.get(unit_family, "??")
+
+
+def _sanitize_debug_text(text, fallback="-"):
+    value = (text or "").strip()
+    if not value or value.lower() == "none":
+        return fallback
+    return value
+
+
+def _screen_int_tuple(*values):
+    out = []
+    for value in values:
+        if not math.isfinite(value):
+            return None
+        if value < -2147483000 or value > 2147483000:
+            return None
+        out.append(int(value))
+    return tuple(out)
 
 # ========================================================
 # 🚨 DUAL THREAT WARNING SYSTEM (จากเวอร์ชันเก่า)
@@ -737,28 +1025,22 @@ class ESPOverlay(QWidget):
                 current_seen_ptrs.add(u_ptr)
                 
                 # 🛡️ Cache-based Profile & Status Retrieval
-                cached_prof = self.profile_cache.get(u_ptr)
-                if not cached_prof:
-                    status = get_unit_status(self.scanner, u_ptr)
-                    if not status: continue
-                    profile = get_unit_filter_profile(self.scanner, u_ptr)
-                    dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
-                    
-                    # Store only necessary info
-                    self.profile_cache[u_ptr] = {
-                        'status': status,
-                        'profile': profile,
-                        'dna': dna,
-                        'is_air_resolved': (profile.get("kind") == "air") if profile.get("kind") else is_air
-                    }
-                    cached_prof = self.profile_cache[u_ptr]
+                info_ptr_now = _read_ptr_fast(self.scanner, u_ptr + OFF_UNIT_INFO)
+                status = get_unit_status(self.scanner, u_ptr)
+                if not status:
+                    continue
+                profile = get_unit_filter_profile(self.scanner, u_ptr)
+                dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                cached_prof = {
+                    'status': status,
+                    'profile': profile,
+                    'dna': dna,
+                    'is_air_resolved': is_air,
+                    'info_ptr': info_ptr_now,
+                }
+                self.profile_cache[u_ptr] = cached_prof
                 
                 u_team, u_state, unit_name, reload_val = cached_prof['status']
-                # Update dynamic status part (reload and state) only if needed or every few frames
-                status = get_unit_status(self.scanner, u_ptr)
-                if not status: continue
-                u_team, u_state, unit_name, reload_val = status
-                cached_prof['status'] = status # Sync dynamic parts
                 
                 if u_state >= 1:
                     self.dead_unit_latch.add(u_ptr)
@@ -775,11 +1057,17 @@ class ESPOverlay(QWidget):
                 if profile_tag in ("exp_aaa", "exp_fortification", "exp_structure", "exp_zero"): continue
                 if ("air_defence/" in profile_path) or ("structures/" in profile_path) or ("dummy_plane" in profile_path): continue
 
-                resolved_is_air = cached_prof['is_air_resolved']
                 dna = cached_prof.get('dna') or {}
                 short_name = (dna.get("short_name") or "").strip()
                 family_name = (dna.get("family") or "").strip()
                 name_key = (dna.get("name_key") or "").strip()
+                resolved_is_air = _resolve_is_air_now(
+                    cached_prof.get('is_air_resolved', is_air),
+                    family_name,
+                    profile_tag,
+                    profile_path,
+                )
+                cached_prof['is_air_resolved'] = resolved_is_air
 
                 resolved_name = short_name
                 if (not resolved_name) or (resolved_name.lower() in ("none", "unknown", "c")):
@@ -816,7 +1104,20 @@ class ESPOverlay(QWidget):
                     if dist_to_me > (MAX_AIR_TARGET_DISTANCE if resolved_is_air else MAX_GROUND_TARGET_DISTANCE):
                         continue
 
-                valid_targets.append((u_ptr, resolved_name, reload_val, resolved_is_air, pos, dist_to_me))
+                valid_targets.append((
+                    u_ptr,
+                    resolved_name,
+                    reload_val,
+                    resolved_is_air,
+                    pos,
+                    dist_to_me,
+                    short_name,
+                    family_name,
+                    name_key,
+                    profile_tag,
+                    profile_path,
+                    (profile.get("unit_key") or ""),
+                ))
             
             # 🧹 Clean up Profile Cache for missing units
             for ptr in list(self.profile_cache.keys()):
@@ -834,7 +1135,20 @@ class ESPOverlay(QWidget):
 
             # 🎯 เลือกเป้าหมายจากลิสต์ที่มองเห็น โดยล็อกตัวที่ใกล้ crosshair ที่สุดเสมอ
             visible_targets = []
-            for u_ptr, raw_name, reload_val, is_air_target, pos, dist_to_me in valid_targets:
+            for (
+                u_ptr,
+                raw_name,
+                reload_val,
+                is_air_target,
+                pos,
+                dist_to_me,
+                short_name,
+                family_name,
+                name_key,
+                profile_tag,
+                profile_path,
+                profile_unit_key,
+            ) in valid_targets:
                 res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
                 if res_pos and res_pos[2] > 0:
                     dist_crosshair = math.hypot(res_pos[0] - self.center_x, res_pos[1] - self.center_y)
@@ -875,7 +1189,20 @@ class ESPOverlay(QWidget):
             # ========================================================
             # 🎯 MAIN PROCESSING LOOP
             # ========================================================
-            for u_ptr, raw_name, reload_val, is_air_target, pos, dist_to_me in valid_targets:
+            for (
+                u_ptr,
+                raw_name,
+                reload_val,
+                is_air_target,
+                pos,
+                dist_to_me,
+                short_name,
+                family_name,
+                name_key,
+                profile_tag,
+                profile_path,
+                profile_unit_key,
+            ) in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
                 try:
                     box_data = get_unit_3d_box_data(self.scanner, u_ptr, is_air_target)
@@ -988,7 +1315,38 @@ class ESPOverlay(QWidget):
                         if clean_name.lower().startswith(p): clean_name = clean_name[len(p):]; break
 
                     physics_is_air = is_air_target
-                    display_is_air = is_air_target
+                    unit_family = _resolve_unit_family_enum(
+                        family_name,
+                        profile_tag,
+                        profile_path,
+                        profile_unit_key,
+                        name_key,
+                        short_name,
+                        physics_is_air,
+                    )
+                    family_is_air = unit_family in (
+                        UNIT_FAMILY_AIR_FIGHTER,
+                        UNIT_FAMILY_AIR_BOMBER,
+                        UNIT_FAMILY_AIR_ATTACKER,
+                        UNIT_FAMILY_AIR_HELICOPTER,
+                    )
+                    family_is_ground = unit_family in (
+                        UNIT_FAMILY_GROUND_MEDIUM_TANK,
+                        UNIT_FAMILY_GROUND_HEAVY_TANK,
+                        UNIT_FAMILY_GROUND_TANK_DESTROYER,
+                        UNIT_FAMILY_GROUND_SPAA,
+                        UNIT_FAMILY_SHIP_BOAT,
+                        UNIT_FAMILY_SHIP_FRIGATE,
+                        UNIT_FAMILY_SHIP_DESTROYER,
+                        UNIT_FAMILY_SHIP_CRUISER,
+                        UNIT_FAMILY_SHIP_BATTLESHIP,
+                    )
+                    if family_is_air:
+                        physics_is_air = True
+                    elif family_is_ground:
+                        physics_is_air = False
+
+                    display_is_air = physics_is_air
                     if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
                         display_is_air = False
 
@@ -1002,6 +1360,9 @@ class ESPOverlay(QWidget):
                     fm = painter.fontMetrics()
                     text_w = fm.boundingRect(display_text).width()
                     text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
+                    icon_y = text_y - CLASS_ICON_LINE_GAP
+                    debug_label_y = icon_y - CLASS_ICON_DEBUG_TEXT_GAP
+                    overlay_debug_y = debug_label_y - UNIT_FAMILY_OVERLAY_DEBUG_GAP
 
                     # ========================================================
                     # 🚨 THREAT WARNING SYSTEM (แจ้งเตือนภัยคุกคาม)
@@ -1052,6 +1413,32 @@ class ESPOverlay(QWidget):
                             painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
 
                     painter.setPen(QColor(*COLOR_TEXT_AIR) if display_is_air else QColor(*COLOR_TEXT_GROUND))
+                    if DRAW_UNIT_FAMILY_OVERLAY_DEBUG:
+                        debug_parts = [
+                            f"ptr={hex(u_ptr)}",
+                            f"short={_sanitize_debug_text(short_name)}",
+                            f"fam={_sanitize_debug_text(family_name)}",
+                            f"lbl={_unit_family_debug_label(unit_family)}",
+                        ]
+                        overlay_debug_text = " | ".join(debug_parts)
+                        overlay_debug_w = fm.boundingRect(overlay_debug_text).width()
+                        painter.drawText(
+                            int(avg_x - (overlay_debug_w * 0.5)),
+                            int(overlay_debug_y),
+                            overlay_debug_text,
+                        )
+                    if DRAW_CLASS_ICON_DEBUG_TEXT:
+                        debug_label = _unit_family_debug_label(unit_family)
+                        debug_w = fm.boundingRect(debug_label).width()
+                        painter.drawText(int(avg_x - (debug_w * 0.5)), int(debug_label_y), debug_label)
+                    if DRAW_CLASS_ICON:
+                        _draw_unit_class_icon(
+                            painter,
+                            int(avg_x),
+                            int(icon_y),
+                            unit_family,
+                            CLASS_ICON_SIZE,
+                        )
                     painter.drawText(int(avg_x - text_w/2), text_y, display_text)
 
                     if has_reload_bar:
@@ -1435,16 +1822,24 @@ class ESPOverlay(QWidget):
             for lm in lead_marks_to_draw:
                 if lm.get('style') == 'ground_static':
                     pred_color = QColor(*COLOR_PREDICTION_GROUND_STATIC)
+                    line_pts = _screen_int_tuple(lm['sx'], lm['sy'], lm['px'], lm['py'])
+                    center_pts = _screen_int_tuple(lm['px'], lm['py'])
+                    if not line_pts or not center_pts:
+                        continue
                     painter.setPen(QPen(pred_color, 2, Qt.DotLine))
-                    painter.drawLine(int(lm['sx']), int(lm['sy']), int(lm['px']), int(lm['py']))
+                    painter.drawLine(*line_pts)
                     painter.setPen(QPen(pred_color, 2))
-                    painter.drawEllipse(int(lm['px']) - 6, int(lm['py']) - 6, 12, 12)
-                    painter.drawLine(int(lm['px']) - 8, int(lm['py']), int(lm['px']) + 8, int(lm['py']))
-                    painter.drawLine(int(lm['px']), int(lm['py']) - 8, int(lm['px']), int(lm['py']) + 8)
+                    painter.drawEllipse(center_pts[0] - 6, center_pts[1] - 6, 12, 12)
+                    painter.drawLine(center_pts[0] - 8, center_pts[1], center_pts[0] + 8, center_pts[1])
+                    painter.drawLine(center_pts[0], center_pts[1] - 8, center_pts[0], center_pts[1] + 8)
                     continue
 
+                line_pts = _screen_int_tuple(lm['sx'], lm['sy'], lm['px'], lm['py'])
+                center_pts = _screen_int_tuple(lm['px'], lm['py'])
+                if not line_pts or not center_pts:
+                    continue
                 painter.setPen(QPen(QColor(255, 100, 100, 150), 2, Qt.DashLine))
-                painter.drawLine(int(lm['sx']), int(lm['sy']), int(lm['px']), int(lm['py']))
+                painter.drawLine(*line_pts)
                 
                 pred_color = QColor(*COLOR_PREDICTION)
                 if lm['is_air'] and lm['is_turning']:
@@ -1452,17 +1847,20 @@ class ESPOverlay(QWidget):
                     pred_color.setAlpha(blink_alpha)
                 
                 painter.setPen(QPen(pred_color, 3))
-                painter.drawEllipse(int(lm['px']) - 8, int(lm['py']) - 8, 16, 16)
+                painter.drawEllipse(center_pts[0] - 8, center_pts[1] - 8, 16, 16)
                 painter.setBrush(pred_color)
-                painter.drawEllipse(int(lm['px']) - 3, int(lm['py']) - 3, 6, 6)
+                painter.drawEllipse(center_pts[0] - 3, center_pts[1] - 3, 6, 6)
                 painter.setBrush(Qt.NoBrush)
 
             for hp_x, hp_y in hit_points_to_draw:
+                hp_pts = _screen_int_tuple(hp_x, hp_y)
+                if not hp_pts:
+                    continue
                 hit_color = QColor(*COLOR_BOX_HITPOINT)
                 painter.setPen(QPen(hit_color, 3))
-                painter.drawEllipse(int(hp_x) - 7, int(hp_y) - 7, 14, 14)
-                painter.drawLine(int(hp_x) - 10, int(hp_y), int(hp_x) + 10, int(hp_y))
-                painter.drawLine(int(hp_x), int(hp_y) - 10, int(hp_x), int(hp_y) + 10)
+                painter.drawEllipse(hp_pts[0] - 7, hp_pts[1] - 7, 14, 14)
+                painter.drawLine(hp_pts[0] - 10, hp_pts[1], hp_pts[0] + 10, hp_pts[1])
+                painter.drawLine(hp_pts[0], hp_pts[1] - 10, hp_pts[0], hp_pts[1] + 10)
 
             for ptr in [ptr for ptr in self.vel_window if ptr not in seen_targets_this_frame]:
                 del self.vel_window[ptr]
