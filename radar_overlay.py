@@ -1484,6 +1484,13 @@ if __name__ == '__main__':
         overlay = ESPOverlay(scanner, base_addr)
         overlay.show()
         sys.exit(app.exec_())
+    except RuntimeError as e:
+        print("\n" + "=" * 72)
+        print("❌ STARTUP ERROR")
+        print("=" * 72)
+        print(f"Reason : {e}")
+        print("=" * 72)
+        sys.exit(1)
     except Exception as e: 
         print("\n" + "=" * 72)
         print("❌ STARTUP ERROR")
