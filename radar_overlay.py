@@ -1471,6 +1471,10 @@ if __name__ == '__main__':
     try:
         pid = get_game_pid()
         base_addr = get_game_base_address(pid)
+        if base_addr == 0:
+            raise RuntimeError(
+                f"พบ PID ของเกมแล้ว ({pid}) แต่หา base address ของ binary 'aces' ไม่เจอ"
+            )
         scanner = MemoryScanner(pid)
         
         # 🚀 THE MAGIC: สแกนหา Manager Offset อัตโนมัติก่อนเปิดเรดาร์!
@@ -1481,6 +1485,11 @@ if __name__ == '__main__':
         overlay.show()
         sys.exit(app.exec_())
     except Exception as e: 
-        print("Error starting Overlay:")
+        print("\n" + "=" * 72)
+        print("❌ STARTUP ERROR")
+        print("=" * 72)
+        print(f"Reason : {e}")
+        print("-" * 72)
         print(traceback.format_exc())
+        print("=" * 72)
         sys.exit(1)

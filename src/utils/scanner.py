@@ -305,8 +305,10 @@ def get_game_pid():
     try:
         pid_str = subprocess.check_output(["pgrep", "aces"]).decode().strip().split('\n')[0]
         return int(pid_str)
-    except:
-        sys.exit(1)
+    except Exception as e:
+        raise RuntimeError(
+            "ไม่พบ process ของเกม 'aces' กรุณาเปิดเกมก่อนแล้วค่อยรัน overlay"
+        ) from e
 
 def get_game_base_address(pid):
     try:
