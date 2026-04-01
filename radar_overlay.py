@@ -94,15 +94,16 @@ ORIGIN_GHOST_MY_DIST_MIN = 250.0
 # 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
 DEBUG_LOG_INTERVAL = 0.5
 INVALID_RUNTIME_FRAME_LIMIT = 20
+GROUND_AIM_HEIGHT_RATIO = 0.75
 
 
-def _solve_static_ground_leadmark(target_pos, my_pos, my_vel, bullet_speed, zeroing, model):
-    if not target_pos or not my_pos or bullet_speed <= 0.0:
+def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model):
+    if not target_pos or not fire_origin or bullet_speed <= 0.0:
         return None
 
     t_x, t_y, t_z = target_pos
     my_vx, my_vy, my_vz = my_vel
-    best_t = math.dist((t_x, t_z), (my_pos[0], my_pos[2])) / bullet_speed
+    best_t = math.dist((t_x, t_z), (fire_origin[0], fire_origin[2])) / bullet_speed
     best_t = max(best_t, 0.01)
     bullet_drop = 0.0
 
@@ -110,8 +111,8 @@ def _solve_static_ground_leadmark(target_pos, my_pos, my_vel, bullet_speed, zero
     sight_drop = 0.5 * BULLET_GRAVITY * (t_sight ** 2)
 
     for _ in range(3):
-        dx_imp = t_x - (my_pos[0] + my_vx * best_t)
-        dz_imp = t_z - (my_pos[2] + my_vz * best_t)
+        dx_imp = t_x - (fire_origin[0] + my_vx * best_t)
+        dz_imp = t_z - (fire_origin[2] + my_vz * best_t)
         horizontal_imp = math.hypot(dx_imp, dz_imp)
         if horizontal_imp <= 0.01:
             return None
@@ -145,6 +146,25 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     return (
         min_x + (u * box_w),
         min_y + (v * box_h),
+    )
+
+
+def _get_ground_target_aim_point(box_data, fallback_pos):
+    if not box_data:
+        return (fallback_pos[0], fallback_pos[1] + 1.0, fallback_pos[2]) if fallback_pos else None
+
+    pos, bmin, bmax, rot = box_data
+    ax, ay, az = get_local_axes_from_rotation(rot, False)
+
+    local_x = (bmin[0] + bmax[0]) * 0.5
+    local_z = (bmin[2] + bmax[2]) * 0.5
+    local_h = max(bmax[1] - bmin[1], 0.5)
+    local_y = local_h * GROUND_AIM_HEIGHT_RATIO
+
+    return (
+        pos[0] + (ax[0] * local_x) + (ay[0] * local_y) + (az[0] * local_z),
+        pos[1] + (ax[1] * local_x) + (ay[1] * local_y) + (az[1] * local_z),
+        pos[2] + (ax[2] * local_x) + (ay[2] * local_y) + (az[2] * local_z),
     )
 
 # ========================================================
@@ -649,6 +669,16 @@ class ESPOverlay(QWidget):
             my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t) if my_unit and my_pos else (0.0, 0.0, 0.0)
             if not my_vel: my_vel = (0.0, 0.0, 0.0)
             my_vx, my_vy, my_vz = my_vel
+            my_ground_shot_origin = my_pos
+            if my_unit and my_pos and not my_is_air:
+                try:
+                    my_box_data = get_unit_3d_box_data(self.scanner, my_unit, False)
+                    if my_box_data:
+                        my_barrel_data = get_weapon_barrel(self.scanner, my_unit, my_box_data[0], my_box_data[3])
+                        if my_barrel_data:
+                            my_ground_shot_origin = my_barrel_data[1] or my_barrel_data[0] or my_pos
+                except Exception:
+                    my_ground_shot_origin = my_pos
 
             if my_unit != self.last_my_unit:
                 reset_runtime_caches()
@@ -1071,7 +1101,10 @@ class ESPOverlay(QWidget):
                             })
                             active_flight_data = {'pos': pos, 'v': vel, 'a': (ax, ay, az)}
                     else:
-                        t_x, t_y, t_z = pos[0], pos[1] + 1.5, pos[2]
+                        ground_aim_point = _get_ground_target_aim_point(box_data, pos)
+                        if not ground_aim_point:
+                            continue
+                        t_x, t_y, t_z = ground_aim_point
 
                     leadmark_in_range = (
                         leadmark_range_limit <= 0.0 or dist <= leadmark_range_limit
@@ -1083,6 +1116,7 @@ class ESPOverlay(QWidget):
                     altitude = max(0.0, my_pos[1])
                     ballistic_model = _make_ballistic_model(ballistic_profile, altitude)
                     is_active_target = (u_ptr == active_target_ptr)
+                    fire_origin = my_ground_shot_origin if (not physics_is_air and my_ground_shot_origin) else my_pos
 
                     best_t = dist / current_bullet_speed if current_bullet_speed > 0 else 0.1
                     final_x, final_y, final_z = t_x, t_y, t_z
@@ -1119,8 +1153,8 @@ class ESPOverlay(QWidget):
                                 pred_y = t_y + (vy * best_t)
                                 pred_z = t_z + (vz * best_t)
                             
-                            dx_imp = pred_x - (my_pos[0] + my_vx * best_t)
-                            dz_imp = pred_z - (my_pos[2] + my_vz * best_t)
+                            dx_imp = pred_x - (fire_origin[0] + my_vx * best_t)
+                            dz_imp = pred_z - (fire_origin[2] + my_vz * best_t)
                             horizontal_imp = math.hypot(dx_imp, dz_imp)
 
                             if current_bullet_speed > 0 and horizontal_imp > 0.01:
@@ -1139,8 +1173,8 @@ class ESPOverlay(QWidget):
                         pred_y = t_y + (vy * best_t)
                         pred_z = t_z + (vz * best_t)
                         
-                        dx_imp = pred_x - (my_pos[0] + my_vx * best_t)
-                        dz_imp = pred_z - (my_pos[2] + my_vz * best_t)
+                        dx_imp = pred_x - (fire_origin[0] + my_vx * best_t)
+                        dz_imp = pred_z - (fire_origin[2] + my_vz * best_t)
                         d_imp = math.hypot(dx_imp, dz_imp)
 
                         if current_bullet_speed > 0:
@@ -1248,7 +1282,7 @@ class ESPOverlay(QWidget):
                     if (not physics_is_air) and leadmark_in_range:
                         static_ground_final = _solve_static_ground_leadmark(
                             (t_x, t_y, t_z),
-                            my_pos,
+                            fire_origin,
                             (my_vx, my_vy, my_vz),
                             current_bullet_speed,
                             current_zeroing,
