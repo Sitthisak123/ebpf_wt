@@ -69,7 +69,9 @@ SIGHT_POINTER_CHAINS = [
     [0x13E68, -0x75F0, 0x13D0, 0x7088]
 ]
 
-def is_valid_ptr(p): 
+def is_valid_ptr(p):
+    if not isinstance(p, int):
+        return False
     return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
 
 
