@@ -43,6 +43,7 @@ COLOR_THREAD_ALERT2     = (255, 180, 0, 255)
 COLOR_AXIS_X            = (255, 64, 64, 255)
 COLOR_AXIS_Y            = (64, 255, 64, 255)
 COLOR_AXIS_Z            = (64, 160, 255, 255)
+COLOR_BOX_HITPOINT      = (255, 80, 80, 170)
 
 BULLET_GRAVITY       = 9.80665   
 
@@ -120,6 +121,23 @@ def _solve_static_ground_leadmark(target_pos, my_pos, my_vel, bullet_speed, zero
     final_y = t_y + bullet_drop - sight_drop - (my_vy * best_t)
     final_z = t_z - (my_vz * best_t)
     return final_x, final_y, final_z
+
+
+def _compute_ground_box_hitpoint(pos, bmin, bmax, rotation):
+    ax, ay, az = get_local_axes_from_rotation(rotation, False)
+    local_mid_x = (bmin[0] + bmax[0]) * 0.5
+    local_mid_z = (bmin[2] + bmax[2]) * 0.5
+    box_height = max(bmax[1] - bmin[1], 0.1)
+
+    # Ground box origin is anchored at the bottom border, so place the hit point
+    # slightly above center mass while keeping it well inside the hull volume.
+    local_y = box_height * 0.58
+
+    return (
+        pos[0] + (ax[0] * local_mid_x) + (ay[0] * local_y) + (az[0] * local_mid_z),
+        pos[1] + (ax[1] * local_mid_x) + (ay[1] * local_y) + (az[1] * local_mid_z),
+        pos[2] + (ax[2] * local_mid_x) + (ay[2] * local_y) + (az[2] * local_mid_z),
+    )
 
 # ========================================================
 # 🚨 DUAL THREAT WARNING SYSTEM (จากเวอร์ชันเก่า)
@@ -526,6 +544,7 @@ class ESPOverlay(QWidget):
         seen_targets_this_frame = set()
         curr_t = time.time()
         lead_marks_to_draw = []
+        hit_points_to_draw = []
         
         active_flight_data = None 
         active_target_ptr = 0
@@ -808,6 +827,18 @@ class ESPOverlay(QWidget):
                                 painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
                             min_y, avg_x, avg_y = min(p[1] for p in pts), sum(p[0] for p in pts)/8.0, sum(p[1] for p in pts)/8.0  
                             has_valid_box = True
+                            if (not is_air_target) and u_ptr == active_target_ptr:
+                                hitpoint_world = _compute_ground_box_hitpoint(pos, box_data[1], box_data[2], box_data[3])
+                                hitpoint_screen = world_to_screen(
+                                    view_matrix,
+                                    hitpoint_world[0],
+                                    hitpoint_world[1],
+                                    hitpoint_world[2],
+                                    self.screen_width,
+                                    self.screen_height,
+                                )
+                                if hitpoint_screen and hitpoint_screen[2] > 0:
+                                    hit_points_to_draw.append((hitpoint_screen[0], hitpoint_screen[1]))
 
                     if not has_valid_box:
                         res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
@@ -1318,6 +1349,13 @@ class ESPOverlay(QWidget):
                 painter.setBrush(pred_color)
                 painter.drawEllipse(int(lm['px']) - 3, int(lm['py']) - 3, 6, 6)
                 painter.setBrush(Qt.NoBrush)
+
+            for hp_x, hp_y in hit_points_to_draw:
+                hit_color = QColor(*COLOR_BOX_HITPOINT)
+                painter.setPen(QPen(hit_color, 2))
+                painter.drawEllipse(int(hp_x) - 5, int(hp_y) - 5, 10, 10)
+                painter.drawLine(int(hp_x) - 8, int(hp_y), int(hp_x) + 8, int(hp_y))
+                painter.drawLine(int(hp_x), int(hp_y) - 8, int(hp_x), int(hp_y) + 8)
 
             for ptr in [ptr for ptr in self.vel_window if ptr not in seen_targets_this_frame]:
                 del self.vel_window[ptr]
