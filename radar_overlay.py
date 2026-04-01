@@ -31,6 +31,7 @@ COLOR_RELOAD_BG         = (0, 0, 0, 180)
 COLOR_RELOAD_READY      = (255, 0, 0, 200)      
 COLOR_RELOAD_LOADING    = (255, 165, 0, 200)    
 COLOR_PREDICTION        = (255, 255, 255, 255)    
+COLOR_PREDICTION_GROUND_STATIC = (64, 220, 255, 120)
 COLOR_FLIGHT_PATH       = (255, 200, 0, 150)    
 COLOR_FPS_GOOD          = (0, 255, 0, 255)
 COLOR_THREAD_TEXT       = (255, 0, 0, 50)
@@ -92,6 +93,33 @@ ORIGIN_GHOST_MY_DIST_MIN = 250.0
 # 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
 DEBUG_LOG_INTERVAL = 0.5
 INVALID_RUNTIME_FRAME_LIMIT = 20
+
+
+def _solve_static_ground_leadmark(target_pos, my_pos, my_vel, bullet_speed, zeroing, model):
+    if not target_pos or not my_pos or bullet_speed <= 0.0:
+        return None
+
+    t_x, t_y, t_z = target_pos
+    my_vx, my_vy, my_vz = my_vel
+    best_t = math.dist((t_x, t_z), (my_pos[0], my_pos[2])) / bullet_speed
+    best_t = max(best_t, 0.01)
+    bullet_drop = 0.0
+
+    t_sight = zeroing / bullet_speed if bullet_speed > 0.0 else 0.0
+    sight_drop = 0.5 * BULLET_GRAVITY * (t_sight ** 2)
+
+    for _ in range(3):
+        dx_imp = t_x - (my_pos[0] + my_vx * best_t)
+        dz_imp = t_z - (my_pos[2] + my_vz * best_t)
+        horizontal_imp = math.hypot(dx_imp, dz_imp)
+        if horizontal_imp <= 0.01:
+            return None
+        best_t, bullet_drop, _ = _simulate_projectile_range(horizontal_imp, model, 0.0)
+
+    final_x = t_x - (my_vx * best_t)
+    final_y = t_y + bullet_drop - sight_drop - (my_vy * best_t)
+    final_z = t_z - (my_vz * best_t)
+    return final_x, final_y, final_z
 
 # ========================================================
 # 🚨 DUAL THREAT WARNING SYSTEM (จากเวอร์ชันเก่า)
@@ -1200,7 +1228,41 @@ class ESPOverlay(QWidget):
                                         'sx': draw_sx, 'sy': draw_sy, 
                                         'px': px, 'py': py,
                                         'is_air': display_is_air, 
-                                        'is_turning': is_turning
+                                        'is_turning': is_turning,
+                                        'style': 'main',
+                                    })
+
+                    target_vel_mag = math.sqrt(vx**2 + vy**2 + vz**2)
+
+                    if (not physics_is_air) and leadmark_in_range and target_vel_mag > 0.05:
+                        static_ground_final = _solve_static_ground_leadmark(
+                            (t_x, t_y, t_z),
+                            my_pos,
+                            (my_vx, my_vy, my_vz),
+                            current_bullet_speed,
+                            current_zeroing,
+                            ballistic_model,
+                        )
+                        if static_ground_final and all(math.isfinite(c) for c in static_ground_final):
+                            static_screen = world_to_screen(
+                                view_matrix,
+                                static_ground_final[0],
+                                static_ground_final[1],
+                                static_ground_final[2],
+                                self.screen_width,
+                                self.screen_height,
+                            )
+                            if static_screen and static_screen[2] > 0:
+                                spx, spy = static_screen[0], static_screen[1]
+                                if math.isfinite(spx) and math.isfinite(spy):
+                                    lead_marks_to_draw.append({
+                                        'sx': avg_x,
+                                        'sy': avg_y,
+                                        'px': spx,
+                                        'py': spy,
+                                        'is_air': False,
+                                        'is_turning': False,
+                                        'style': 'ground_static',
                                     })
 
                 except Exception as e:
@@ -1233,6 +1295,16 @@ class ESPOverlay(QWidget):
             # 🔝 FRONT LAYER RENDERER
             # ========================================================
             for lm in lead_marks_to_draw:
+                if lm.get('style') == 'ground_static':
+                    pred_color = QColor(*COLOR_PREDICTION_GROUND_STATIC)
+                    painter.setPen(QPen(pred_color, 2, Qt.DotLine))
+                    painter.drawLine(int(lm['sx']), int(lm['sy']), int(lm['px']), int(lm['py']))
+                    painter.setPen(QPen(pred_color, 2))
+                    painter.drawEllipse(int(lm['px']) - 6, int(lm['py']) - 6, 12, 12)
+                    painter.drawLine(int(lm['px']) - 8, int(lm['py']), int(lm['px']) + 8, int(lm['py']))
+                    painter.drawLine(int(lm['px']), int(lm['py']) - 8, int(lm['px']), int(lm['py']) + 8)
+                    continue
+
                 painter.setPen(QPen(QColor(255, 100, 100, 150), 2, Qt.DashLine))
                 painter.drawLine(int(lm['sx']), int(lm['sy']), int(lm['px']), int(lm['py']))
                 
