@@ -43,7 +43,7 @@ COLOR_THREAD_ALERT2     = (255, 180, 0, 255)
 COLOR_AXIS_X            = (255, 64, 64, 255)
 COLOR_AXIS_Y            = (64, 255, 64, 255)
 COLOR_AXIS_Z            = (64, 160, 255, 255)
-COLOR_BOX_HITPOINT      = (255, 80, 80, 170)
+COLOR_BOX_HITPOINT      = (255, 40, 40, 230)
 
 BULLET_GRAVITY       = 9.80665   
 
@@ -123,20 +123,28 @@ def _solve_static_ground_leadmark(target_pos, my_pos, my_vel, bullet_speed, zero
     return final_x, final_y, final_z
 
 
-def _compute_ground_box_hitpoint(pos, bmin, bmax, rotation):
-    ax, ay, az = get_local_axes_from_rotation(rotation, False)
-    local_mid_x = (bmin[0] + bmax[0]) * 0.5
-    local_mid_z = (bmin[2] + bmax[2]) * 0.5
-    box_height = max(bmax[1] - bmin[1], 0.1)
+def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect):
+    if not aim_screen or not leadmark_screen or not target_box_rect:
+        return None
 
-    # Ground box origin is anchored at the bottom border, so place the hit point
-    # slightly above center mass while keeping it well inside the hull volume.
-    local_y = box_height * 0.58
+    min_x, min_y, max_x, max_y = target_box_rect
+    box_w = max(max_x - min_x, 1.0)
+    box_h = max(max_y - min_y, 1.0)
 
+    virtual_min_x = leadmark_screen[0] - (box_w * 0.5)
+    virtual_max_x = leadmark_screen[0] + (box_w * 0.5)
+    virtual_min_y = leadmark_screen[1] - (box_h * 0.5)
+    virtual_max_y = leadmark_screen[1] + (box_h * 0.5)
+
+    ax, ay = aim_screen
+    if not (virtual_min_x <= ax <= virtual_max_x and virtual_min_y <= ay <= virtual_max_y):
+        return None
+
+    u = (ax - virtual_min_x) / box_w
+    v = (ay - virtual_min_y) / box_h
     return (
-        pos[0] + (ax[0] * local_mid_x) + (ay[0] * local_y) + (az[0] * local_mid_z),
-        pos[1] + (ax[1] * local_mid_x) + (ay[1] * local_y) + (az[1] * local_mid_z),
-        pos[2] + (ax[2] * local_mid_x) + (ay[2] * local_y) + (az[2] * local_mid_z),
+        min_x + (u * box_w),
+        min_y + (v * box_h),
     )
 
 # ========================================================
@@ -816,6 +824,7 @@ class ESPOverlay(QWidget):
                         
                     has_valid_box = False
                     avg_x, avg_y, min_y = 0, 0, 0
+                    target_box_rect = None
 
                     if box_data:
                         corners_3d = calculate_3d_box_corners(pos, box_data[1], box_data[2], box_data[3], is_air_target)
@@ -826,19 +835,13 @@ class ESPOverlay(QWidget):
                             for e1, e2 in [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]: 
                                 painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
                             min_y, avg_x, avg_y = min(p[1] for p in pts), sum(p[0] for p in pts)/8.0, sum(p[1] for p in pts)/8.0  
+                            target_box_rect = (
+                                min(p[0] for p in pts),
+                                min(p[1] for p in pts),
+                                max(p[0] for p in pts),
+                                max(p[1] for p in pts),
+                            )
                             has_valid_box = True
-                            if (not is_air_target) and u_ptr == active_target_ptr:
-                                hitpoint_world = _compute_ground_box_hitpoint(pos, box_data[1], box_data[2], box_data[3])
-                                hitpoint_screen = world_to_screen(
-                                    view_matrix,
-                                    hitpoint_world[0],
-                                    hitpoint_world[1],
-                                    hitpoint_world[2],
-                                    self.screen_width,
-                                    self.screen_height,
-                                )
-                                if hitpoint_screen and hitpoint_screen[2] > 0:
-                                    hit_points_to_draw.append((hitpoint_screen[0], hitpoint_screen[1]))
 
                     if not has_valid_box:
                         res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
@@ -848,6 +851,12 @@ class ESPOverlay(QWidget):
                             painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
                             painter.drawRect(int(res_pos[0] - box_w/2), int(res_pos[1] - box_h/2), int(box_w), int(box_h))
                             avg_x, avg_y, min_y = res_pos[0], res_pos[1], res_pos[1] - box_h/2
+                            target_box_rect = (
+                                res_pos[0] - (box_w * 0.5),
+                                res_pos[1] - (box_h * 0.5),
+                                res_pos[0] + (box_w * 0.5),
+                                res_pos[1] + (box_h * 0.5),
+                            )
                             has_valid_box = True
 
                     if not has_valid_box: continue 
@@ -1235,6 +1244,17 @@ class ESPOverlay(QWidget):
                             sys.stdout.flush()
                             self.last_debug_log_time = curr_t
 
+                    static_ground_final = None
+                    if (not physics_is_air) and leadmark_in_range:
+                        static_ground_final = _solve_static_ground_leadmark(
+                            (t_x, t_y, t_z),
+                            my_pos,
+                            (my_vx, my_vy, my_vz),
+                            current_bullet_speed,
+                            current_zeroing,
+                            ballistic_model,
+                        )
+
                     # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
                     if leadmark_in_range and all(math.isfinite(c) for c in [final_x, final_y, final_z]):
                         pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, self.screen_width, self.screen_height)
@@ -1265,36 +1285,37 @@ class ESPOverlay(QWidget):
 
                     target_vel_mag = math.sqrt(vx**2 + vy**2 + vz**2)
 
-                    if (not physics_is_air) and leadmark_in_range and target_vel_mag > 0.05:
-                        static_ground_final = _solve_static_ground_leadmark(
-                            (t_x, t_y, t_z),
-                            my_pos,
-                            (my_vx, my_vy, my_vz),
-                            current_bullet_speed,
-                            current_zeroing,
-                            ballistic_model,
+                    static_screen = None
+                    if (not physics_is_air) and leadmark_in_range and static_ground_final and all(math.isfinite(c) for c in static_ground_final):
+                        static_screen = world_to_screen(
+                            view_matrix,
+                            static_ground_final[0],
+                            static_ground_final[1],
+                            static_ground_final[2],
+                            self.screen_width,
+                            self.screen_height,
                         )
-                        if static_ground_final and all(math.isfinite(c) for c in static_ground_final):
-                            static_screen = world_to_screen(
-                                view_matrix,
-                                static_ground_final[0],
-                                static_ground_final[1],
-                                static_ground_final[2],
-                                self.screen_width,
-                                self.screen_height,
-                            )
-                            if static_screen and static_screen[2] > 0:
-                                spx, spy = static_screen[0], static_screen[1]
-                                if math.isfinite(spx) and math.isfinite(spy):
-                                    lead_marks_to_draw.append({
-                                        'sx': avg_x,
-                                        'sy': avg_y,
-                                        'px': spx,
-                                        'py': spy,
-                                        'is_air': False,
-                                        'is_turning': False,
-                                        'style': 'ground_static',
-                                    })
+                        if static_screen and static_screen[2] > 0:
+                            spx, spy = static_screen[0], static_screen[1]
+                            if u_ptr == active_target_ptr and target_box_rect:
+                                mapped_hitpoint = _map_aim_to_target_box_hitpoint(
+                                    (self.center_x, self.center_y),
+                                    (spx, spy),
+                                    target_box_rect,
+                                )
+                                if mapped_hitpoint:
+                                    hit_points_to_draw.append(mapped_hitpoint)
+
+                            if target_vel_mag > 0.05 and math.isfinite(spx) and math.isfinite(spy):
+                                lead_marks_to_draw.append({
+                                    'sx': avg_x,
+                                    'sy': avg_y,
+                                    'px': spx,
+                                    'py': spy,
+                                    'is_air': False,
+                                    'is_turning': False,
+                                    'style': 'ground_static',
+                                })
 
                 except Exception as e:
                     if "NaN" not in str(e):
@@ -1352,10 +1373,10 @@ class ESPOverlay(QWidget):
 
             for hp_x, hp_y in hit_points_to_draw:
                 hit_color = QColor(*COLOR_BOX_HITPOINT)
-                painter.setPen(QPen(hit_color, 2))
-                painter.drawEllipse(int(hp_x) - 5, int(hp_y) - 5, 10, 10)
-                painter.drawLine(int(hp_x) - 8, int(hp_y), int(hp_x) + 8, int(hp_y))
-                painter.drawLine(int(hp_x), int(hp_y) - 8, int(hp_x), int(hp_y) + 8)
+                painter.setPen(QPen(hit_color, 3))
+                painter.drawEllipse(int(hp_x) - 7, int(hp_y) - 7, 14, 14)
+                painter.drawLine(int(hp_x) - 10, int(hp_y), int(hp_x) + 10, int(hp_y))
+                painter.drawLine(int(hp_x), int(hp_y) - 10, int(hp_x), int(hp_y) + 10)
 
             for ptr in [ptr for ptr in self.vel_window if ptr not in seen_targets_this_frame]:
                 del self.vel_window[ptr]
