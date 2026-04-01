@@ -123,7 +123,7 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
     return final_x, final_y, final_z
 
 
-def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect):
+def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_anchor_screen=None):
     if not aim_screen or not leadmark_screen or not target_box_rect:
         return None
 
@@ -131,10 +131,18 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     box_w = max(max_x - min_x, 1.0)
     box_h = max(max_y - min_y, 1.0)
 
-    virtual_min_x = leadmark_screen[0] - (box_w * 0.5)
-    virtual_max_x = leadmark_screen[0] + (box_w * 0.5)
-    virtual_min_y = leadmark_screen[1] - (box_h * 0.5)
-    virtual_max_y = leadmark_screen[1] + (box_h * 0.5)
+    anchor_u = 0.5
+    anchor_v = 0.5
+    if target_anchor_screen:
+        tx, ty = target_anchor_screen
+        if min_x <= tx <= max_x and min_y <= ty <= max_y:
+            anchor_u = (tx - min_x) / box_w
+            anchor_v = (ty - min_y) / box_h
+
+    virtual_min_x = leadmark_screen[0] - (anchor_u * box_w)
+    virtual_max_x = virtual_min_x + box_w
+    virtual_min_y = leadmark_screen[1] - (anchor_v * box_h)
+    virtual_max_y = virtual_min_y + box_h
 
     ax, ay = aim_screen
     if not (virtual_min_x <= ax <= virtual_max_x and virtual_min_y <= ay <= virtual_max_y):
@@ -1317,6 +1325,14 @@ class ESPOverlay(QWidget):
 
                     static_screen = None
                     if (not physics_is_air) and leadmark_in_range and static_ground_final and all(math.isfinite(c) for c in static_ground_final):
+                        target_anchor_screen = world_to_screen(
+                            view_matrix,
+                            t_x,
+                            t_y,
+                            t_z,
+                            self.screen_width,
+                            self.screen_height,
+                        )
                         static_screen = world_to_screen(
                             view_matrix,
                             static_ground_final[0],
@@ -1332,6 +1348,10 @@ class ESPOverlay(QWidget):
                                     (self.center_x, self.center_y),
                                     (spx, spy),
                                     target_box_rect,
+                                    (
+                                        target_anchor_screen[0],
+                                        target_anchor_screen[1],
+                                    ) if target_anchor_screen and target_anchor_screen[2] > 0 else None,
                                 )
                                 if mapped_hitpoint:
                                     hit_points_to_draw.append(mapped_hitpoint)
