@@ -94,10 +94,12 @@ ORIGIN_GHOST_MY_DIST_MIN = 250.0
 # 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
 DEBUG_LOG_INTERVAL = 0.5
 INVALID_RUNTIME_FRAME_LIMIT = 20
-GROUND_AIM_HEIGHT_RATIO = 0.75
+GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
+GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
+GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
 
 
-def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model):
+def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model, zero_pitch):
     if not target_pos or not fire_origin or bullet_speed <= 0.0:
         return None
 
@@ -107,19 +109,16 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
     best_t = max(best_t, 0.01)
     bullet_drop = 0.0
 
-    t_sight = zeroing / bullet_speed if bullet_speed > 0.0 else 0.0
-    sight_drop = 0.5 * BULLET_GRAVITY * (t_sight ** 2)
-
     for _ in range(3):
         dx_imp = t_x - (fire_origin[0] + my_vx * best_t)
         dz_imp = t_z - (fire_origin[2] + my_vz * best_t)
         horizontal_imp = math.hypot(dx_imp, dz_imp)
         if horizontal_imp <= 0.01:
             return None
-        best_t, bullet_drop, _ = _simulate_projectile_range(horizontal_imp, model, 0.0)
+        best_t, bullet_drop, _ = _simulate_projectile_range(horizontal_imp, model, zero_pitch)
 
     final_x = t_x - (my_vx * best_t)
-    final_y = t_y + bullet_drop - sight_drop - (my_vy * best_t)
+    final_y = t_y + bullet_drop - (my_vy * best_t)
     final_z = t_z - (my_vz * best_t)
     return final_x, final_y, final_z
 
@@ -149,7 +148,7 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     )
 
 
-def _get_ground_target_aim_point(box_data, fallback_pos):
+def _get_ground_target_aim_point(box_data, fallback_pos, distance_to_target):
     if not box_data:
         return (fallback_pos[0], fallback_pos[1] + 1.0, fallback_pos[2]) if fallback_pos else None
 
@@ -159,7 +158,12 @@ def _get_ground_target_aim_point(box_data, fallback_pos):
     local_x = (bmin[0] + bmax[0]) * 0.5
     local_z = (bmin[2] + bmax[2]) * 0.5
     local_h = max(bmax[1] - bmin[1], 0.5)
-    local_y = local_h * GROUND_AIM_HEIGHT_RATIO
+    far_t = max(0.0, min(1.0, distance_to_target / max(GROUND_AIM_HEIGHT_RATIO_BLEND_MAX, 1.0)))
+    aim_ratio = (
+        GROUND_AIM_HEIGHT_RATIO_CLOSE +
+        ((GROUND_AIM_HEIGHT_RATIO_FAR - GROUND_AIM_HEIGHT_RATIO_CLOSE) * _smoothstep(0.0, 1.0, far_t))
+    )
+    local_y = local_h * aim_ratio
 
     return (
         pos[0] + (ax[0] * local_x) + (ay[0] * local_y) + (az[0] * local_z),
@@ -577,14 +581,6 @@ class ESPOverlay(QWidget):
         active_flight_data = None 
         active_target_ptr = 0
         
-        if HAS_KEYBOARD:
-            try:
-                is_q_pressed = keyboard.is_pressed('q')
-                if is_q_pressed and not self.q_pressed_last:
-                    self.target_cycle_index += 1
-                self.q_pressed_last = is_q_pressed
-            except: pass
-
         try:
             if not self.scanner.is_alive():
                 self._fatal_shutdown(
@@ -793,7 +789,7 @@ class ESPOverlay(QWidget):
                 my_unit != 0
             )
 
-            # 🎯 เลือกเป้าหมายจากลิสต์ที่มองเห็น โดยให้ Q วนเป้าได้จริง
+            # 🎯 เลือกเป้าหมายจากลิสต์ที่มองเห็น โดยล็อกตัวที่ใกล้ crosshair ที่สุดเสมอ
             visible_targets = []
             for u_ptr, raw_name, reload_val, is_air_target, pos, dist_to_me in valid_targets:
                 res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
@@ -803,8 +799,7 @@ class ESPOverlay(QWidget):
 
             if visible_targets:
                 visible_targets.sort(key=lambda item: item[0])
-                self.target_cycle_index %= len(visible_targets)
-                active_target_ptr = visible_targets[self.target_cycle_index][1]
+                active_target_ptr = visible_targets[0][1]
             else:
                 self.target_cycle_index = 0
 
@@ -1101,7 +1096,7 @@ class ESPOverlay(QWidget):
                             })
                             active_flight_data = {'pos': pos, 'v': vel, 'a': (ax, ay, az)}
                     else:
-                        ground_aim_point = _get_ground_target_aim_point(box_data, pos)
+                        ground_aim_point = _get_ground_target_aim_point(box_data, pos, dist)
                         if not ground_aim_point:
                             continue
                         t_x, t_y, t_z = ground_aim_point
@@ -1263,7 +1258,7 @@ class ESPOverlay(QWidget):
                         out += f"🔫 Bullet     : Spd:{current_bullet_speed:.0f} m/s | CD:{current_bullet_cd:.2f} | Mass:{current_bullet_mass:.2f} | Cal:{current_bullet_caliber:.3f}\n"
                         out += f"📉 Drop       : Bullet: +{gravity_offset:>5.2f} m | Zero: {math.degrees(zero_pitch):>5.2f} deg | VRange:{vel_lo:.0f}-{vel_hi:.0f}\n"
                         out += "================================================================\n"
-                        out += " [Q] Cycle Targets | [Ctrl+C] Exit\n"
+                        out += " [Auto] Closest Target | [Ctrl+C] Exit\n"
 
                         should_refresh_console = (
                             (curr_t - self.last_debug_log_time) >= DEBUG_LOG_INTERVAL
@@ -1287,6 +1282,7 @@ class ESPOverlay(QWidget):
                             current_bullet_speed,
                             current_zeroing,
                             ballistic_model,
+                            zero_pitch,
                         )
 
                     # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
