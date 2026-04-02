@@ -1,0 +1,27 @@
+{
+  "updated_at": "2026-04-02T16:46:48.763709",
+  "pid": 2109,
+  "image_base": 4194304,
+  "weapon_source": "cgame+OFF_WEAPON_PTR",
+  "best_layout_score": 59,
+  "layout": {
+    "layout_name": "layout_old_guess",
+    "base_off": 8280,
+    "speed_off": 8272,
+    "mass_off": 8284,
+    "caliber_off": 8288,
+    "cx_off": 8292,
+    "max_distance_off": 8296,
+    "vel_range_x_off": 8316,
+    "vel_range_y_off": 8320
+  },
+  "best_layout_snapshot": {
+    "speed": 905.0,
+    "mass": 19.0,
+    "caliber": 0.125,
+    "cx": 0.6600000262260437,
+    "maxDistance": 7000.0,
+    "velRange_x": 500.0,
+    "velRange_y": 700.0
+  }
+}

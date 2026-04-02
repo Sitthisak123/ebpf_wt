@@ -3,6 +3,7 @@ import math
 import time
 import struct
 import os
+import json
 import traceback
 
 try:
@@ -107,6 +108,59 @@ UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
 GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
 GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
 GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
+BALLISTIC_STRUCT_BASE_OFF = 0x2058
+BALLISTIC_SPEED_OFF = 0x2050
+BALLISTIC_MASS_OFF = 0x205C
+BALLISTIC_CALIBER_OFF = 0x2060
+BALLISTIC_CX_OFF = 0x2064
+BALLISTIC_MAX_DISTANCE_OFF = 0x2068
+BALLISTIC_VEL_RANGE_X_OFF = 0x207C
+BALLISTIC_VEL_RANGE_Y_OFF = 0x2080
+BALLISTIC_PERSISTENCE_PATH = os.path.join("config", "ballistic_layout_persistence.json")
+
+# Leadmark / ballistic solver tuning
+LEADMARK_RANGE_LIMIT_RATIO = 0.80  # ต่ำลง = ซ่อน leadmark เร็วขึ้นเมื่อเป้าไกลเกิน effective range
+BALLISTIC_MIN_SPEED = 50.0
+BALLISTIC_MAX_SPEED = 3000.0
+BALLISTIC_MIN_MASS = 0.005
+BALLISTIC_MAX_MASS = 200.0
+BALLISTIC_MIN_CALIBER = 0.001
+BALLISTIC_MAX_CALIBER = 0.5
+BALLISTIC_MIN_CX = 0.01
+BALLISTIC_MAX_CX = 3.0
+BALLISTIC_MAX_CX_FOR_DRAG = 1.2
+BALLISTIC_MIN_DISTANCE = 100.0
+BALLISTIC_MAX_DISTANCE = 50000.0
+BALLISTIC_MIN_VEL_RANGE = 0.0
+BALLISTIC_MAX_VEL_RANGE = 4000.0
+BALLISTIC_SUBCALIBER_SPEED_MIN = 1200.0
+BALLISTIC_SUBCALIBER_CALIBER_MAX = 0.04
+BALLISTIC_SUBCALIBER_LIGHT_MASS_MAX = 8.0
+BALLISTIC_SUBCALIBER_WIDE_CALIBER_MAX = 0.05
+BALLISTIC_SUBCALIBER_CX_CLAMP = 20  # APFSDS ต่ำไป -> เพิ่ม, APFSDS สูงไป -> ลด
+BALLISTIC_FAST_ROUND_CX_FALLBACK = 0.24  # ใช้เมื่ออ่าน cx ของกระสุนเร็วไม่ได้น่าเชื่อถือ
+BALLISTIC_FULLCAL_CX_FALLBACK = 0.35  # ใช้เมื่ออ่าน cx ของ HE/AP/HEAT ไม่ได้น่าเชื่อถือ
+DRAG_BAND_DEFAULT = 0.5  # ใช้เมื่อ VRange ใช้ไม่ได้; สูงขึ้น = drag กลางแรงขึ้นเล็กน้อย
+DRAG_FACTOR_BASE = 0.84  # สูงขึ้น = leadmark สูงขึ้น, ต่ำลง = leadmark ต่ำลง
+DRAG_FACTOR_BAND_WEIGHT = 0.18  # สูงขึ้น = ผลของ VRange ต่อ leadmark ชัดขึ้น
+DRAG_FACTOR_TRANSONIC_WEIGHT = 0.12  # จูนเฉพาะแถวความเร็วใกล้เสียง
+DRAG_FACTOR_SUPERSONIC_WEIGHT = -0.06  # ติดลบมากขึ้น = กระสุนเร็วแบนขึ้น/leadmark ต่ำลง
+DRAG_FACTOR_FAST_ROUND_MULT = -4.42  # APFSDS ต่ำไป -> เพิ่ม, APFSDS สูงไป -> ลด; ถ้าเพิ่มแล้วไม่เห็นผล ให้เช็ก DRAG_FACTOR_MAX
+DRAG_FACTOR_MIN = -5
+DRAG_FACTOR_MAX = 5  # clamp สูงสุดของ drag factor; ต่ำเกินไปจะบังผลของ FAST_ROUND_MULT/ค่า drag อื่นๆ
+DRAG_BAND_TRANSONIC_MIN = 0.78
+DRAG_BAND_TRANSONIC_MAX = 1.22
+DRAG_BAND_SUPERSONIC_MIN = 1.15
+DRAG_BAND_SUPERSONIC_MAX = 2.6
+PROJECTILE_SIM_MAX_TIME = 12.0  # เพิ่มถ้าจะรองรับยิงไกลมาก
+PROJECTILE_SIM_MIN_SPEED = 25.0  # ต่ำลง = sim ต่อได้นานขึ้น
+PROJECTILE_SIM_DT_MIN = 0.003  # ลด = ละเอียดขึ้นแต่หนักขึ้น
+PROJECTILE_SIM_DT_MAX = 0.012  # ลด = ละเอียดขึ้น
+PROJECTILE_SIM_DT_SCALE = 4.0  # scale ของ adaptive dt
+ZERO_PITCH_MAX_ITERS = 5  # เพิ่ม = zeroing นิ่งขึ้นแต่ช้าลง
+ZERO_PITCH_GAIN = 0.92  # สูงขึ้น = zeroing เข้าค่าไวขึ้น
+ZERO_PITCH_MIN = -0.08  # clamp ต่ำสุดของ zero pitch
+ZERO_PITCH_MAX = 0.18  # clamp สูงสุดของ zero pitch
 
 #- อยากกดลงทุกระยะอีกหน่อย: เพิ่ม GROUND_HITPOINT_DROP_BASE
 #- อยากให้ระยะไกลลงมากขึ้น: เพิ่ม GROUND_HITPOINT_DROP_EXP
@@ -128,9 +182,68 @@ GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
       - ลดค่า = correction มาแรงตั้งแต่ระยะกลาง
       - เพิ่มค่า = correction ค่อยๆ โต
 """
-GROUND_HITPOINT_DROP_BASE = 0.000
+GROUND_HITPOINT_DROP_BASE = -0.001
 GROUND_HITPOINT_DROP_EXP = 0.480        #ถ้าใกล้ๆ เกือบตรงแล้ว แต่ไกลยังเพี้ยนเล็กน้อย ให้จูนตัวนี้ก่อน`
 GROUND_HITPOINT_DROP_RANGE = 1600.0
+
+
+def _load_ballistic_layout_persistence():
+    global BALLISTIC_STRUCT_BASE_OFF
+    global BALLISTIC_SPEED_OFF
+    global BALLISTIC_MASS_OFF
+    global BALLISTIC_CALIBER_OFF
+    global BALLISTIC_CX_OFF
+    global BALLISTIC_MAX_DISTANCE_OFF
+    global BALLISTIC_VEL_RANGE_X_OFF
+    global BALLISTIC_VEL_RANGE_Y_OFF
+
+    if not os.path.exists(BALLISTIC_PERSISTENCE_PATH):
+        return False
+
+    try:
+        with open(BALLISTIC_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        layout = doc.get("layout") or {}
+        required_keys = (
+            "base_off",
+            "speed_off",
+            "mass_off",
+            "caliber_off",
+            "cx_off",
+            "max_distance_off",
+            "vel_range_x_off",
+            "vel_range_y_off",
+        )
+        if not all(k in layout for k in required_keys):
+            return False
+
+        BALLISTIC_STRUCT_BASE_OFF = int(layout["base_off"])
+        BALLISTIC_SPEED_OFF = int(layout["speed_off"])
+        BALLISTIC_MASS_OFF = int(layout["mass_off"])
+        BALLISTIC_CALIBER_OFF = int(layout["caliber_off"])
+        BALLISTIC_CX_OFF = int(layout["cx_off"])
+        BALLISTIC_MAX_DISTANCE_OFF = int(layout["max_distance_off"])
+        BALLISTIC_VEL_RANGE_X_OFF = int(layout["vel_range_x_off"])
+        BALLISTIC_VEL_RANGE_Y_OFF = int(layout["vel_range_y_off"])
+        print(
+            "[*] Loaded ballistic persistence:"
+            f" layout={layout.get('layout_name', 'unknown')}"
+            f" base={hex(BALLISTIC_STRUCT_BASE_OFF)}"
+            f" speed={hex(BALLISTIC_SPEED_OFF)}"
+            f" mass={hex(BALLISTIC_MASS_OFF)}"
+            f" cal={hex(BALLISTIC_CALIBER_OFF)}"
+            f" cx={hex(BALLISTIC_CX_OFF)}"
+            f" maxDist={hex(BALLISTIC_MAX_DISTANCE_OFF)}"
+            f" vrX={hex(BALLISTIC_VEL_RANGE_X_OFF)}"
+            f" vrY={hex(BALLISTIC_VEL_RANGE_Y_OFF)}"
+        )
+        return True
+    except Exception as e:
+        print(f"[*] Ballistic persistence load failed: {e}")
+        return False
+
+
+_load_ballistic_layout_persistence()
 
 UNIT_FAMILY_UNKNOWN = 0
 UNIT_FAMILY_AIR_FIGHTER = 1
@@ -539,6 +652,83 @@ def _read_f32_fast(scanner, addr, default=0.0):
         return default
 
 
+def _is_subcaliber_ballistic(speed, caliber, mass=0.0):
+    if speed < BALLISTIC_SUBCALIBER_SPEED_MIN:
+        return False
+    if BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_SUBCALIBER_CALIBER_MAX:
+        return True
+    if BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_SUBCALIBER_WIDE_CALIBER_MAX and BALLISTIC_MIN_MASS <= mass <= BALLISTIC_SUBCALIBER_LIGHT_MASS_MAX:
+        return True
+    return False
+
+
+def _plausible_ballistic_struct(scanner, base_addr, ref_cx=0.0):
+    mass = _read_f32_fast(scanner, base_addr + 0x04, 0.0)
+    caliber = _read_f32_fast(scanner, base_addr + 0x08, 0.0)
+    cx = _read_f32_fast(scanner, base_addr + 0x0C, 0.0)
+    max_distance = _read_f32_fast(scanner, base_addr + 0x10, 0.0)
+    vel_min = _read_f32_fast(scanner, base_addr + 0x24, 0.0)
+    vel_max = _read_f32_fast(scanner, base_addr + 0x28, 0.0)
+
+    score = 0
+    if 0.005 <= mass <= 200.0:
+        score += 3
+    if 0.001 <= caliber <= 0.5:
+        score += 3
+    if 0.01 <= cx <= 3.0:
+        score += 3
+    if 100.0 <= max_distance <= 50000.0:
+        score += 2
+    if 10.0 <= vel_min <= 4000.0:
+        score += 1
+    if vel_min <= vel_max <= 4000.0 and vel_max > 10.0:
+        score += 1
+    if 0.01 <= ref_cx <= 3.0 and 0.01 <= cx <= 3.0 and abs(cx - ref_cx) <= 0.05:
+        score += 2
+
+    return score, {
+        "mass": mass,
+        "caliber": caliber,
+        "cx": cx,
+        "max_distance": max_distance,
+        "vel_range": (vel_min, vel_max),
+    }
+
+
+def _scan_ballistic_profile(scanner, weapon_ptr, fallback_cx=0.0):
+    speed = 0.0
+    best_speed_delta = None
+    for off in range(0x2030, 0x2071, 4):
+        value = _read_f32_fast(scanner, weapon_ptr + off, 0.0)
+        if not (50.0 <= value <= 3000.0):
+            continue
+        delta = abs(off - OFF_BULLET_SPEED)
+        if best_speed_delta is None or delta < best_speed_delta:
+            best_speed_delta = delta
+            speed = value
+
+    best_score = -1
+    best_candidate = None
+    for off in range(0x2040, 0x20A1, 4):
+        score, candidate = _plausible_ballistic_struct(scanner, weapon_ptr + off, fallback_cx)
+        if score > best_score:
+            best_score = score
+            best_candidate = candidate
+
+    if best_candidate is None or best_score < 6:
+        return {
+            "speed": speed if 50.0 <= speed <= 3000.0 else 0.0,
+            "mass": 0.0,
+            "caliber": 0.0,
+            "cx": fallback_cx if 0.01 <= fallback_cx <= 3.0 else 0.0,
+            "max_distance": 0.0,
+            "vel_range": (0.0, 0.0),
+        }
+
+    best_candidate["speed"] = speed if 50.0 <= speed <= 3000.0 else 0.0
+    return best_candidate
+
+
 def _smoothstep(edge0, edge1, x):
     if edge1 <= edge0:
         return 1.0 if x >= edge0 else 0.0
@@ -560,32 +750,76 @@ def _read_ballistic_profile(scanner, cgame_base):
         "cx": 0.0,
         "max_distance": 0.0,
         "vel_range": (0.0, 0.0),
+        "drag_valid": False,
     }
     weapon_ptr = _read_ptr_fast(scanner, cgame_base + OFF_WEAPON_PTR)
     if not is_valid_ptr(weapon_ptr):
         return profile
 
-    props_base = weapon_ptr + (OFF_BULLET_MASS - 4)
-    speed = _read_f32_fast(scanner, weapon_ptr + OFF_BULLET_SPEED, 1000.0)
-    mass = _read_f32_fast(scanner, weapon_ptr + OFF_BULLET_MASS, 0.0)
-    caliber = _read_f32_fast(scanner, weapon_ptr + OFF_BULLET_CALIBER, 0.0)
-    cx = _read_f32_fast(scanner, weapon_ptr + OFF_BULLET_CD, 0.0)
-    max_distance = _read_f32_fast(scanner, props_base + 0x10, 0.0)
-    vel_min = _read_f32_fast(scanner, props_base + 0x24, 0.0)
-    vel_max = _read_f32_fast(scanner, props_base + 0x28, 0.0)
+    props_base = weapon_ptr + BALLISTIC_STRUCT_BASE_OFF
+    speed = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_SPEED_OFF, 1000.0)
+    mass = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_MASS_OFF, 0.0)
+    caliber = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_CALIBER_OFF, 0.0)
+    cx = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_CX_OFF, 0.0)
+    max_distance = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_MAX_DISTANCE_OFF, 0.0)
+    vel_min = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_VEL_RANGE_X_OFF, 0.0)
+    vel_max = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_VEL_RANGE_Y_OFF, 0.0)
+    props_speed = _read_f32_fast(scanner, props_base + 0x00, 0.0)
+    props_mass = _read_f32_fast(scanner, props_base + 0x04, 0.0)
+    props_caliber = _read_f32_fast(scanner, props_base + 0x08, 0.0)
+    props_cx = _read_f32_fast(scanner, props_base + 0x0C, 0.0)
+    props_max_distance = _read_f32_fast(scanner, props_base + 0x10, 0.0)
 
-    if not (50.0 <= speed <= 3000.0):
+    if 50.0 <= props_speed <= 3000.0 and abs(props_speed - speed) > 1.0:
+        speed = props_speed
+    if 0.005 <= props_mass <= 200.0 and not (0.005 <= mass <= 200.0):
+        mass = props_mass
+    if 0.001 <= props_caliber <= 0.5 and not (0.001 <= caliber <= 0.5):
+        caliber = props_caliber
+    if 0.01 <= props_cx <= 3.0 and not (0.01 <= cx <= 3.0):
+        cx = props_cx
+    if 100.0 <= props_max_distance <= 50000.0 and not (100.0 <= max_distance <= 50000.0):
+        max_distance = props_max_distance
+
+    needs_scan = (
+        not (BALLISTIC_MIN_SPEED <= speed <= BALLISTIC_MAX_SPEED) or
+        not (BALLISTIC_MIN_MASS <= mass <= BALLISTIC_MAX_MASS) or
+        not (BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_MAX_CALIBER) or
+        not (BALLISTIC_MIN_DISTANCE <= max_distance <= BALLISTIC_MAX_DISTANCE)
+    )
+    if needs_scan:
+        scanned = _scan_ballistic_profile(scanner, weapon_ptr, cx)
+        if not (BALLISTIC_MIN_SPEED <= speed <= BALLISTIC_MAX_SPEED) and BALLISTIC_MIN_SPEED <= scanned["speed"] <= BALLISTIC_MAX_SPEED:
+            speed = scanned["speed"]
+        if not (BALLISTIC_MIN_MASS <= mass <= BALLISTIC_MAX_MASS) and BALLISTIC_MIN_MASS <= scanned["mass"] <= BALLISTIC_MAX_MASS:
+            mass = scanned["mass"]
+        if not (BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_MAX_CALIBER) and BALLISTIC_MIN_CALIBER <= scanned["caliber"] <= BALLISTIC_MAX_CALIBER:
+            caliber = scanned["caliber"]
+        if not (BALLISTIC_MIN_CX <= cx <= BALLISTIC_MAX_CX) and BALLISTIC_MIN_CX <= scanned["cx"] <= BALLISTIC_MAX_CX:
+            cx = scanned["cx"]
+        if not (BALLISTIC_MIN_DISTANCE <= max_distance <= BALLISTIC_MAX_DISTANCE) and BALLISTIC_MIN_DISTANCE <= scanned["max_distance"] <= BALLISTIC_MAX_DISTANCE:
+            max_distance = scanned["max_distance"]
+        scan_vel_min, scan_vel_max = scanned["vel_range"]
+        if not (BALLISTIC_MIN_VEL_RANGE <= vel_min <= BALLISTIC_MAX_VEL_RANGE) and BALLISTIC_MIN_VEL_RANGE <= scan_vel_min <= BALLISTIC_MAX_VEL_RANGE:
+            vel_min = scan_vel_min
+        if not (vel_min <= vel_max <= BALLISTIC_MAX_VEL_RANGE) and BALLISTIC_MIN_VEL_RANGE <= scan_vel_max <= BALLISTIC_MAX_VEL_RANGE:
+            vel_max = scan_vel_max
+
+    if not (BALLISTIC_MIN_SPEED <= speed <= BALLISTIC_MAX_SPEED):
         speed = 1000.0
-    if not (0.005 <= mass <= 200.0):
+    if not (BALLISTIC_MIN_MASS <= mass <= BALLISTIC_MAX_MASS):
         mass = 0.0
-    if not (0.001 <= caliber <= 0.5):
+    if not (BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_MAX_CALIBER):
         caliber = 0.0
-    if not (0.01 <= cx <= 3.0):
+    if not (BALLISTIC_MIN_CX <= cx <= BALLISTIC_MAX_CX):
         cx = 0.0
-    if vel_min < 0.0 or vel_min > 4000.0:
+    if vel_min < BALLISTIC_MIN_VEL_RANGE or vel_min > BALLISTIC_MAX_VEL_RANGE:
         vel_min = 0.0
-    if vel_max < vel_min or vel_max > 4000.0:
+    if vel_max < vel_min or vel_max > BALLISTIC_MAX_VEL_RANGE:
         vel_max = max(vel_min, 0.0)
+    if vel_max <= vel_min:
+        vel_min = 0.0
+        vel_max = 0.0
 
     profile.update({
         "weapon_ptr": weapon_ptr,
@@ -595,36 +829,50 @@ def _read_ballistic_profile(scanner, cgame_base):
         "cx": cx,
         "max_distance": max_distance,
         "vel_range": (vel_min, vel_max),
+        "drag_valid": (
+            BALLISTIC_MIN_CX <= cx <= BALLISTIC_MAX_CX_FOR_DRAG and
+            BALLISTIC_MIN_MASS <= mass <= BALLISTIC_MAX_MASS and
+            BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_MAX_CALIBER
+        ),
     })
     return profile
 
 
 def _make_ballistic_model(profile, altitude):
     speed = max(profile.get("speed", 1000.0), 1.0)
-    mass = max(profile.get("mass", 0.0), 0.001)
+    drag_valid = bool(profile.get("drag_valid", False))
+    raw_mass = profile.get("mass", 0.0)
+    raw_caliber = profile.get("caliber", 0.0)
+    mass = max(raw_mass, 0.001)
     caliber = max(profile.get("caliber", 0.0), 0.001)
+    is_subcaliber = _is_subcaliber_ballistic(speed, caliber, raw_mass)
     cx = profile.get("cx", 0.0)
     if cx <= 0.0:
-        cx = 0.24 if speed >= 1200.0 else 0.35
+        cx = BALLISTIC_SUBCALIBER_CX_CLAMP if is_subcaliber else (BALLISTIC_FAST_ROUND_CX_FALLBACK if speed >= BALLISTIC_SUBCALIBER_SPEED_MIN else BALLISTIC_FULLCAL_CX_FALLBACK)
+    elif cx > BALLISTIC_MAX_CX_FOR_DRAG:
+        # Builds with partially wrong props can expose explosive/splinter fields as drag.
+        cx = BALLISTIC_SUBCALIBER_CX_CLAMP if is_subcaliber else (BALLISTIC_FAST_ROUND_CX_FALLBACK if speed >= BALLISTIC_SUBCALIBER_SPEED_MIN else BALLISTIC_FULLCAL_CX_FALLBACK)
+    elif is_subcaliber:
+        # APFSDS-like rounds need a much lighter effective drag curve than full-caliber shells.
+        cx = min(cx, BALLISTIC_SUBCALIBER_CX_CLAMP)
 
     rho = _air_density_from_altitude(altitude)
     area = math.pi * ((caliber * 0.5) ** 2)
-    base_k = (0.5 * rho * cx * area) / mass
+    base_k = (0.5 * rho * cx * area) / mass if drag_valid else 0.0
     vel_lo, vel_hi = profile.get("vel_range", (0.0, 0.0))
-    if vel_hi <= vel_lo:
-        vel_lo = speed * 0.34
-        vel_hi = speed * 0.48
 
     return {
         "speed": speed,
-        "mass": mass,
-        "caliber": caliber,
+        "mass": raw_mass,
+        "caliber": raw_caliber,
         "cx": cx,
         "rho": rho,
-        "base_k": max(base_k, 1e-7),
+        "base_k": max(base_k, 0.0),
         "vel_lo": max(0.0, vel_lo),
         "vel_hi": max(max(vel_lo, vel_hi), vel_lo + 1.0),
         "max_distance": max(profile.get("max_distance", 0.0), 0.0),
+        "drag_valid": drag_valid,
+        "is_subcaliber": is_subcaliber,
     }
 
 
@@ -632,20 +880,28 @@ def _get_leadmark_range_limit(profile):
     max_distance = max(profile.get("max_distance", 0.0), 0.0)
     if max_distance <= 1.0:
         return 0.0
-    return max_distance * 0.8
+    return max_distance * LEADMARK_RANGE_LIMIT_RATIO
 
 
 def _drag_band_factor(model, speed):
     vel_lo = model["vel_lo"]
     vel_hi = model["vel_hi"]
-    band = _smoothstep(vel_lo, vel_hi, speed)
+    if vel_hi <= vel_lo or vel_hi <= 0.0:
+        band = DRAG_BAND_DEFAULT
+    else:
+        band = _smoothstep(vel_lo, vel_hi, speed)
     mach = speed / 343.0
-    transonic = _smoothstep(0.78, 1.22, mach)
-    supersonic = _smoothstep(1.15, 2.6, mach)
-    factor = 0.84 + (0.18 * band) + (0.12 * transonic) - (0.06 * supersonic)
-    if model["speed"] >= 1200.0:
-        factor *= 0.92
-    return max(0.55, min(1.18, factor))
+    transonic = _smoothstep(DRAG_BAND_TRANSONIC_MIN, DRAG_BAND_TRANSONIC_MAX, mach)
+    supersonic = _smoothstep(DRAG_BAND_SUPERSONIC_MIN, DRAG_BAND_SUPERSONIC_MAX, mach)
+    factor = (
+        DRAG_FACTOR_BASE +
+        (DRAG_FACTOR_BAND_WEIGHT * band) +
+        (DRAG_FACTOR_TRANSONIC_WEIGHT * transonic) +
+        (DRAG_FACTOR_SUPERSONIC_WEIGHT * supersonic)
+    )
+    if model["speed"] >= BALLISTIC_SUBCALIBER_SPEED_MIN:
+        factor *= DRAG_FACTOR_FAST_ROUND_MULT
+    return max(DRAG_FACTOR_MIN, min(DRAG_FACTOR_MAX, factor))
 
 
 def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
@@ -662,12 +918,12 @@ def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
     prev_t = 0.0
     prev_speed = model["speed"]
 
-    while x < horizontal_range and t < 12.0:
+    while x < horizontal_range and t < PROJECTILE_SIM_MAX_TIME:
         speed_mag = math.hypot(vx, vy)
-        if speed_mag < 25.0:
+        if speed_mag < PROJECTILE_SIM_MIN_SPEED:
             break
 
-        dt = max(0.003, min(0.012, 4.0 / (speed_mag + 1.0)))
+        dt = max(PROJECTILE_SIM_DT_MIN, min(PROJECTILE_SIM_DT_MAX, PROJECTILE_SIM_DT_SCALE / (speed_mag + 1.0)))
         drag_scale = model["base_k"] * _drag_band_factor(model, speed_mag)
         ax = -drag_scale * speed_mag * vx
         ay = (drag_scale * speed_mag * -vy) + BULLET_GRAVITY
@@ -699,10 +955,10 @@ def _solve_zero_pitch(zeroing_distance, model):
         return 0.0
 
     pitch = 0.0
-    for _ in range(5):
+    for _ in range(ZERO_PITCH_MAX_ITERS):
         _, y_down, _ = _simulate_projectile_range(zeroing_distance, model, pitch)
-        pitch += math.atan2(y_down, max(zeroing_distance, 1.0)) * 0.92
-    return max(-0.08, min(0.18, pitch))
+        pitch += math.atan2(y_down, max(zeroing_distance, 1.0)) * ZERO_PITCH_GAIN
+    return max(ZERO_PITCH_MIN, min(ZERO_PITCH_MAX, pitch))
 
 
 class ESPOverlay(QWidget):
@@ -850,6 +1106,9 @@ class ESPOverlay(QWidget):
             if raw_mag <= idle_speed and (pos_vel is None or pos_mag <= idle_speed):
                 chosen_vel = (0.0, 0.0, 0.0)
                 source = "ground_idle"
+            else:
+                # Ground lead solver should not react to suspension / axis-layout noise as vertical motion.
+                chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
             chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
 
         self.velocity_cache[u_ptr] = {

@@ -356,10 +356,11 @@ VELOCITY_PROFILES = {
             "vel_off": 0x54,
             "fmt": "fff",
             "max_speed": 200.0,
+            "shuffle": (0, 2, 1),
         },
         "fallbacks": [
-            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x40, "fmt": "fff", "max_speed": 200.0},
-            {"label": "GROUND_ALT2", "mov_off": lambda: OFF_GROUND_MOVEMENT, "vel_off": 0x68, "fmt": "ddd", "max_speed": 200.0},
+            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x40, "fmt": "fff", "max_speed": 200.0, "shuffle": (0, 2, 1)},
+            {"label": "GROUND_ALT2", "mov_off": lambda: OFF_GROUND_MOVEMENT, "vel_off": 0x68, "fmt": "ddd", "max_speed": 200.0, "shuffle": (0, 2, 1)},
         ],
     },
 }
