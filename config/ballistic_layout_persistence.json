@@ -1,9 +1,9 @@
 {
-  "updated_at": "2026-04-02T16:46:48.763709",
-  "pid": 2109,
+  "updated_at": "2026-04-02T21:39:09.448281",
+  "pid": 25893,
   "image_base": 4194304,
   "weapon_source": "cgame+OFF_WEAPON_PTR",
-  "best_layout_score": 59,
+  "best_layout_score": 61,
   "layout": {
     "layout_name": "layout_old_guess",
     "base_off": 8280,
@@ -16,11 +16,11 @@
     "vel_range_y_off": 8320
   },
   "best_layout_snapshot": {
-    "speed": 905.0,
-    "mass": 19.0,
-    "caliber": 0.125,
-    "cx": 0.6600000262260437,
-    "maxDistance": 7000.0,
+    "speed": 1700.0,
+    "mass": 4.849999904632568,
+    "caliber": 0.03200000151991844,
+    "cx": 0.5067999958992004,
+    "maxDistance": 10000.0,
     "velRange_x": 500.0,
     "velRange_y": 700.0
   }

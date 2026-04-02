@@ -45,6 +45,9 @@ COLOR_AXIS_X            = (255, 64, 64, 255)
 COLOR_AXIS_Y            = (64, 255, 64, 255)
 COLOR_AXIS_Z            = (64, 160, 255, 255)
 COLOR_BOX_HITPOINT      = (255, 40, 40, 230)
+COLOR_DEBUG_MUZZLE_RAY  = (80, 255, 120, 220)
+COLOR_DEBUG_BOX_ENTRY   = (255, 120, 40, 235)
+COLOR_CALIBRATION_HIT   = (64, 255, 255, 245)
 COLOR_CLASS_ICON_GROUND = (255, 215, 96, 235)
 COLOR_CLASS_ICON_AIR    = (120, 220, 255, 235)
 
@@ -105,6 +108,13 @@ DRAW_CLASS_ICON_DEBUG_TEXT = False
 CLASS_ICON_DEBUG_TEXT_GAP = 12
 DRAW_UNIT_FAMILY_OVERLAY_DEBUG = False
 UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
+DEBUG_DRAW_MUZZLE_RAY = False
+DEBUG_DRAW_BOX_ENTRY_HIT = False
+DEBUG_DRAW_CALIBRATION_HIT = False
+DRAW_BASE_HITPOINT = False
+CALIBRATION_STEP_PIXELS = 0.1
+CALIBRATION_STEP_FAST_PIXELS = 0.2
+CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
 GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
 GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
@@ -117,6 +127,11 @@ BALLISTIC_MAX_DISTANCE_OFF = 0x2068
 BALLISTIC_VEL_RANGE_X_OFF = 0x207C
 BALLISTIC_VEL_RANGE_Y_OFF = 0x2080
 BALLISTIC_PERSISTENCE_PATH = os.path.join("config", "ballistic_layout_persistence.json")
+GUN_BULLET_LIST_PTR_OFF = 0x358
+GUN_BULLET_LIST_COUNT_OFF = 0xA0
+GUN_BULLET_SLOT_BASE_OFF = 0xA8
+GUN_BULLET_SLOT_STRIDE = 0xA0
+GUN_CURRENT_BULLET_TYPE_OFF = 0x584
 
 # Leadmark / ballistic solver tuning
 LEADMARK_RANGE_LIMIT_RATIO = 0.80  # ต่ำลง = ซ่อน leadmark เร็วขึ้นเมื่อเป้าไกลเกิน effective range
@@ -137,17 +152,33 @@ BALLISTIC_SUBCALIBER_SPEED_MIN = 1200.0
 BALLISTIC_SUBCALIBER_CALIBER_MAX = 0.04
 BALLISTIC_SUBCALIBER_LIGHT_MASS_MAX = 8.0
 BALLISTIC_SUBCALIBER_WIDE_CALIBER_MAX = 0.05
-BALLISTIC_SUBCALIBER_CX_CLAMP = 20  # APFSDS ต่ำไป -> เพิ่ม, APFSDS สูงไป -> ลด
+BALLISTIC_SUBCALIBER_CX_CLAMP = 0.20  # APFSDS ต่ำไป -> เพิ่ม, APFSDS สูงไป -> ลด
 BALLISTIC_FAST_ROUND_CX_FALLBACK = 0.24  # ใช้เมื่ออ่าน cx ของกระสุนเร็วไม่ได้น่าเชื่อถือ
 BALLISTIC_FULLCAL_CX_FALLBACK = 0.35  # ใช้เมื่ออ่าน cx ของ HE/AP/HEAT ไม่ได้น่าเชื่อถือ
+BALLISTIC_MODEL0_USE_DIRECT_DRAG_K = True  # model_0_direct ใน build ล่าสุดควรใช้ drag_k จาก memread-derived seed เป็นหลัก
+BALLISTIC_MODEL0_DIRECT_FACTOR = 1.0  # factor สำหรับ model_0_direct; 1.0 = ใช้ drag_k ตรงโดยไม่ผ่าน VRange shaping
+BALLISTIC_MODEL0_SUBCAL_SPEED_REF = 1500.0  # speed อ้างอิงของ APFSDS ที่ match ใกล้เคียงอยู่แล้ว
+BALLISTIC_MODEL0_SUBCAL_SPEED_GAIN = 0.0118  # กระสุนเร็วกว่า ref จะได้ effective drag เพิ่มขึ้นเล็กน้อย
+BALLISTIC_MODEL0_SUBCAL_CALIBER_REF = 0.016  # caliber อ้างอิงของ 2S38 APFSDS
+BALLISTIC_MODEL0_SUBCAL_CALIBER_GAIN = 102.0  # นัด subcaliber ที่ใหญ่กว่า ref จะได้ effective drag เพิ่ม
+BALLISTIC_MODEL0_SUBCAL_MIN = 1.0  # baseline ของ model_0_direct subcaliber
+BALLISTIC_MODEL0_SUBCAL_MAX = 20.60  # clamp กัน heuristic โตเกินจริง
+HITPOINT_DYNAMIC_Y_CORRECTION_ENABLE = True  # ใช้ correction ที่ fit จาก calibration samples
+HITPOINT_DYNAMIC_Y_C0 = 3.9466988621714605
+HITPOINT_DYNAMIC_Y_C1_DISTANCE_KM = 0.9904876542040268
+HITPOINT_DYNAMIC_Y_C2_SPEED_DELTA100 = -1.115741131934388
+HITPOINT_DYNAMIC_Y_C3_DISTANCE_SPEED = 2.703058755910346
+HITPOINT_DYNAMIC_Y_C4_CALIBER_DELTA_MM = 0.1640374544497992
+HITPOINT_DYNAMIC_Y_MIN = 0.0
+HITPOINT_DYNAMIC_Y_MAX = 20.0
 DRAG_BAND_DEFAULT = 0.5  # ใช้เมื่อ VRange ใช้ไม่ได้; สูงขึ้น = drag กลางแรงขึ้นเล็กน้อย
 DRAG_FACTOR_BASE = 0.84  # สูงขึ้น = leadmark สูงขึ้น, ต่ำลง = leadmark ต่ำลง
 DRAG_FACTOR_BAND_WEIGHT = 0.18  # สูงขึ้น = ผลของ VRange ต่อ leadmark ชัดขึ้น
 DRAG_FACTOR_TRANSONIC_WEIGHT = 0.12  # จูนเฉพาะแถวความเร็วใกล้เสียง
 DRAG_FACTOR_SUPERSONIC_WEIGHT = -0.06  # ติดลบมากขึ้น = กระสุนเร็วแบนขึ้น/leadmark ต่ำลง
-DRAG_FACTOR_FAST_ROUND_MULT = -4.42  # APFSDS ต่ำไป -> เพิ่ม, APFSDS สูงไป -> ลด; ถ้าเพิ่มแล้วไม่เห็นผล ให้เช็ก DRAG_FACTOR_MAX
-DRAG_FACTOR_MIN = -5
-DRAG_FACTOR_MAX = 5  # clamp สูงสุดของ drag factor; ต่ำเกินไปจะบังผลของ FAST_ROUND_MULT/ค่า drag อื่นๆ
+DRAG_FACTOR_FAST_ROUND_MULT = 0.92  # APFSDS ต่ำไป -> เพิ่ม, APFSDS สูงไป -> ลด; ถ้าเพิ่มแล้วไม่เห็นผล ให้เช็ก DRAG_FACTOR_MAX
+DRAG_FACTOR_MIN = 0.55
+DRAG_FACTOR_MAX = 1.18  # clamp สูงสุดของ drag factor; ต่ำเกินไปจะบังผลของ FAST_ROUND_MULT/ค่า drag อื่นๆ
 DRAG_BAND_TRANSONIC_MIN = 0.78
 DRAG_BAND_TRANSONIC_MAX = 1.22
 DRAG_BAND_SUPERSONIC_MIN = 1.15
@@ -319,6 +350,32 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
         min_x + (u * box_w),
         min_y + (v * box_h),
     )
+
+
+def _apply_dynamic_hitpoint_y_correction(hitpoint, profile, distance_to_target):
+    if not HITPOINT_DYNAMIC_Y_CORRECTION_ENABLE or not hitpoint:
+        return hitpoint
+    model_enum = int(profile.get("model_enum", 0) or 0)
+    speed = float(profile.get("speed", 0.0) or 0.0)
+    caliber = float(profile.get("caliber", 0.0) or 0.0)
+    mass = float(profile.get("mass", 0.0) or 0.0)
+    if model_enum not in (0, 4):
+        return hitpoint
+    if not _is_subcaliber_ballistic(speed, caliber, mass):
+        return hitpoint
+
+    distance_km = max(0.0, float(distance_to_target or 0.0) / 1000.0)
+    speed_delta100 = max(0.0, speed - 1500.0) / 100.0
+    caliber_delta_mm = max(0.0, caliber - 0.016) / 0.001
+    y_up = (
+        HITPOINT_DYNAMIC_Y_C0 +
+        (HITPOINT_DYNAMIC_Y_C1_DISTANCE_KM * distance_km) +
+        (HITPOINT_DYNAMIC_Y_C2_SPEED_DELTA100 * speed_delta100) +
+        (HITPOINT_DYNAMIC_Y_C3_DISTANCE_SPEED * distance_km * speed_delta100) +
+        (HITPOINT_DYNAMIC_Y_C4_CALIBER_DELTA_MM * caliber_delta_mm)
+    )
+    y_up = max(HITPOINT_DYNAMIC_Y_MIN, min(HITPOINT_DYNAMIC_Y_MAX, y_up))
+    return (hitpoint[0], hitpoint[1] - y_up)
 
 
 def _get_ground_target_aim_point(box_data, fallback_pos, distance_to_target):
@@ -652,6 +709,16 @@ def _read_f32_fast(scanner, addr, default=0.0):
         return default
 
 
+def _read_u32_fast(scanner, addr, default=0):
+    try:
+        raw = scanner.read_mem(addr, 4)
+        if not raw or len(raw) < 4:
+            return default
+        return struct.unpack("<I", raw)[0]
+    except Exception:
+        return default
+
+
 def _is_subcaliber_ballistic(speed, caliber, mass=0.0):
     if speed < BALLISTIC_SUBCALIBER_SPEED_MIN:
         return False
@@ -729,6 +796,66 @@ def _scan_ballistic_profile(scanner, weapon_ptr, fallback_cx=0.0):
     return best_candidate
 
 
+def _read_current_bullet_type_index(scanner, weapon_ptr):
+    if not is_valid_ptr(weapon_ptr):
+        return -1
+    raw = scanner.read_mem(weapon_ptr + GUN_CURRENT_BULLET_TYPE_OFF, 1)
+    if not raw:
+        return -1
+    return raw[0]
+
+
+def _read_slot_vel_range(scanner, weapon_ptr, bullet_type_idx, speed_hint=0.0):
+    if not is_valid_ptr(weapon_ptr) or bullet_type_idx < 0:
+        return (0.0, 0.0, 0)
+
+    bullet_list_ptr = _read_ptr_fast(scanner, weapon_ptr + GUN_BULLET_LIST_PTR_OFF)
+    if not is_valid_ptr(bullet_list_ptr):
+        return (0.0, 0.0, 0)
+
+    bullet_type_count = _read_u32_fast(scanner, bullet_list_ptr + GUN_BULLET_LIST_COUNT_OFF, 0)
+    if bullet_type_count <= 0 or bullet_type_count > 64 or bullet_type_idx >= bullet_type_count:
+        return (0.0, 0.0, 0)
+
+    slot_base = bullet_list_ptr + GUN_BULLET_SLOT_BASE_OFF + (bullet_type_idx * GUN_BULLET_SLOT_STRIDE)
+    best_score = -1
+    best_pair = (0.0, 0.0, 0)
+
+    for off in range(0, GUN_BULLET_SLOT_STRIDE - 7, 4):
+        lo = _read_f32_fast(scanner, slot_base + off, 0.0)
+        hi = _read_f32_fast(scanner, slot_base + off + 4, 0.0)
+        if not (BALLISTIC_MIN_VEL_RANGE <= lo <= BALLISTIC_MAX_VEL_RANGE):
+            continue
+        if not (lo <= hi <= BALLISTIC_MAX_VEL_RANGE):
+            continue
+        if hi <= 0.0:
+            continue
+
+        score = 0
+        if hi > lo:
+            score += 2
+        spread = hi - lo
+        if 20.0 <= spread <= 2500.0:
+            score += 1
+        if speed_hint > 0.0:
+            if 0.10 * speed_hint <= lo <= 1.05 * speed_hint:
+                score += 1
+            if 0.20 * speed_hint <= hi <= 1.05 * speed_hint:
+                score += 2
+            if lo <= speed_hint <= hi:
+                score += 1
+        if off == 0x24:
+            score += 3
+
+        if score > best_score:
+            best_score = score
+            best_pair = (lo, hi, slot_base + off)
+
+    if best_score < 3:
+        return (0.0, 0.0, 0)
+    return best_pair
+
+
 def _smoothstep(edge0, edge1, x):
     if edge1 <= edge0:
         return 1.0 if x >= edge0 else 0.0
@@ -744,12 +871,15 @@ def _air_density_from_altitude(altitude):
 def _read_ballistic_profile(scanner, cgame_base):
     profile = {
         "weapon_ptr": 0,
+        "bullet_type_idx": -1,
+        "model_enum": 0,
         "speed": 1000.0,
         "mass": 0.0,
         "caliber": 0.0,
         "cx": 0.0,
         "max_distance": 0.0,
         "vel_range": (0.0, 0.0),
+        "vel_range_addr": 0,
         "drag_valid": False,
     }
     weapon_ptr = _read_ptr_fast(scanner, cgame_base + OFF_WEAPON_PTR)
@@ -757,6 +887,7 @@ def _read_ballistic_profile(scanner, cgame_base):
         return profile
 
     props_base = weapon_ptr + BALLISTIC_STRUCT_BASE_OFF
+    model_enum = _read_u32_fast(scanner, props_base + 0x00, 0)
     speed = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_SPEED_OFF, 1000.0)
     mass = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_MASS_OFF, 0.0)
     caliber = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_CALIBER_OFF, 0.0)
@@ -764,14 +895,11 @@ def _read_ballistic_profile(scanner, cgame_base):
     max_distance = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_MAX_DISTANCE_OFF, 0.0)
     vel_min = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_VEL_RANGE_X_OFF, 0.0)
     vel_max = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_VEL_RANGE_Y_OFF, 0.0)
-    props_speed = _read_f32_fast(scanner, props_base + 0x00, 0.0)
     props_mass = _read_f32_fast(scanner, props_base + 0x04, 0.0)
     props_caliber = _read_f32_fast(scanner, props_base + 0x08, 0.0)
     props_cx = _read_f32_fast(scanner, props_base + 0x0C, 0.0)
     props_max_distance = _read_f32_fast(scanner, props_base + 0x10, 0.0)
-
-    if 50.0 <= props_speed <= 3000.0 and abs(props_speed - speed) > 1.0:
-        speed = props_speed
+    bullet_type_idx = _read_current_bullet_type_index(scanner, weapon_ptr)
     if 0.005 <= props_mass <= 200.0 and not (0.005 <= mass <= 200.0):
         mass = props_mass
     if 0.001 <= props_caliber <= 0.5 and not (0.001 <= caliber <= 0.5):
@@ -780,6 +908,19 @@ def _read_ballistic_profile(scanner, cgame_base):
         cx = props_cx
     if 100.0 <= props_max_distance <= 50000.0 and not (100.0 <= max_distance <= 50000.0):
         max_distance = props_max_distance
+
+    slot_vel_min, slot_vel_max, slot_vel_addr = _read_slot_vel_range(scanner, weapon_ptr, bullet_type_idx, speed)
+    generic_mem_vel = (
+        abs(vel_min - 500.0) <= 0.5 and
+        abs(vel_max - 700.0) <= 0.5
+    )
+    slot_vel_valid = (
+        BALLISTIC_MIN_VEL_RANGE <= slot_vel_min <= BALLISTIC_MAX_VEL_RANGE and
+        slot_vel_min <= slot_vel_max <= BALLISTIC_MAX_VEL_RANGE and
+        slot_vel_max > slot_vel_min
+    )
+    if slot_vel_valid and (generic_mem_vel or vel_max <= vel_min):
+        vel_min, vel_max = slot_vel_min, slot_vel_max
 
     needs_scan = (
         not (BALLISTIC_MIN_SPEED <= speed <= BALLISTIC_MAX_SPEED) or
@@ -823,12 +964,15 @@ def _read_ballistic_profile(scanner, cgame_base):
 
     profile.update({
         "weapon_ptr": weapon_ptr,
+        "bullet_type_idx": bullet_type_idx,
+        "model_enum": model_enum,
         "speed": speed,
         "mass": mass,
         "caliber": caliber,
         "cx": cx,
         "max_distance": max_distance,
         "vel_range": (vel_min, vel_max),
+        "vel_range_addr": slot_vel_addr,
         "drag_valid": (
             BALLISTIC_MIN_CX <= cx <= BALLISTIC_MAX_CX_FOR_DRAG and
             BALLISTIC_MIN_MASS <= mass <= BALLISTIC_MAX_MASS and
@@ -841,6 +985,7 @@ def _read_ballistic_profile(scanner, cgame_base):
 def _make_ballistic_model(profile, altitude):
     speed = max(profile.get("speed", 1000.0), 1.0)
     drag_valid = bool(profile.get("drag_valid", False))
+    model_enum = int(profile.get("model_enum", 0) or 0)
     raw_mass = profile.get("mass", 0.0)
     raw_caliber = profile.get("caliber", 0.0)
     mass = max(raw_mass, 0.001)
@@ -858,15 +1003,18 @@ def _make_ballistic_model(profile, altitude):
 
     rho = _air_density_from_altitude(altitude)
     area = math.pi * ((caliber * 0.5) ** 2)
-    base_k = (0.5 * rho * cx * area) / mass if drag_valid else 0.0
+    drag_k = (cx * area) / mass if drag_valid else 0.0
+    base_k = 0.5 * rho * drag_k if drag_valid else 0.0
     vel_lo, vel_hi = profile.get("vel_range", (0.0, 0.0))
 
     return {
+        "model_enum": model_enum,
         "speed": speed,
         "mass": raw_mass,
         "caliber": raw_caliber,
         "cx": cx,
         "rho": rho,
+        "drag_k": max(drag_k, 0.0),
         "base_k": max(base_k, 0.0),
         "vel_lo": max(0.0, vel_lo),
         "vel_hi": max(max(vel_lo, vel_hi), vel_lo + 1.0),
@@ -884,6 +1032,18 @@ def _get_leadmark_range_limit(profile):
 
 
 def _drag_band_factor(model, speed):
+    if BALLISTIC_MODEL0_USE_DIRECT_DRAG_K and model.get("model_enum", 0) in (0, 4) and model.get("drag_k", 0.0) > 0.0:
+        factor = BALLISTIC_MODEL0_DIRECT_FACTOR
+        if model.get("is_subcaliber", False):
+            speed_bias = max(0.0, model.get("speed", 0.0) - BALLISTIC_MODEL0_SUBCAL_SPEED_REF)
+            caliber_bias = max(0.0, model.get("caliber", 0.0) - BALLISTIC_MODEL0_SUBCAL_CALIBER_REF)
+            factor *= (
+                1.0 +
+                (speed_bias * BALLISTIC_MODEL0_SUBCAL_SPEED_GAIN) +
+                (caliber_bias * BALLISTIC_MODEL0_SUBCAL_CALIBER_GAIN)
+            )
+            factor = max(BALLISTIC_MODEL0_SUBCAL_MIN, min(BALLISTIC_MODEL0_SUBCAL_MAX, factor))
+        return factor
     vel_lo = model["vel_lo"]
     vel_hi = model["vel_hi"]
     if vel_hi <= vel_lo or vel_hi <= 0.0:
@@ -991,6 +1151,11 @@ class ESPOverlay(QWidget):
         self.invalid_runtime_frames = 0
         self.shutdown_requested = False
         self.startup_time = time.time()
+        self.calibration_offset = [0.0, 0.0]
+        self.calibration_last_keys = {
+            "enter": False,
+            "backspace": False,
+        }
 
         self._update_screen_metrics()
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -1049,6 +1214,79 @@ class ESPOverlay(QWidget):
         self.screen_height = geometry.height()
         self.center_x = self.screen_width / 2
         self.center_y = self.screen_height / 2
+
+    def _keyboard_down(self, key_name):
+        if not HAS_KEYBOARD:
+            return False
+        try:
+            return bool(keyboard.is_pressed(key_name))
+        except Exception:
+            return False
+
+    def _save_calibration_sample(self, sample):
+        try:
+            os.makedirs("dumps", exist_ok=True)
+            with open(CALIBRATION_SAVE_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(sample, ensure_ascii=False) + "\n")
+            print(f"[CALIB] saved -> {CALIBRATION_SAVE_PATH}")
+        except Exception as e:
+            print(f"[CALIB] save failed: {e}")
+
+    def _handle_hitpoint_calibration(self, context):
+        if not DEBUG_DRAW_CALIBRATION_HIT or not context:
+            return None
+
+        step = CALIBRATION_STEP_FAST_PIXELS if (self._keyboard_down("shift") or self._keyboard_down("right shift")) else CALIBRATION_STEP_PIXELS
+        if self._keyboard_down("j"):
+            self.calibration_offset[0] -= step
+        if self._keyboard_down("l"):
+            self.calibration_offset[0] += step
+        if self._keyboard_down("i"):
+            self.calibration_offset[1] -= step
+        if self._keyboard_down("k"):
+            self.calibration_offset[1] += step
+
+        backspace_now = self._keyboard_down("backspace")
+        if backspace_now and not self.calibration_last_keys["backspace"]:
+            self.calibration_offset = [0.0, 0.0]
+            print("[CALIB] offset reset")
+        self.calibration_last_keys["backspace"] = backspace_now
+
+        calib_x = context["base_hitpoint"][0] + self.calibration_offset[0]
+        calib_y = context["base_hitpoint"][1] + self.calibration_offset[1]
+
+        enter_now = self._keyboard_down("enter")
+        if enter_now and not self.calibration_last_keys["enter"]:
+            sample = {
+                "captured_at": time.time(),
+                "unit_ptr": context.get("unit_ptr", 0),
+                "unit_label": context.get("unit_label", ""),
+                "unit_key": context.get("unit_key", ""),
+                "distance": context.get("distance", 0.0),
+                "zeroing": context.get("zeroing", 0.0),
+                "model_enum": context.get("model_enum", 0),
+                "speed": context.get("speed", 0.0),
+                "mass": context.get("mass", 0.0),
+                "caliber": context.get("caliber", 0.0),
+                "cx": context.get("cx", 0.0),
+                "drag_k": context.get("drag_k", 0.0),
+                "predicted_hitpoint": [
+                    round(context["base_hitpoint"][0], 3),
+                    round(context["base_hitpoint"][1], 3),
+                ],
+                "calibration_hitpoint": [
+                    round(calib_x, 3),
+                    round(calib_y, 3),
+                ],
+                "calibration_offset": [
+                    round(self.calibration_offset[0], 3),
+                    round(self.calibration_offset[1], 3),
+                ],
+            }
+            self._save_calibration_sample(sample)
+        self.calibration_last_keys["enter"] = enter_now
+
+        return (calib_x, calib_y)
 
     def _stabilize_velocity(self, u_ptr, is_air, pos, curr_t):
         if u_ptr and pos:
@@ -1161,6 +1399,9 @@ class ESPOverlay(QWidget):
         curr_t = time.time()
         lead_marks_to_draw = []
         hit_points_to_draw = []
+        debug_muzzle_rays_to_draw = []
+        debug_box_entry_hits_to_draw = []
+        calibration_hit_points_to_draw = []
         
         active_flight_data = None 
         active_target_ptr = 0
@@ -1946,6 +2187,7 @@ class ESPOverlay(QWidget):
                         vel_lo, vel_hi = ballistic_profile["vel_range"]
                         out += f"🔫 Bullet     : Spd:{current_bullet_speed:.0f} m/s | CD:{current_bullet_cd:.2f} | Mass:{current_bullet_mass:.2f} | Cal:{current_bullet_caliber:.3f}\n"
                         out += f"📉 Drop       : Bullet: +{gravity_offset:>5.2f} m | Zero: {math.degrees(zero_pitch):>5.2f} deg | VRange:{vel_lo:.0f}-{vel_hi:.0f}\n"
+                        out += f"🧪 Model      : {ballistic_profile.get('model_enum', 0)} | drag_k:{ballistic_model.get('drag_k', 0.0):.6e}\n"
                         out += "================================================================\n"
                         out += " [Auto] Closest Target | [Ctrl+C] Exit\n"
 
@@ -2036,7 +2278,47 @@ class ESPOverlay(QWidget):
                                     dist,
                                 )
                                 if mapped_hitpoint:
-                                    hit_points_to_draw.append(mapped_hitpoint)
+                                    mapped_hitpoint = _apply_dynamic_hitpoint_y_correction(
+                                        mapped_hitpoint,
+                                        ballistic_profile,
+                                        dist,
+                                    )
+                                    if DRAW_BASE_HITPOINT:
+                                        hit_points_to_draw.append(mapped_hitpoint)
+                                    calib_point = self._handle_hitpoint_calibration({
+                                        "unit_ptr": u_ptr,
+                                        "unit_label": unit_name,
+                                        "unit_key": dna.get("name_key", ""),
+                                        "distance": dist,
+                                        "zeroing": current_zeroing,
+                                        "model_enum": ballistic_profile.get("model_enum", 0),
+                                        "speed": ballistic_profile.get("speed", 0.0),
+                                        "mass": ballistic_profile.get("mass", 0.0),
+                                        "caliber": ballistic_profile.get("caliber", 0.0),
+                                        "cx": ballistic_profile.get("cx", 0.0),
+                                        "drag_k": ballistic_model.get("drag_k", 0.0),
+                                        "base_hitpoint": mapped_hitpoint,
+                                    })
+                                    if calib_point:
+                                        calibration_hit_points_to_draw.append(calib_point)
+                                    if DRAW_BASE_HITPOINT and DEBUG_DRAW_BOX_ENTRY_HIT:
+                                        debug_box_entry_hits_to_draw.append(mapped_hitpoint)
+                                if DEBUG_DRAW_MUZZLE_RAY:
+                                    fire_origin_screen = world_to_screen(
+                                        view_matrix,
+                                        fire_origin[0],
+                                        fire_origin[1],
+                                        fire_origin[2],
+                                        self.screen_width,
+                                        self.screen_height,
+                                    )
+                                    if fire_origin_screen and fire_origin_screen[2] > 0:
+                                        debug_muzzle_rays_to_draw.append({
+                                            "sx": fire_origin_screen[0],
+                                            "sy": fire_origin_screen[1],
+                                            "px": spx,
+                                            "py": spy,
+                                        })
 
                             if target_vel_mag > 0.05 and math.isfinite(spx) and math.isfinite(spy):
                                 lead_marks_to_draw.append({
@@ -2120,6 +2402,38 @@ class ESPOverlay(QWidget):
                 painter.drawEllipse(hp_pts[0] - 7, hp_pts[1] - 7, 14, 14)
                 painter.drawLine(hp_pts[0] - 10, hp_pts[1], hp_pts[0] + 10, hp_pts[1])
                 painter.drawLine(hp_pts[0], hp_pts[1] - 10, hp_pts[0], hp_pts[1] + 10)
+
+            if DEBUG_DRAW_MUZZLE_RAY:
+                painter.setPen(QPen(QColor(*COLOR_DEBUG_MUZZLE_RAY), 2, Qt.DashDotLine))
+                for ray in debug_muzzle_rays_to_draw:
+                    ray_pts = _screen_int_tuple(ray["sx"], ray["sy"], ray["px"], ray["py"])
+                    if not ray_pts:
+                        continue
+                    painter.drawLine(*ray_pts)
+
+            if DEBUG_DRAW_BOX_ENTRY_HIT:
+                entry_color = QColor(*COLOR_DEBUG_BOX_ENTRY)
+                painter.setPen(QPen(entry_color, 2))
+                for hp_x, hp_y in debug_box_entry_hits_to_draw:
+                    hp_pts = _screen_int_tuple(hp_x, hp_y)
+                    if not hp_pts:
+                        continue
+                    painter.drawEllipse(hp_pts[0] - 4, hp_pts[1] - 4, 8, 8)
+                    painter.drawLine(hp_pts[0] - 6, hp_pts[1] - 6, hp_pts[0] + 6, hp_pts[1] + 6)
+                    painter.drawLine(hp_pts[0] - 6, hp_pts[1] + 6, hp_pts[0] + 6, hp_pts[1] - 6)
+
+            if DEBUG_DRAW_CALIBRATION_HIT:
+                calib_color = QColor(*COLOR_CALIBRATION_HIT)
+                painter.setPen(QPen(calib_color, 2))
+                for hp_x, hp_y in calibration_hit_points_to_draw:
+                    hp_pts = _screen_int_tuple(hp_x, hp_y)
+                    if not hp_pts:
+                        continue
+                    painter.drawRect(hp_pts[0] - 5, hp_pts[1] - 5, 10, 10)
+                    painter.drawLine(hp_pts[0] - 8, hp_pts[1], hp_pts[0] + 8, hp_pts[1])
+                    painter.drawLine(hp_pts[0], hp_pts[1] - 8, hp_pts[0], hp_pts[1] + 8)
+                painter.setPen(calib_color)
+                painter.drawText(20, 140, "[CALIB] I/J/K/L move | Shift fast | Backspace reset | Enter save")
 
             for ptr in [ptr for ptr in self.vel_window if ptr not in seen_targets_this_frame]:
                 del self.vel_window[ptr]

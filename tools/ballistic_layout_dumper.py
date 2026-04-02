@@ -21,6 +21,14 @@ WEAPON_SCAN_STEP = 4
 PROPS_BASE_SCAN_START = 0x2040
 PROPS_BASE_SCAN_END = 0x2080
 PROPS_BASE_SCAN_STEP = 4
+SEMANTIC_BLOCK_PRE = 0x10
+SEMANTIC_BLOCK_POST = 0x40
+POST_PROPS_PTR_SCAN_START = 0x2088
+POST_PROPS_PTR_SCAN_END = 0x20B8
+POST_PROPS_PTR_SCAN_STEP = 8
+CHAIN_FOCUS_OFFSETS = (0x20A0, 0x20A8, 0x20B0)
+CHAIN_PROBE_BYTES = 0x40
+CHAIN_SECOND_LEVEL_PTR_LIMIT = 4
 
 WEAPON_PTR_SCAN_START = 0x300
 WEAPON_PTR_SCAN_END = 0x600
@@ -57,6 +65,18 @@ LAYOUTS = [
         "velRange_y": 0x28,
     },
 ]
+
+GHIDRA_SEMANTIC_LAYOUT = {
+    "ballistics_model_enum": -0x08,
+    "mass": 0x04,
+    "caliber": 0x08,
+    "cx": 0x0C,
+    "maxDistance": 0x10,
+    "splinterMass_x": 0x1C,
+    "splinterMass_y": 0x20,
+    "velRange_x": 0x24,
+    "velRange_y": 0x28,
+}
 
 
 def layout_to_absolute_offsets(best_layout):
@@ -140,6 +160,13 @@ def read_u64(scanner, addr):
     return struct.unpack("<Q", raw)[0]
 
 
+def read_u32(scanner, addr):
+    raw = scanner.read_mem(addr, 4)
+    if not raw or len(raw) < 4:
+        return 0
+    return struct.unpack("<I", raw)[0]
+
+
 def read_f32(scanner, addr):
     raw = scanner.read_mem(addr, 4)
     if not raw or len(raw) < 4:
@@ -220,6 +247,91 @@ def decode_layout(scanner, base_addr, layout):
     return props
 
 
+def read_semantic_props(scanner, weapon_ptr, best_layout):
+    if not best_layout:
+        return {}
+
+    base_off = best_layout.get("base_off")
+    if base_off is None:
+        return {}
+
+    base_addr = weapon_ptr + base_off
+    semantic = {
+        "base_off": base_off,
+        "base_addr": base_addr,
+        "layout": best_layout.get("layout"),
+        "ghidra_fields": {},
+    }
+    for field_name, rel_off in GHIDRA_SEMANTIC_LAYOUT.items():
+        semantic["ghidra_fields"][field_name] = {
+            "off": base_off + rel_off,
+            "addr": base_addr + rel_off,
+            "value": read_f32(scanner, base_addr + rel_off),
+        }
+
+    raw_start = max(WEAPON_SCAN_START, base_off - SEMANTIC_BLOCK_PRE)
+    raw_end = min(WEAPON_SCAN_END, base_off + SEMANTIC_BLOCK_POST)
+    raw = scanner.read_mem(weapon_ptr + raw_start, raw_end - raw_start) or b""
+    semantic["raw_start_off"] = raw_start
+    semantic["raw_end_off"] = raw_end
+    semantic["raw_hex"] = hex_dump(raw, raw_start) if raw else ""
+
+    trailing_refs = []
+    for off in range(POST_PROPS_PTR_SCAN_START, POST_PROPS_PTR_SCAN_END, POST_PROPS_PTR_SCAN_STEP):
+        ptr = read_u64(scanner, weapon_ptr + off)
+        lo_u32 = read_u32(scanner, weapon_ptr + off)
+        hi_u32 = read_u32(scanner, weapon_ptr + off + 4)
+        item = {
+            "off": off,
+            "addr": weapon_ptr + off,
+            "u64": ptr,
+            "lo_u32": lo_u32,
+            "hi_u32": hi_u32,
+            "is_ptr": bool(mul.is_valid_ptr(ptr)),
+        }
+        if item["is_ptr"]:
+            probe = scanner.read_mem(ptr, 0x20) or b""
+            item["ptr_hex"] = hex_dump(probe, 0) if probe else ""
+        trailing_refs.append(item)
+    semantic["trailing_refs"] = trailing_refs
+    semantic["focus_chains"] = read_focus_chains(scanner, weapon_ptr)
+    return semantic
+
+
+def read_focus_chains(scanner, weapon_ptr):
+    chains = []
+    for off in CHAIN_FOCUS_OFFSETS:
+        root_ptr = read_u64(scanner, weapon_ptr + off)
+        chain = {
+            "weapon_off": off,
+            "weapon_addr": weapon_ptr + off,
+            "root_ptr": root_ptr,
+            "root_valid": bool(mul.is_valid_ptr(root_ptr)),
+        }
+        if not chain["root_valid"]:
+            chains.append(chain)
+            continue
+
+        root_raw = scanner.read_mem(root_ptr, CHAIN_PROBE_BYTES) or b""
+        chain["root_hex"] = hex_dump(root_raw, 0) if root_raw else ""
+        children = []
+        for idx in range(CHAIN_SECOND_LEVEL_PTR_LIMIT):
+            child_off = idx * 8
+            child_ptr = read_u64(scanner, root_ptr + child_off)
+            child = {
+                "off": child_off,
+                "ptr": child_ptr,
+                "valid": bool(mul.is_valid_ptr(child_ptr)),
+            }
+            if child["valid"]:
+                child_raw = scanner.read_mem(child_ptr, 0x20) or b""
+                child["hex"] = hex_dump(child_raw, 0) if child_raw else ""
+            children.append(child)
+        chain["children"] = children
+        chains.append(chain)
+    return chains
+
+
 def read_weapon_window(scanner, weapon_ptr):
     raw = scanner.read_mem(weapon_ptr + WEAPON_SCAN_START, WEAPON_SCAN_END - WEAPON_SCAN_START) or b""
     values = []
@@ -274,6 +386,39 @@ def collect_field_candidates(window_values):
     vel_entries.sort(key=lambda e: (-e["score"], e["lo_off"], e["hi_off"]))
     candidates["velRange"] = vel_entries[:16]
     return candidates
+
+
+def collect_adjacent_point2_candidates(window_values):
+    by_off = {item["off"]: item for item in window_values}
+    pairs = []
+    for off in sorted(by_off.keys()):
+        nxt = off + 4
+        if nxt not in by_off:
+            continue
+        x_val = by_off[off]["value"]
+        y_val = by_off[nxt]["value"]
+        if not is_reasonable_float(x_val, -100000.0, 100000.0):
+            continue
+        if not is_reasonable_float(y_val, -100000.0, 100000.0):
+            continue
+        score = 0
+        if is_reasonable_float(x_val, FIELD_RULES["velRange"]["low"], FIELD_RULES["velRange"]["high"]):
+            score += 3
+        if is_reasonable_float(y_val, FIELD_RULES["velRange"]["low"], FIELD_RULES["velRange"]["high"]) and y_val >= x_val:
+            score += 3
+        if is_reasonable_float(x_val, 0.0, 1000.0) and is_reasonable_float(y_val, 0.0, 1000.0):
+            score += 1
+        pairs.append({
+            "x_off": off,
+            "x_addr": by_off[off]["addr"],
+            "x_value": x_val,
+            "y_off": nxt,
+            "y_addr": by_off[nxt]["addr"],
+            "y_value": y_val,
+            "score": score,
+        })
+    pairs.sort(key=lambda e: (-e["score"], e["x_off"]))
+    return pairs
 
 
 def collect_layout_candidates(scanner, weapon_ptr):
@@ -388,6 +533,8 @@ def dump_weapon_block(scanner, weapon_ptr):
     field_candidates = collect_field_candidates(window_values)
     layout_candidates = collect_layout_candidates(scanner, weapon_ptr)
     best_layout = layout_candidates[0] if layout_candidates else None
+    semantic_props = read_semantic_props(scanner, weapon_ptr, best_layout)
+    point2_candidates = collect_adjacent_point2_candidates(window_values)
 
     return {
         "weapon_ptr": weapon_ptr,
@@ -398,6 +545,8 @@ def dump_weapon_block(scanner, weapon_ptr):
         "field_candidates": field_candidates,
         "layout_candidates": layout_candidates,
         "best_layout": best_layout,
+        "semantic_props": semantic_props,
+        "point2_candidates": point2_candidates,
     }
 
 
@@ -441,6 +590,61 @@ def write_dump_files(payload):
                 "BEST LAYOUT",
                 json.dumps(payload.get("best_layout"), indent=2, ensure_ascii=False),
                 "",
+                "GHIDRA SEMANTIC FIELDS",
+            ]
+        )
+        for field_name, item in (payload.get("semantic_props", {}).get("ghidra_fields", {}) or {}).items():
+            lines.append(
+                f"  {field_name}: off={hex(item['off'])} addr={hex(item['addr'])} value={item['value']}"
+            )
+        lines.extend(
+            [
+                "",
+                "POST PROPS REFS",
+            ]
+        )
+        for item in payload.get("semantic_props", {}).get("trailing_refs", [])[:16]:
+            line = (
+                f"  off={hex(item['off'])} addr={hex(item['addr'])} "
+                f"u64={hex(item['u64']) if item['u64'] else '0x0'} "
+                f"u32=({item['lo_u32']}, {item['hi_u32']}) ptr={item['is_ptr']}"
+            )
+            lines.append(line)
+            if item.get("ptr_hex"):
+                lines.append(item["ptr_hex"])
+        lines.extend(
+            [
+                "",
+                "FOCUS CHAINS",
+            ]
+        )
+        for chain in payload.get("semantic_props", {}).get("focus_chains", [])[:8]:
+            lines.append(
+                f"  weapon_off={hex(chain['weapon_off'])} root_ptr={hex(chain['root_ptr']) if chain.get('root_ptr') else '0x0'} "
+                f"valid={chain.get('root_valid')}"
+            )
+            if chain.get("root_hex"):
+                lines.append(chain["root_hex"])
+            for child in chain.get("children", []):
+                lines.append(
+                    f"    child_off={hex(child['off'])} ptr={hex(child['ptr']) if child.get('ptr') else '0x0'} valid={child.get('valid')}"
+                )
+                if child.get("hex"):
+                    lines.append(child["hex"])
+        lines.extend(
+            [
+                "",
+                "POINT2 CANDIDATES",
+            ]
+        )
+        for item in payload.get("point2_candidates", [])[:16]:
+            lines.append(
+                f"  x={hex(item['x_off'])}:{item['x_value']} "
+                f"y={hex(item['y_off'])}:{item['y_value']} score={item['score']}"
+            )
+        lines.extend(
+            [
+                "",
                 "FIELD CANDIDATES",
             ]
         )
@@ -474,6 +678,10 @@ def write_dump_files(payload):
 
         lines.extend(
             [
+                "",
+                f"SEMANTIC RAW HEX [weapon + {hex(payload.get('semantic_props', {}).get('raw_start_off', 0))}, "
+                f"to {hex(payload.get('semantic_props', {}).get('raw_end_off', 0))}]",
+                payload.get("semantic_props", {}).get("raw_hex", ""),
                 "",
                 f"WEAPON WINDOW HEX [weapon + {hex(WEAPON_SCAN_START)}, size {hex(WEAPON_SCAN_END - WEAPON_SCAN_START)}]",
                 payload["weapon_window_hex"],
@@ -557,6 +765,34 @@ def write_watch_session_files(session):
         "",
     ]
 
+    point2_stats = session.get("point2_stats", {})
+    if point2_stats:
+        lines.append("POINT2 CHANGE SUMMARY")
+        ranked = sorted(
+            point2_stats.items(),
+            key=lambda item: (-item[1].get("changes", 0), item[0]),
+        )
+        for key, stat in ranked[:20]:
+            lines.append(
+                f"  pair={key} changes={stat.get('changes', 0)} "
+                f"unique={len(stat.get('unique', []))} last={stat.get('last')}"
+            )
+        lines.append("")
+
+    focus_chain_stats = session.get("focus_chain_stats", {})
+    if focus_chain_stats:
+        lines.append("FOCUS CHAIN SUMMARY")
+        ranked = sorted(
+            focus_chain_stats.items(),
+            key=lambda item: (-item[1].get("changes", 0), item[0]),
+        )
+        for key, stat in ranked[:20]:
+            lines.append(
+                f"  chain={key} changes={stat.get('changes', 0)} "
+                f"unique={len(stat.get('unique', []))} last={stat.get('last')}"
+            )
+        lines.append("")
+
     for idx, snap in enumerate(session["snapshots"], 1):
         sig = snap.get("signature", {})
         lines.append(
@@ -605,6 +841,8 @@ def run_watch_mode(scanner, base_addr, poll_interval=0.35):
         "started_at": datetime.now().isoformat(),
         "poll_interval": poll_interval,
         "snapshots": [],
+        "point2_stats": {},
+        "focus_chain_stats": {},
     }
 
     print("[*] Watch mode active. เปลี่ยน ammo แล้ว dumper จะจับ snapshot ใหม่อัตโนมัติ")
@@ -622,6 +860,58 @@ def run_watch_mode(scanner, base_addr, poll_interval=0.35):
                 continue
 
             sig = build_profile_signature(payload)
+            current_pairs = {
+                f"{hex(item['x_off'])}/{hex(item['y_off'])}": (
+                    _round_sig(item["x_value"], 3),
+                    _round_sig(item["y_value"], 3),
+                )
+                for item in payload.get("point2_candidates", [])
+            }
+            previous_pairs = {}
+            if prev_payload:
+                previous_pairs = {
+                    f"{hex(item['x_off'])}/{hex(item['y_off'])}": (
+                        _round_sig(item["x_value"], 3),
+                        _round_sig(item["y_value"], 3),
+                    )
+                    for item in prev_payload.get("point2_candidates", [])
+                }
+            for key, pair in current_pairs.items():
+                stat = session["point2_stats"].setdefault(key, {"changes": 0, "unique": [], "last": None})
+                if pair not in stat["unique"]:
+                    stat["unique"].append(pair)
+                if previous_pairs.get(key) != pair:
+                    stat["changes"] += 1
+                stat["last"] = pair
+
+            current_chains = {}
+            for chain in payload.get("semantic_props", {}).get("focus_chains", []):
+                child_ptrs = tuple(
+                    hex(child.get("ptr") or 0)
+                    for child in chain.get("children", [])
+                )
+                chain_sig = (
+                    hex(chain.get("root_ptr") or 0),
+                    child_ptrs,
+                )
+                key = hex(chain.get("weapon_off") or 0)
+                current_chains[key] = chain_sig
+            previous_chains = {}
+            if prev_payload:
+                for chain in prev_payload.get("semantic_props", {}).get("focus_chains", []):
+                    child_ptrs = tuple(
+                        hex(child.get("ptr") or 0)
+                        for child in chain.get("children", [])
+                    )
+                    key = hex(chain.get("weapon_off") or 0)
+                    previous_chains[key] = (hex(chain.get("root_ptr") or 0), child_ptrs)
+            for key, sig2 in current_chains.items():
+                stat = session["focus_chain_stats"].setdefault(key, {"changes": 0, "unique": [], "last": None})
+                if sig2 not in stat["unique"]:
+                    stat["unique"].append(sig2)
+                if previous_chains.get(key) != sig2:
+                    stat["changes"] += 1
+                stat["last"] = sig2
             sig_key = json.dumps(sig, sort_keys=True, ensure_ascii=False)
             if signatures_differ(prev_sig, sig) and sig_key not in seen_signatures:
                 payload["signature"] = sig
@@ -720,12 +1010,47 @@ def main():
             if candidates:
                 top = candidates[0]
                 print(f"[*] Top {field}: off={hex(top['off'])} value={top['value']} score={top['score']}")
+        semantic_fields = payload.get("semantic_props", {}).get("ghidra_fields", {})
+        if semantic_fields:
+            print("[*] Ghidra semantic fields:")
+            for name in ("mass", "caliber", "cx", "maxDistance", "splinterMass_x", "splinterMass_y", "velRange_x", "velRange_y"):
+                item = semantic_fields.get(name)
+                if item:
+                    print(f"    {name}: off={hex(item['off'])} value={item['value']}")
+        trailing_refs = payload.get("semantic_props", {}).get("trailing_refs", [])
+        valid_refs = [item for item in trailing_refs if item.get("is_ptr")]
+        if valid_refs:
+            print("[*] Post-props pointer refs:")
+            for item in valid_refs[:6]:
+                print(f"    off={hex(item['off'])} ptr={hex(item['u64'])}")
+        focus_chains = payload.get("semantic_props", {}).get("focus_chains", [])
+        if focus_chains:
+            print("[*] Focus chains:")
+            for chain in focus_chains:
+                if not chain.get("root_valid"):
+                    continue
+                child_ptrs = ", ".join(
+                    hex(child.get("ptr") or 0)
+                    for child in chain.get("children", [])
+                    if child.get("valid")
+                )
+                print(
+                    f"    off={hex(chain['weapon_off'])} root={hex(chain['root_ptr'])} "
+                    f"children=[{child_ptrs}]"
+                )
         vel_candidates = payload["field_candidates"].get("velRange", [])
         if vel_candidates:
             top = vel_candidates[0]
             print(
                 f"[*] Top velRange: lo={hex(top['lo_off'])}:{top['lo_value']} "
                 f"hi={hex(top['hi_off'])}:{top['hi_value']} score={top['score']}"
+            )
+        point2_candidates = payload.get("point2_candidates", [])
+        if point2_candidates:
+            top = point2_candidates[0]
+            print(
+                f"[*] Top Point2 pair: x={hex(top['x_off'])}:{top['x_value']} "
+                f"y={hex(top['y_off'])}:{top['y_value']} score={top['score']}"
             )
 
         json_path, txt_path = write_dump_files(payload)

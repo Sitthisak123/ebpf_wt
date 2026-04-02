@@ -1,0 +1,333 @@
+Ballistics runtime reverse map
+=================================
+
+Latest toy version findings from Ghidra + runtime dump.
+
+Core caller path
+----------------
+
+1. FUN_01e9f510
+   Main caller that prepares local ballistic/explosive/shatter helper objects.
+
+   Important locals seen in decompiler:
+   - local_1c8 : projectile ballistic props object loaded by FUN_072674d0
+   - local_2e8 : explosive profile object, only filled when FUN_05378d70 passes
+   - local_2c8 : splash/cumulative profile object via FUN_053cbe80
+   - local_248 : shatter profile object via FUN_05389810
+
+   Important call:
+   - FUN_05382fb0(local_330, &local_1c8, puVar17, uVar7, local_180, &DAT_0991c8f0)
+
+   Note:
+   - arg2 = &local_1c8 (ballistic props)
+   - arg3 = puVar17
+   - puVar17 is NOT &local_1c8; it is either NULL or a pointer to local_2e8-family data.
+
+2. FUN_072674d0
+   Loads ProjBallisticsProperties-like data into local_1c8.
+
+   Confirmed fields:
+   - +0x00 : ballistics model enum
+   - +0x04 : mass
+   - +0x08 : caliber
+   - +0x0C : cx
+   - +0x10 : maxDistance
+   - +0x1C/+0x20 : splinterMass Point2
+   - +0x24/+0x28 : velRange Point2
+   - +0x30 : ballisticsTable ref/object start
+   - +0x38 : table/model gate used later by FUN_05382fb0
+
+   Runtime note:
+   - weapon props memread for speed/mass/caliber/cx/maxDistance is good
+   - velRange at +0x24/+0x28 stays 500/700 for all tested ammo, so it is not the live per-ammo key value.
+
+
+FUN_05382fb0 branch map
+-----------------------
+
+Decompiled shape:
+
+if (*(char *)(param_2 + 0x40) == 0 || *(float *)(param_3 + 4) <= eps)
+    return;
+
+if (*(int *)(param_3 + 0x38) != 0) {
+    FUN_0537da90(param_3 + 0x30, param_2 + 0x40, param_4);
+    return;
+}
+
+if (*(char *)(param_2 + 1) == 0)
+    FUN_0537e910(0, &local_50, param_3, local_48);
+else
+    FUN_0537f090(param_3, local_48);
+
+FUN_05382160(param_2 + 0x40, param_5, param_6, local_48, param_7);
+
+Meaning:
+- param_3 + 0x38 != 0 -> table/model path
+- param_3 + 0x30      -> root object consumed by FUN_0537da90
+- else                -> generated runtime triplet path through FUN_0537e910/FUN_0537f090
+
+
+Generated runtime triplet path
+------------------------------
+
+3. FUN_0537e910
+   Generates a triplet table progressively.
+
+   Calls:
+   - FUN_07268360(local_88, param_4, &local_94, &local_a0)
+   - FUN_07268480(local_88, step_idx)
+
+   Output:
+   - fills param_5 with repeated triplets:
+     [distance_like_value, inv_delta, magnitude]
+
+   Behaviour:
+   - integrates until accumulated path > requested range
+   - max ~1000 iterations
+
+4. FUN_0537f090
+   Alternate generated triplet path.
+
+   Also uses:
+   - FUN_07268360
+   - FUN_07268480
+
+   Difference:
+   - sweeps multiple angle/trajectory seeds before building triplets
+   - still ends in the same triplet buffer format
+
+5. FUN_05382160
+   Consumes a generated triplet table object.
+
+   Confirmed internal layout of consumed table object:
+   - +0x1A0 : data pointer
+   - +0x1A8 : count
+
+   It interpolates over triplets:
+   - x
+   - inv_dx
+   - value
+
+6. FUN_0537da90
+   Table/model path consumer.
+
+   Same effective shape as FUN_05382160:
+   - uses object at +0x1A0 / +0x1A8
+   - interpolates over triplet arrays
+
+
+Projectile state builder
+------------------------
+
+7. FUN_07268360
+   Builds projectile runtime state from ballistic props.
+
+   Important state fields inferred from decompile:
+   - state + 0x00 : model enum
+   - state + 0x08 : double coefficient used during integration
+   - state + 0x14 : dynamic term / scaled drag-related value
+   - state + 0x1C : current step index
+   - state + 0x20 : current X
+   - state + 0x24 : current Y
+   - state + 0x28 : current Z
+   - state + 0x2C : velocity X
+   - state + 0x30 : velocity Y
+   - state + 0x34 : velocity Z
+
+   Practical meaning:
+   - this state matters more than velRange for APFSDS behaviour
+
+8. FUN_07268480
+   Integrates one projectile step.
+
+   Switches on model enum (state[0]):
+   - case 1
+   - case 2
+   - case 3 -> uses FUN_07267dd0
+   - case 5 -> uses FUN_07267c80
+   - case 6 -> uses an additional Mach/ratio shaping branch
+
+  This is likely why APFSDS of 1500 m/s and 1700 m/s can behave differently even when basic props look reasonable.
+
+9. FUN_07267ed0
+   Shared model-dispatch helper for projectile scaling.
+
+   Formula by model enum:
+   - case 0 / 4:
+     return param_1
+   - case 1:
+     return rho_like * param_2 * param_3^2
+   - case 2:
+     return rho_like * param_2
+   - case 3:
+     return FUN_07267dd0(param_3 / sound_speed_like) * rho_like * param_2
+   - case 5:
+     return FUN_07267c80(param_3 / sound_speed_like) * rho_like * param_2
+   - case 6:
+     uses a separate piecewise Mach/ratio formula
+
+   Meaning:
+   - model enum selects the drag/integration law
+   - param_3 / FUN_04f7c060(...) behaves like a Mach-like ratio
+
+10. FUN_07267dd0
+    Piecewise drag shaping curve used by model enum 3.
+
+    Behaviour:
+    - low region: flat constant
+    - mid region 1: power ramp
+    - mid region 2: pow * exp blend
+    - high region: rational tail
+
+    Practical meaning:
+    - model 3 is a Mach-shaped drag curve, not a simple scalar
+
+11. FUN_07267c80
+    Piecewise drag shaping curve used by model enum 5.
+
+    Behaviour:
+    - low region: flat constant / linear
+    - middle: quadratic
+    - transonic-ish: linear tail
+    - upper region: sine / reciprocal / linear branches
+
+    Practical meaning:
+    - model 5 is another custom Mach-shaped drag law
+
+12. Model enum map for FUN_07268480 / FUN_07267ed0
+
+    Confirmed branch map:
+    - 0 : direct/default return
+    - 1 : density * coeff * speed^2
+    - 2 : density * coeff
+    - 3 : density * coeff * FUN_07267dd0(MachRatio)
+    - 4 : same practical path as 0 in FUN_07267ed0
+    - 5 : density * coeff * FUN_07267c80(MachRatio)
+    - 6 : density * coeff * special piecewise Mach branch
+
+    Strong implication:
+    - ammo mismatch between 1500 m/s APFSDS and 1700 m/s APFSDS can come from:
+      - different model enum
+      - same model enum but different MachRatio path
+      - especially if one goes through case 3, 5, or 6
+
+
+Explosive/shatter helper path
+-----------------------------
+
+9. FUN_05378d70
+   Checks ammo for:
+   - explosiveType
+   - explosiveMass
+   - yield
+
+10. FUN_05378ad0
+    Fills local_2e8 explosive profile.
+
+11. FUN_053cbe80
+    Fills local_2c8 splash/cumulative profile.
+
+12. FUN_05389810
+    Fills local_248 shatter profile.
+
+13. FUN_0538a7c0
+    Builds runtime helper input from local_248-family data.
+
+Important note:
+- These helper paths are real, but they are not the main explanation for APFSDS mismatch.
+- APFSDS is more likely dominated by the non-explosive generated triplet path through FUN_0537e910/FUN_0537f090 and FUN_07268360/FUN_07268480.
+
+
+Global shared tables
+--------------------
+
+14. FUN_0151e060
+    Returns a singleton/global manager object of size 0x198.
+
+    Relevant table slots used by FUN_053cc3c0:
+    - +0x118 / +0x120
+    - +0x128 / +0x130
+    - +0x138 / +0x140
+    - +0x148 / +0x150
+    - +0x158 / +0x160
+    - +0x178 / +0x180
+
+Runtime dump result:
+- these tables are shared/global
+- they did not change across APFSDS / HE / HEAT snapshots
+- therefore they are not the per-ammo live velRange/ballistic table we were looking for
+
+
+What is proven now
+------------------
+
+- speed/mass/caliber/cx/maxDistance are good live ammo reads
+- velRange field in weapon props is not the decisive per-ammo runtime source
+- global table manager tables are shared, not per-ammo
+- actual projectile behaviour is generated at runtime through:
+  FUN_0537e910 / FUN_0537f090 -> FUN_07268360 / FUN_07268480 -> triplet tables
+- tested live ammo so far (1700 APFSDS, 905 HEAT, 850 HE) all reported:
+  - model enum = 0
+  - branch = model_0_direct
+- therefore the current mismatch problem for tested APFSDS rounds is not explained by
+  model 3/5/6 Mach-curve branches
+- for these tested model_0 rounds, the most useful live runtime seed is:
+  - speed
+  - mass
+  - caliber
+  - cx
+  - derived drag_k = (cx * area) / mass
+- practical overlay implication:
+  - model_0_direct should use memread-driven drag_k as the primary drag seed
+  - velRange shaping should not be trusted as the decisive source for those rounds
+  - current overlay heuristic adds a model_0_direct subcaliber sensitivity scale from:
+    - speed delta vs 1500 m/s reference
+    - caliber delta vs 0.016 m reference
+  - reason:
+    - tested 1700 APFSDS stayed on model_0_direct but still mismatched more than 1500 APFSDS
+    - so linear drag_k/base_k alone was not sufficient for overlay parity
+
+
+Best next targets
+-----------------
+
+1. Identify live ammo -> model enum mapping at runtime
+2. Dump/generated runtime projectile state used by FUN_07268360/FUN_07268480
+3. Dump triplet buffers produced by FUN_0537e910/FUN_0537f090
+4. Check whether APFSDS 1500 vs 1700 differs by model enum, MachRatio branch, or both
+
+Current helper tooling
+----------------------
+
+- tools/ballistic_table_dumper.py
+  - dumps shared/global table manager tables
+  - confirmed those tables do not change across tested ammo
+
+- tools/projectile_runtime_state_dumper.py
+  - dumps live ammo ballistic props
+  - records live model enum and branch label
+  - records reconstructed state seed values:
+    - speed
+    - mass
+    - caliber
+    - cx
+    - area
+    - sectional density
+    - drag_k
+    - base_k = 0.5 * rho * drag_k
+    - Mach-like ratio
+  - also writes a reverse-derived FUN_07268360 init-state candidate:
+    - +0x00 model enum
+    - +0x08 coefficient candidate
+    - +0x14 dynamic drag-related term candidate
+    - +0x1C step index candidate
+    - +0x20/+0x24/+0x28 initial position candidate
+    - +0x2C/+0x30/+0x34 initial velocity candidate
+  - note:
+    - this is not raw memory dumping of local_88
+    - it is a reverse-derived init-state reconstruction to compare ammo behaviour
+  - confirmed tested ammo branches:
+    - 1700 APFSDS -> model_0_direct
+    - 905 HEAT    -> model_0_direct
+    - 850 HE      -> model_0_direct
