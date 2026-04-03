@@ -559,41 +559,11 @@ def init_dynamic_offsets(scanner, base_address):
         mul.OFF_UNIT_X = _handle_fallback("UNIT_X", mul.OFF_UNIT_X)
         mul.OFF_UNIT_ROTATION = mul.OFF_UNIT_X - 0x24
 
-    # 2️⃣ สแกนหา OFF_UNIT_BBMIN + refine runtime pair
-    persisted_bbox = _load_bbox_persistence()
-    bbox_cands = []
-    for p in PAT_UNIT_BBMIN: bbox_cands.extend(scanner.find_all_struct_offsets(p, 3))
-    valid_bbox = [v for v in bbox_cands if 0x100 <= v <= 0x300]
-    top_bbox = 0
-    if valid_bbox:
-        top_bbox = Counter(valid_bbox).most_common(1)[0][0]
-        mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX = top_bbox, top_bbox + 0x10
-        print(f"  [+] ✅ BINGO! BBMIN = {hex(top_bbox)}")
-    else:
-        if persisted_bbox:
-            mul.OFF_UNIT_BBMIN = persisted_bbox["bbmin_off"]
-            mul.OFF_UNIT_BBMAX = persisted_bbox["bbmax_off"]
-            print(f"  [+] ✅ PERSISTED! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} BBMAX = {hex(mul.OFF_UNIT_BBMAX)}")
-        else:
-            mul.OFF_UNIT_BBMIN = _handle_fallback("BBMIN", mul.OFF_UNIT_BBMIN)
-            mul.OFF_UNIT_BBMAX = mul.OFF_UNIT_BBMIN + 0x10
-
-    if persisted_bbox:
-        mul.OFF_UNIT_BBMIN = persisted_bbox["bbmin_off"]
-        mul.OFF_UNIT_BBMAX = persisted_bbox["bbmax_off"]
-        print(f"  [+] ✅ OVERRIDE! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} BBMAX = {hex(mul.OFF_UNIT_BBMAX)} (persistence)")
-
-    bbox_best = _refine_bbox_offsets(scanner, base_address, top_bbox or None)
-    if bbox_best and bbox_best["valid_count"] >= 3 and bbox_best["score"] > -1000:
-        mul.OFF_UNIT_BBMIN = bbox_best["bbmin_off"]
-        mul.OFF_UNIT_BBMAX = bbox_best["bbmax_off"]
-        persistence_path = _write_bbox_persistence(mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX, bbox_best["source"])
-        print(
-            f"  [+] ✅ REFINED! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} BBMAX = {hex(mul.OFF_UNIT_BBMAX)} "
-            f"(valid={bbox_best['valid_count']} score={bbox_best['score']:.1f})"
-        )
-        if persistence_path:
-            print(f"  [+] ✅ PERSISTENCE! {persistence_path}")
+    # 2️⃣ บังคับใช้ Bounding Box ตัวจริงที่หาได้จาก Dumper!
+    mul.OFF_UNIT_BBMIN = 0x0238
+    mul.OFF_UNIT_BBMAX = 0x0244
+    print(f"  [+] 🚀 FORCE LINUX BBOX! BBMIN = {hex(mul.OFF_UNIT_BBMIN)}")
+    print(f"  [+] 🚀 FORCE LINUX BBOX! BBMAX = {hex(mul.OFF_UNIT_BBMAX)}")
 
     # ---------------------------------------------------------
     # 🎯 Phase 4: สแกนหาข้อมูลสถานะ (State, Team, Info, Reload)

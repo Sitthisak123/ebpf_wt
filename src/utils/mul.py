@@ -22,8 +22,8 @@ OFF_VIEW_MATRIX     = 0x1D0
 
 OFF_UNIT_X          = 0x0D00
 OFF_UNIT_ROTATION   = OFF_UNIT_X - 0x24
-OFF_UNIT_BBMIN      = 0x01E0
-OFF_UNIT_BBMAX      = 0x01F0
+OFF_UNIT_BBMIN      = 0x0238
+OFF_UNIT_BBMAX      = 0x0244
 _BBOX_FALLBACK_LOGGED = set()
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
