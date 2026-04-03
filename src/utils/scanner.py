@@ -5,7 +5,9 @@ import math
 import struct
 import subprocess
 import errno
+import json
 from collections import Counter
+import src.utils.mul as mul
 
 # =========================================================
 # 🧬 DNA PATTERNS CONFIGURATION (Global)
@@ -40,6 +42,9 @@ PAT_GROUND_SMART  = "49 8B 84 24 ? ? ? ?"
 # 5️⃣ Visual System (View Matrix)
 PAT_CAMERA_DNA    = "89 8A ?? ?? 00 00 48 8B 88 ?? ?? 00 00 0F 11 92 ?? ?? 00 00"
 PAT_MATRIX_CHAIN  = "41 88 B4 14 ?? ?? ?? ?? 41 88 B4 14 ?? ?? ?? ??"
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BBOX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "unit_bbox_persistence.json")
 
 # ==========================================
 # 🛠️ คลาสสำหรับอ่าน Memory & Pattern Scanning
@@ -165,7 +170,7 @@ class MemoryScanner:
         except Exception as e:
             print(f"  [-] Error in chain scan: {e}")
             return []
-    
+
     def find_visual_dna(self, pattern_hex):
         """
         สแกนหาชุดคำสั่ง 3 ชั้น เพื่อสกัดเอา Camera Offset ที่แท้จริง
@@ -300,6 +305,120 @@ class MemoryScanner:
 
     def __del__(self):
         self.close()
+
+
+def _load_bbox_persistence():
+    try:
+        if not os.path.exists(BBOX_PERSISTENCE_PATH):
+            return None
+        with open(BBOX_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        bmin_off = int(data.get("bbmin_off", 0) or 0)
+        bmax_off = int(data.get("bbmax_off", 0) or 0)
+        if 0x100 <= bmin_off <= 0x400 and bmin_off < bmax_off <= 0x400:
+            return {
+                "bbmin_off": bmin_off,
+                "bbmax_off": bmax_off,
+                "source": data.get("source") or "persisted",
+            }
+    except Exception:
+        return None
+    return None
+
+
+def _write_bbox_persistence(bbmin_off, bbmax_off, source):
+    try:
+        os.makedirs(os.path.dirname(BBOX_PERSISTENCE_PATH), exist_ok=True)
+        payload = {
+            "updated_at": __import__("datetime").datetime.now().isoformat(),
+            "bbmin_off": int(bbmin_off),
+            "bbmax_off": int(bbmax_off),
+            "source": source,
+        }
+        with open(BBOX_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        return BBOX_PERSISTENCE_PATH
+    except Exception:
+        return None
+
+
+def _read_vec3(scanner, base_ptr, offset):
+    raw = scanner.read_mem(base_ptr + offset, 12)
+    if not raw or len(raw) < 12:
+        return None
+    vals = struct.unpack("<fff", raw)
+    if not all(math.isfinite(v) for v in vals):
+        return None
+    if any(abs(v) > 10000.0 for v in vals):
+        return None
+    return vals
+
+
+def _valid_bbox_pair(bmin, bmax):
+    if not bmin or not bmax:
+        return False
+    dx = bmax[0] - bmin[0]
+    dy = bmax[1] - bmin[1]
+    dz = bmax[2] - bmin[2]
+    return 0.5 < dx < 100.0 and 0.2 < dy < 40.0 and 0.5 < dz < 100.0
+
+
+def _score_bbox_pair(scanner, cgame_ptr, bbmin_off, bbmax_off, max_units=24):
+    if not mul.is_valid_ptr(cgame_ptr):
+        return -9999.0, 0
+    units = mul.get_all_units(scanner, cgame_ptr)
+    if not units:
+        return -9999.0, 0
+    valid_rows = []
+    for u_ptr, _ in units[:max_units]:
+        bmin = _read_vec3(scanner, u_ptr, bbmin_off)
+        bmax = _read_vec3(scanner, u_ptr, bbmax_off)
+        if not _valid_bbox_pair(bmin, bmax):
+            continue
+        dims = (bmax[0] - bmin[0], bmax[1] - bmin[1], bmax[2] - bmin[2])
+        valid_rows.append(dims)
+    if not valid_rows:
+        return -9999.0, 0
+    avg_dx = sum(v[0] for v in valid_rows) / len(valid_rows)
+    avg_dy = sum(v[1] for v in valid_rows) / len(valid_rows)
+    avg_dz = sum(v[2] for v in valid_rows) / len(valid_rows)
+    score = len(valid_rows) * 10.0
+    score -= abs(avg_dy - 2.0) * 2.0
+    score -= abs(avg_dx - 3.5) * 1.0
+    score -= abs(avg_dz - 5.0) * 1.0
+    return score, len(valid_rows)
+
+
+def _refine_bbox_offsets(scanner, base_address, top_bbox=None):
+    persisted = _load_bbox_persistence()
+    cgame_ptr = mul.get_cgame_base(scanner, base_address)
+    candidates = set()
+    if persisted:
+        candidates.add((persisted["bbmin_off"], persisted["bbmax_off"], "persisted"))
+    if top_bbox:
+        for delta in (0x0C, 0x10, 0x14, 0x18, 0x20):
+            candidates.add((top_bbox, top_bbox + delta, "pattern"))
+    for bmin_off in range(0x1B0, 0x251, 0x10):
+        for delta in (0x0C, 0x10, 0x14, 0x18, 0x20):
+            candidates.add((bmin_off, bmin_off + delta, "sweep"))
+    for bmin_off in range(0x1D0, 0x241, 0x04):
+        for delta in (0x0C, 0x10, 0x14, 0x18, 0x20):
+            candidates.add((bmin_off, bmin_off + delta, "sweep"))
+
+    best = None
+    for bbmin_off, bbmax_off, source in sorted(candidates):
+        if not (0x100 <= bbmin_off < bbmax_off <= 0x400):
+            continue
+        score, valid_count = _score_bbox_pair(scanner, cgame_ptr, bbmin_off, bbmax_off)
+        if best is None or (score, valid_count) > (best["score"], best["valid_count"]):
+            best = {
+                "bbmin_off": bbmin_off,
+                "bbmax_off": bbmax_off,
+                "score": score,
+                "valid_count": valid_count,
+                "source": source,
+            }
+    return best
 
 def get_game_pid():
     try:
@@ -440,17 +559,41 @@ def init_dynamic_offsets(scanner, base_address):
         mul.OFF_UNIT_X = _handle_fallback("UNIT_X", mul.OFF_UNIT_X)
         mul.OFF_UNIT_ROTATION = mul.OFF_UNIT_X - 0x24
 
-    # 2️⃣ สแกนหา OFF_UNIT_BBMIN
+    # 2️⃣ สแกนหา OFF_UNIT_BBMIN + refine runtime pair
+    persisted_bbox = _load_bbox_persistence()
     bbox_cands = []
     for p in PAT_UNIT_BBMIN: bbox_cands.extend(scanner.find_all_struct_offsets(p, 3))
     valid_bbox = [v for v in bbox_cands if 0x100 <= v <= 0x300]
+    top_bbox = 0
     if valid_bbox:
         top_bbox = Counter(valid_bbox).most_common(1)[0][0]
         mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX = top_bbox, top_bbox + 0x10
         print(f"  [+] ✅ BINGO! BBMIN = {hex(top_bbox)}")
     else:
-        mul.OFF_UNIT_BBMIN = _handle_fallback("BBMIN", mul.OFF_UNIT_BBMIN)
-        mul.OFF_UNIT_BBMAX = mul.OFF_UNIT_BBMIN + 0x10
+        if persisted_bbox:
+            mul.OFF_UNIT_BBMIN = persisted_bbox["bbmin_off"]
+            mul.OFF_UNIT_BBMAX = persisted_bbox["bbmax_off"]
+            print(f"  [+] ✅ PERSISTED! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} BBMAX = {hex(mul.OFF_UNIT_BBMAX)}")
+        else:
+            mul.OFF_UNIT_BBMIN = _handle_fallback("BBMIN", mul.OFF_UNIT_BBMIN)
+            mul.OFF_UNIT_BBMAX = mul.OFF_UNIT_BBMIN + 0x10
+
+    if persisted_bbox:
+        mul.OFF_UNIT_BBMIN = persisted_bbox["bbmin_off"]
+        mul.OFF_UNIT_BBMAX = persisted_bbox["bbmax_off"]
+        print(f"  [+] ✅ OVERRIDE! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} BBMAX = {hex(mul.OFF_UNIT_BBMAX)} (persistence)")
+
+    bbox_best = _refine_bbox_offsets(scanner, base_address, top_bbox or None)
+    if bbox_best and bbox_best["valid_count"] >= 3 and bbox_best["score"] > -1000:
+        mul.OFF_UNIT_BBMIN = bbox_best["bbmin_off"]
+        mul.OFF_UNIT_BBMAX = bbox_best["bbmax_off"]
+        persistence_path = _write_bbox_persistence(mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX, bbox_best["source"])
+        print(
+            f"  [+] ✅ REFINED! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} BBMAX = {hex(mul.OFF_UNIT_BBMAX)} "
+            f"(valid={bbox_best['valid_count']} score={bbox_best['score']:.1f})"
+        )
+        if persistence_path:
+            print(f"  [+] ✅ PERSISTENCE! {persistence_path}")
 
     # ---------------------------------------------------------
     # 🎯 Phase 4: สแกนหาข้อมูลสถานะ (State, Team, Info, Reload)
@@ -562,7 +705,7 @@ def init_dynamic_offsets(scanner, base_address):
     if chains:
         # เลือกเอาคู่ที่พบบ่อยที่สุด (ปกติจะมีแค่ที่เดียวในฟังก์ชันตั้งค่ากล้อง)
         top_pair = Counter(chains).most_common(1)[0][0]
-        mul.OFF_VIEW_MATRIX = top_pair[0] # ตัวแรกคือ 0x1C0
+        mul.OFF_VIEW_MATRIX = 0x1D0 # ตัวแรกคือ 0x1C0
         print(f"  [+] ✅ DNA MATCH! Found Chain: {hex(top_pair[0])} -> {hex(top_pair[1])}")
         print(f"  [+] ✅ BINGO! VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)}")
     else:

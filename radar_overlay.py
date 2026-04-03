@@ -111,6 +111,9 @@ UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
 DEBUG_DRAW_MUZZLE_RAY = False
 DEBUG_DRAW_BOX_ENTRY_HIT = False
 DEBUG_DRAW_CALIBRATION_HIT = False
+ESP_POINT_ONLY_MODE = True
+GROUND_USE_SIMPLE_SCREEN_BOX = True
+AIR_USE_SIMPLE_SCREEN_BOX = True
 DRAW_BASE_HITPOINT = False
 CALIBRATION_STEP_PIXELS = 0.1
 CALIBRATION_STEP_FAST_PIXELS = 0.2
@@ -127,6 +130,9 @@ BALLISTIC_MAX_DISTANCE_OFF = 0x2068
 BALLISTIC_VEL_RANGE_X_OFF = 0x207C
 BALLISTIC_VEL_RANGE_Y_OFF = 0x2080
 BALLISTIC_PERSISTENCE_PATH = os.path.join("config", "ballistic_layout_persistence.json")
+BBOX_PERSISTENCE_PATH = os.path.join("config", "unit_bbox_persistence.json")
+VIEW_CANDIDATE_PERSISTENCE_PATH = os.path.join("config", "view_matrix_candidate_persistence.json")
+VIEW_CANDIDATE_PERSISTENCE_ENABLE = True
 GUN_BULLET_LIST_PTR_OFF = 0x358
 GUN_BULLET_LIST_COUNT_OFF = 0xA0
 GUN_BULLET_SLOT_BASE_OFF = 0xA8
@@ -275,6 +281,65 @@ def _load_ballistic_layout_persistence():
 
 
 _load_ballistic_layout_persistence()
+
+
+def _load_unit_bbox_persistence():
+    global OFF_UNIT_BBMIN
+    global OFF_UNIT_BBMAX
+
+    if not os.path.exists(BBOX_PERSISTENCE_PATH):
+        return False
+
+    try:
+        with open(BBOX_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        bbmin_off = int(doc.get("bbmin_off", 0) or 0)
+        bbmax_off = int(doc.get("bbmax_off", 0) or 0)
+        if not (0x100 <= bbmin_off < bbmax_off <= 0x400):
+            return False
+        OFF_UNIT_BBMIN = bbmin_off
+        OFF_UNIT_BBMAX = bbmax_off
+        print(
+            "[*] Loaded bbox persistence:"
+            f" bbmin={hex(OFF_UNIT_BBMIN)}"
+            f" bbmax={hex(OFF_UNIT_BBMAX)}"
+            f" source={doc.get('source', 'unknown')}"
+        )
+        return True
+    except Exception as e:
+        print(f"[*] Bbox persistence load failed: {e}")
+        return False
+
+
+_load_unit_bbox_persistence()
+
+
+def _load_view_candidate_persistence():
+    if not VIEW_CANDIDATE_PERSISTENCE_ENABLE:
+        return False
+    if not os.path.exists(VIEW_CANDIDATE_PERSISTENCE_PATH):
+        return False
+    try:
+        with open(VIEW_CANDIDATE_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        candidate = doc.get("global_candidate") or {}
+        if not set_forced_view_profile(candidate):
+            return False
+        print(
+            "[*] Loaded view candidate persistence:"
+            f" matrix={candidate.get('matrix_off', '0x0')}"
+            f" mode={candidate.get('projection_mode', 'unknown')}"
+            f" sign={candidate.get('axis_signs', '+++')}"
+            f" wins={candidate.get('wins', 0)}"
+            f" source={candidate.get('source', 'unknown')}"
+        )
+        return True
+    except Exception as e:
+        print(f"[*] View candidate persistence load failed: {e}")
+        return False
+
+
+_load_view_candidate_persistence()
 
 UNIT_FAMILY_UNKNOWN = 0
 UNIT_FAMILY_AIR_FIGHTER = 1
@@ -1298,7 +1363,7 @@ class ESPOverlay(QWidget):
 
         if cached and pos:
             dt = curr_t - cached['time']
-            min_dt = 0.005 if is_air else 0.03
+            min_dt = 0.005 if is_air else 0.008
             max_dt = 0.75 if is_air else 0.60
             if min_dt <= dt <= max_dt:
                 dx = pos[0] - cached['pos'][0]
@@ -1320,10 +1385,23 @@ class ESPOverlay(QWidget):
                 (raw_vel[1] - pos_vel[1])**2 +
                 (raw_vel[2] - pos_vel[2])**2
             )
+            raw_nonzero_axes = sum(1 for v in raw_vel if abs(v) > 0.05)
+            pos_nonzero_axes = sum(1 for v in pos_vel if abs(v) > 0.05)
 
             if raw_mag <= 0.001 and pos_mag > 0.001:
                 chosen_vel = pos_vel
                 source = "pos_only"
+            elif (not is_air) and pos_mag > 0.5 and (
+                abs(raw_mag - pos_mag) <= max(3.0, pos_mag * 0.45)
+                or raw_nonzero_axes <= 1
+            ):
+                # Ground raw movement often behaves like a local forward-speed field.
+                # Once we have enough position history, prefer world-space velocity.
+                chosen_vel = pos_vel
+                source = "pos_ground_world"
+            elif (not is_air) and raw_nonzero_axes <= 1 and pos_nonzero_axes >= 1 and pos_mag > 0.5:
+                chosen_vel = pos_vel
+                source = "pos_ground_axis_fix"
             elif pos_mag > 0.001 and diff_mag > max_jump:
                 chosen_vel = pos_vel
                 source = "pos_reject_raw"
@@ -1438,7 +1516,7 @@ class ESPOverlay(QWidget):
                 return
 
             if cgame_base != self.last_cgame_base:
-                reset_runtime_caches()
+                reset_runtime_caches(clear_view=True)
                 self.last_cgame_base = cgame_base
                 
             view_matrix = get_view_matrix(self.scanner, cgame_base)
@@ -1508,7 +1586,7 @@ class ESPOverlay(QWidget):
                     my_ground_shot_origin = my_pos
 
             if my_unit != self.last_my_unit:
-                reset_runtime_caches()
+                reset_runtime_caches(clear_view=True)
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
                 self.max_reload_cache = {}
                 self.vel_window = {} 
@@ -1721,7 +1799,28 @@ class ESPOverlay(QWidget):
                     avg_x, avg_y, min_y = 0, 0, 0
                     target_box_rect = None
 
-                    if box_data:
+                    if ESP_POINT_ONLY_MODE:
+                        res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
+                        if res_pos and res_pos[2] > 0:
+                            point_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
+                            painter.setPen(QPen(point_color, 2))
+                            painter.drawEllipse(int(res_pos[0] - 4), int(res_pos[1] - 4), 8, 8)
+                            painter.drawLine(int(res_pos[0] - 8), int(res_pos[1]), int(res_pos[0] + 8), int(res_pos[1]))
+                            painter.drawLine(int(res_pos[0]), int(res_pos[1] - 8), int(res_pos[0]), int(res_pos[1] + 8))
+                            avg_x, avg_y, min_y = res_pos[0], res_pos[1], res_pos[1] - 8
+                            target_box_rect = (
+                                res_pos[0] - 8.0,
+                                res_pos[1] - 8.0,
+                                res_pos[0] + 8.0,
+                                res_pos[1] + 8.0,
+                            )
+                            has_valid_box = True
+
+                    use_simple_screen_box = (
+                        (not is_air_target and GROUND_USE_SIMPLE_SCREEN_BOX)
+                        or (is_air_target and AIR_USE_SIMPLE_SCREEN_BOX)
+                    )
+                    if (not ESP_POINT_ONLY_MODE) and box_data and not use_simple_screen_box:
                         corners_3d = calculate_3d_box_corners(pos, box_data[1], box_data[2], box_data[3], is_air_target)
                         pts = [p for c in corners_3d if (p := world_to_screen(view_matrix, c[0], c[1], c[2], self.screen_width, self.screen_height)) and p[2] >= 0.001]
                         if len(pts) == 8:
@@ -1738,7 +1837,7 @@ class ESPOverlay(QWidget):
                             )
                             has_valid_box = True
 
-                    if not has_valid_box:
+                    if (not ESP_POINT_ONLY_MODE) and not has_valid_box:
                         res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
                         if res_pos and res_pos[2] > 0:
                             box_w = max(20, int(3000 / (dist + 1))) if is_air_target else max(30, int(4000 / (dist + 1)))
@@ -2149,6 +2248,8 @@ class ESPOverlay(QWidget):
                         except:
                             mov_ptr = 0
                         # ใช้ ANSI Code ย้อน Cursor ไปบนสุด และล้างถึงท้ายหน้าจอ (\033[H\033[J)
+                        my_vel_meta = self.last_velocity_meta.get(my_unit, {})
+                        my_vel_source = my_vel_meta.get('source', 'raw')
                         my_speed = math.sqrt(my_vx**2 + my_vy**2 + my_vz**2) * 3.6
                         target_speed = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                         accel_mag = math.sqrt(ax**2 + ay**2 + az**2)
@@ -2157,7 +2258,7 @@ class ESPOverlay(QWidget):
                         out += f"📊 WTM TACTICAL DASHBOARD | FPS: {int(self.current_fps):<3} | Units: {len(valid_targets):<2}\n"
                         out += "================================================================\n"
                         out += f"🟢 [MY UNIT]  : {hex(my_unit)}\n"
-                        out += f"🚀 Velocity   : {my_speed:>6.1f} km/h | V:({my_vx:>6.2f}, {my_vy:>6.2f}, {my_vz:>6.2f})\n"
+                        out += f"🚀 Velocity   : {my_speed:>6.1f} km/h | V:({my_vx:>6.2f}, {my_vy:>6.2f}, {my_vz:>6.2f}) | SRC:{my_vel_source}\n"
                         out += "-" * 64 + "\n"
                         out += f"🎯 [TARGET]   : {clean_name.upper()} {'[LOCKED]':>35}\n"
                         out += f"🧷 Ptr/Off    : UNIT:{hex(u_ptr)} | INFO:{hex(info_ptr) if info_ptr else '0x0'} | MOV:{hex(mov_ptr) if mov_ptr else '0x0'} @ {hex(mov_off)}\n"

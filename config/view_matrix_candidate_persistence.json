@@ -1,0 +1,35 @@
+{
+  "promote_threshold": 3,
+  "observations": [
+    {
+      "timestamp": "2026-04-03T20:50:10.829642",
+      "target_filter": "",
+      "winner": {
+        "matrix_off": "0x190",
+        "projection_mode": "xzy_row",
+        "axis_signs": "--+",
+        "axis_values": [
+          -1.0,
+          -1.0,
+          1.0
+        ]
+      },
+      "winner_label": "Jagdtiger",
+      "winner_center_dist": 1.76
+    }
+  ],
+  "candidate_stats": {
+    "0x190|xzy_row|--+": {
+      "matrix_off": "0x190",
+      "projection_mode": "xzy_row",
+      "axis_signs": "--+",
+      "wins": 1,
+      "targets": {
+        "Jagdtiger": 1
+      },
+      "last_target": "Jagdtiger",
+      "last_seen": "2026-04-03T20:50:10.829642"
+    }
+  },
+  "global_candidate": null
+}

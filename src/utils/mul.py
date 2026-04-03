@@ -18,7 +18,7 @@ MANAGER_CANDIDATE_OFFSETS = []
 DAT_CONTROLLED_UNIT = 0x981dfc8
 
 OFF_CAMERA_PTR      = 0x670
-OFF_VIEW_MATRIX     = 0x1C0
+OFF_VIEW_MATRIX     = 0x1D0
 
 OFF_UNIT_X          = 0x0D00
 OFF_UNIT_ROTATION   = OFF_UNIT_X - 0x24
@@ -59,6 +59,30 @@ OFF_BULLET_MASS     = 0x2054      # ⚖️ มวลกระสุน (Relative
 OFF_BULLET_CALIBER  = 0x2058   # 📏 คาดว่าเป็น Caliber (0.016 หรือค่าใกล้เคียง)
 OFF_BULLET_CD       = 0x205C        # 💨 คาดว่าเป็น Drag Coeff (0.95)
 OFF_WEAPON_BARREL   = 0x480  # 🎯 ตัวคูณทิศทางลำกล้อง
+PROJECTION_MODES = (
+    ("xyz_col", False, (0, 1, 2)),
+    ("xzy_col", False, (0, 2, 1)),
+    ("yxz_col", False, (1, 0, 2)),
+    ("yzx_col", False, (1, 2, 0)),
+    ("zxy_col", False, (2, 0, 1)),
+    ("zyx_col", False, (2, 1, 0)),
+    ("xyz_row", True, (0, 1, 2)),
+    ("xzy_row", True, (0, 2, 1)),
+    ("yxz_row", True, (1, 0, 2)),
+    ("yzx_row", True, (1, 2, 0)),
+    ("zxy_row", True, (2, 0, 1)),
+    ("zyx_row", True, (2, 1, 0)),
+)
+AXIS_SIGN_VARIANTS = {
+    "+++": (1.0, 1.0, 1.0),
+    "-++": (-1.0, 1.0, 1.0),
+    "+-+": (1.0, -1.0, 1.0),
+    "++-": (1.0, 1.0, -1.0),
+    "--+": (-1.0, -1.0, 1.0),
+    "-+-": (-1.0, 1.0, -1.0),
+    "+--": (1.0, -1.0, -1.0),
+    "---": (-1.0, -1.0, -1.0),
+}
 
 SIGHT_POINTER_CHAINS = [
     [0x13C50, -0x64C0, 0x1780, 0x1C28],
@@ -78,6 +102,8 @@ def is_valid_ptr(p):
 UNIT_KIND_CACHE = {}
 LAST_CGAME_PTR = 0
 LAST_VIEW_MATRIX = None
+LAST_VIEW_PROJECTION_MODE = None
+FORCED_VIEW_PROFILE = None
 UNIT_FILTER_CACHE = {}
 
 PLAYABLE_AIR_TAGS = {
@@ -145,13 +171,43 @@ NON_PLAYABLE_PATH_BLOCKLIST = (
 
 
 def reset_runtime_caches(clear_view=False):
-    global LAST_CGAME_PTR, LAST_VIEW_MATRIX
+    global LAST_CGAME_PTR, LAST_VIEW_MATRIX, LAST_VIEW_PROJECTION_MODE
     UNIT_KIND_CACHE.clear()
     UNIT_FILTER_CACHE.clear()
     _BBOX_FALLBACK_LOGGED.clear()
     if clear_view:
         LAST_CGAME_PTR = 0
         LAST_VIEW_MATRIX = None
+        LAST_VIEW_PROJECTION_MODE = None
+
+
+def _projection_mode_by_name(name):
+    for mode_name, row_major, perm in PROJECTION_MODES:
+        if mode_name == name:
+            return {"name": mode_name, "row_major": row_major, "perm": perm}
+    return None
+
+
+def set_forced_view_profile(doc):
+    global FORCED_VIEW_PROFILE
+    if not isinstance(doc, dict):
+        return False
+    matrix_off_raw = doc.get("matrix_off", 0)
+    camera_off_raw = doc.get("camera_off", OFF_CAMERA_PTR)
+    matrix_off = int(matrix_off_raw, 16) if isinstance(matrix_off_raw, str) else int(matrix_off_raw or 0)
+    camera_off = int(camera_off_raw, 16) if isinstance(camera_off_raw, str) else int(camera_off_raw or OFF_CAMERA_PTR)
+    mode_name = (doc.get("projection_mode") or "").strip()
+    sign_name = (doc.get("axis_signs") or "+++").strip()
+    mode = _projection_mode_by_name(mode_name)
+    signs = AXIS_SIGN_VARIANTS.get(sign_name)
+    if not mode or not signs:
+        return False
+    FORCED_VIEW_PROFILE = {
+        "camera_off": camera_off,
+        "matrix_off": matrix_off,
+        "mode": {**mode, "signs": signs, "axis_signs": sign_name},
+    }
+    return True
 
 
 def _read_ptr(scanner, addr):
@@ -564,7 +620,6 @@ def _manager_offsets():
 
     return offsets
 
-
 def get_cgame_base(scanner, base_addr):
     global LAST_CGAME_PTR
 
@@ -582,7 +637,6 @@ def get_cgame_base(scanner, base_addr):
 
         vtable_ok = is_valid_ptr(_read_ptr(scanner, cgame_ptr))
         live_score, total_units = _score_cgame_live(scanner, cgame_ptr)
-
         matrix_ok = False
         cam_offsets = [OFF_CAMERA_PTR]
         if 0x670 not in cam_offsets:
@@ -639,7 +693,7 @@ def get_cgame_base(scanner, base_addr):
     return 0
 
 def get_view_matrix(scanner, cgame_base):
-    global LAST_VIEW_MATRIX
+    global LAST_VIEW_MATRIX, LAST_VIEW_PROJECTION_MODE
     if cgame_base == 0:
         return LAST_VIEW_MATRIX
 
@@ -652,6 +706,17 @@ def get_view_matrix(scanner, cgame_base):
             return False
         non_zero = sum(1 for v in values if abs(v) > 1e-6)
         return non_zero >= 6
+
+    if FORCED_VIEW_PROFILE:
+        camera_ptr = _read_ptr(scanner, cgame_base + FORCED_VIEW_PROFILE["camera_off"])
+        if is_valid_ptr(camera_ptr):
+            matrix_data = scanner.read_mem(camera_ptr + FORCED_VIEW_PROFILE["matrix_off"], 64)
+            if matrix_data and len(matrix_data) >= 64:
+                values = struct.unpack("<16f", matrix_data[:64])
+                if _matrix_ok(values):
+                    LAST_VIEW_MATRIX = values
+                    LAST_VIEW_PROJECTION_MODE = FORCED_VIEW_PROFILE["mode"]
+                    return values
 
     cam_offsets = [OFF_CAMERA_PTR]
     if 0x670 not in cam_offsets:
@@ -680,6 +745,7 @@ def get_view_matrix(scanner, cgame_base):
                 if not _matrix_ok(values):
                     continue
                 LAST_VIEW_MATRIX = values
+                LAST_VIEW_PROJECTION_MODE = None
                 return values
 
     return LAST_VIEW_MATRIX
@@ -836,12 +902,15 @@ def get_local_axes_from_rotation(R, is_air=False):
     return ax, ay, az
 def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
     try:
-        # 🛡️ แก้จาก vm เป็น matrix
         if not matrix or any(not math.isfinite(v) for v in matrix):
             return None
-            
+
+        # 🎯 สมการ W2S มาตรฐานของ Dagor Engine (Row-Major)
         w = (pos_x * matrix[3]) + (pos_y * matrix[7]) + (pos_z * matrix[11]) + matrix[15]
-        if w < 0.01 or not math.isfinite(w): return None
+        
+        # ถ้ายูนิตอยู่หลังกล้อง ให้ตัดทิ้ง
+        if w < 0.01 or not math.isfinite(w): 
+            return None
         
         clip_x = (pos_x * matrix[0]) + (pos_y * matrix[4]) + (pos_z * matrix[8]) + matrix[12]
         clip_y = (pos_x * matrix[1]) + (pos_y * matrix[5]) + (pos_z * matrix[9]) + matrix[13]
@@ -849,8 +918,9 @@ def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
         ndc_x = clip_x / w
         ndc_y = clip_y / w
         
-        screen_x = (screen_width / 2) * (1 + ndc_x)
-        screen_y = (screen_height / 2) * (1 - ndc_y)
+        # แปลงเป็นพิกัดหน้าจอ
+        screen_x = (screen_width / 2) * (1.0 + ndc_x)
+        screen_y = (screen_height / 2) * (1.0 - ndc_y)
         
         if math.isfinite(screen_x) and math.isfinite(screen_y):
             return (screen_x, screen_y, w)
