@@ -2724,8 +2724,11 @@ class ESPOverlay(QWidget):
                                         draw_sx, draw_sy = pos_scr[0], pos_scr[1]
                                 elif target_box_rect:
                                     center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
-                                    box_w = max(target_box_rect[2] - target_box_rect[0], 1.0)
-                                    px = _blend_ground_lead_x(center_x, px, math.sqrt(vx**2 + vy**2 + vz**2), dist, box_w)
+                                    # หาจุด 3D บนจอ แล้ววัดระยะห่าง (Lead Pixel) เพื่อเอามาบวกกับ Center 2D
+                                    anchor_scr = world_to_screen(view_matrix, t_x, t_y, t_z, self.screen_width, self.screen_height)
+                                    if anchor_scr and anchor_scr[2] > 0:
+                                        pixel_lead_x = px - anchor_scr[0]
+                                        px = center_x + pixel_lead_x
                                 
                                 # ✅ เพิ่มเข้าคิววาดเมื่อทุกอย่างเป็นตัวเลขปกติ
                                 if math.isfinite(draw_sx) and math.isfinite(draw_sy):
@@ -2759,10 +2762,11 @@ class ESPOverlay(QWidget):
                         )
                         if static_screen and static_screen[2] > 0:
                             spx, spy = static_screen[0], static_screen[1]
-                            if target_box_rect:
+                            if target_box_rect and target_anchor_screen and target_anchor_screen[2] > 0:
                                 center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
-                                box_w = max(target_box_rect[2] - target_box_rect[0], 1.0)
-                                spx = _blend_ground_lead_x(center_x, spx, math.sqrt(vx**2 + vy**2 + vz**2), dist, box_w)
+                                pixel_lead_x = spx - target_anchor_screen[0]
+                                spx = center_x + pixel_lead_x
+                                
                             if u_ptr == active_target_ptr and target_box_rect:
                                 if DEBUG_DRAW_VIRTUAL_BOX:
                                     min_x, min_y, max_x, max_y = target_box_rect
