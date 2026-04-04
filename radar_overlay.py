@@ -114,7 +114,7 @@ DEBUG_DRAW_CALIBRATION_HIT = False
 ESP_POINT_ONLY_MODE = False             # เปลี่ยนเป็น False เพื่อปิดโหมดวาดแค่จุด
 GROUND_USE_SIMPLE_SCREEN_BOX = False    # เปลี่ยนเป็น False เพื่อปิดโหมดกล่อง 2D แบนๆ
 AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น False
-DRAW_BASE_HITPOINT = False
+DRAW_BASE_HITPOINT = True
 CALIBRATION_STEP_PIXELS = 0.1
 CALIBRATION_STEP_FAST_PIXELS = 0.2
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
@@ -1820,22 +1820,65 @@ class ESPOverlay(QWidget):
                         (not is_air_target and GROUND_USE_SIMPLE_SCREEN_BOX)
                         or (is_air_target and AIR_USE_SIMPLE_SCREEN_BOX)
                     )
-                    if (not ESP_POINT_ONLY_MODE) and box_data and not use_simple_screen_box:
-                        corners_3d = calculate_3d_box_corners(pos, box_data[1], box_data[2], box_data[3], is_air_target)
-                        pts = [p for c in corners_3d if (p := world_to_screen(view_matrix, c[0], c[1], c[2], self.screen_width, self.screen_height)) and p[2] >= 0.001]
-                        if len(pts) == 8:
-                            box_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
-                            painter.setPen(QPen(box_color, 2))
-                            for e1, e2 in [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]: 
-                                painter.drawLine(int(pts[e1][0]), int(pts[e1][1]), int(pts[e2][0]), int(pts[e2][1]))
-                            min_y, avg_x, avg_y = min(p[1] for p in pts), sum(p[0] for p in pts)/8.0, sum(p[1] for p in pts)/8.0  
-                            target_box_rect = (
-                                min(p[0] for p in pts),
-                                min(p[1] for p in pts),
-                                max(p[0] for p in pts),
-                                max(p[1] for p in pts),
-                            )
-                            has_valid_box = True
+                    if (not ESP_POINT_ONLY_MODE) and not use_simple_screen_box:
+                        # ========================================================
+                        # 📦 3D BOUNDING BOX RENDERER (PERFECT ROTATION)
+                        # ========================================================
+                        bmin, bmax = get_unit_bbox(self.scanner, u_ptr)
+                        rot = get_unit_rotation(self.scanner, u_ptr)
+                        
+                        if bmin and bmax and rot:
+                            # 1. สร้างมุมกล่องทั้ง 8 มุมแบบ Local
+                            corners = [
+                                (bmin[0], bmin[1], bmin[2]), (bmin[0], bmin[1], bmax[2]),
+                                (bmin[0], bmax[1], bmin[2]), (bmin[0], bmax[1], bmax[2]),
+                                (bmax[0], bmin[1], bmin[2]), (bmax[0], bmin[1], bmax[2]),
+                                (bmax[0], bmax[1], bmin[2]), (bmax[0], bmax[1], bmax[2])
+                            ]
+                            
+                            pts = []
+                            # 2. หมุนกล่องตามองศารถถัง (Rotation) + ย้ายไปตำแหน่งจริง (Translation)
+                            for c in corners:
+                                world_x = pos[0] + (c[0]*rot[0] + c[1]*rot[3] + c[2]*rot[6])
+                                world_y = pos[1] + (c[0]*rot[1] + c[1]*rot[4] + c[2]*rot[7])
+                                world_z = pos[2] + (c[0]*rot[2] + c[1]*rot[5] + c[2]*rot[8])
+                                
+                                # 3. แปลงลงหน้าจอ
+                                scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
+                                if scr and scr[2] > 0:
+                                    pts.append((int(scr[0]), int(scr[1])))
+                                else:
+                                    pts.append(None)
+                                    
+                            # 4. ลากเส้นเชื่อมมุมทั้ง 8 (ถ้าอยู่บนหน้าจอครบ)
+                            if pts.count(None) == 0:
+                                edges = [
+                                    (0,1), (0,2), (1,3), (2,3), # ฐานล่าง
+                                    (4,5), (4,6), (5,7), (6,7), # ฐานบน
+                                    (0,4), (1,5), (2,6), (3,7)  # เสาแนวตั้ง
+                                ]
+                                
+                                # เลือกสีกรอบ (สีแดงสำหรับรถถัง, สีส้มสำหรับเครื่องบิน)
+                                box_color = QColor(255, 50, 50, 180) if not is_air_target else QColor(*COLOR_BOX_TARGET)
+                                if u_ptr == active_target_ptr:
+                                    box_color = QColor(*COLOR_BOX_SELECT_TARGET)
+                                painter.setPen(QPen(box_color, 1.5))
+                                
+                                for p1, p2 in edges:
+                                    painter.drawLine(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
+
+                                # 5. คำนวณข้อมูลสำหรับระบบล็อกเป้าและระยะทาง
+                                valid_pts = [p for p in pts if p]
+                                min_y = min(p[1] for p in valid_pts)
+                                avg_x = sum(p[0] for p in valid_pts) / len(valid_pts)
+                                avg_y = sum(p[1] for p in valid_pts) / len(valid_pts)
+                                target_box_rect = (
+                                    min(p[0] for p in valid_pts),
+                                    min(p[1] for p in valid_pts),
+                                    max(p[0] for p in valid_pts),
+                                    max(p[1] for p in valid_pts),
+                                )
+                                has_valid_box = True
 
                     if (not ESP_POINT_ONLY_MODE) and not has_valid_box:
                         res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)

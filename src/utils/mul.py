@@ -253,6 +253,24 @@ def _read_info_ptr_signature(scanner, info_ptr):
         _read_ptr(scanner, info_ptr + 0x40),
     )
 
+def get_unit_bbox(scanner, unit_ptr):
+    try:
+        bmin_raw = scanner.read_mem(unit_ptr + OFF_UNIT_BBMIN, 12)
+        bmax_raw = scanner.read_mem(unit_ptr + OFF_UNIT_BBMAX, 12)
+        if not bmin_raw or not bmax_raw: 
+            return None, None
+        return struct.unpack("<fff", bmin_raw), struct.unpack("<fff", bmax_raw)
+    except:
+        return None, None
+
+def get_unit_rotation(scanner, unit_ptr):
+    try:
+        rot_raw = scanner.read_mem(unit_ptr + OFF_UNIT_ROTATION, 36)
+        if not rot_raw: 
+            return None
+        return struct.unpack("<9f", rot_raw)
+    except:
+        return None
 
 def get_unit_kind_from_info(scanner, u_ptr):
     if OFF_UNIT_INFO == 0:
