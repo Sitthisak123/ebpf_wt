@@ -582,19 +582,10 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
     t_sight = zeroing / bullet_speed if bullet_speed > 0 else 0
     sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
 
+    # 🎯 THE TRUTH: แรงโน้มถ่วงดึงลงแกนโลก (World Y) เสมอ! ห้ามเอาไปเอียงตามรถถังเด็ดขาด!
     final_x = t_x - (my_vx * best_t)
-    final_y = t_y + bullet_drop - (my_vy * best_t)
+    final_y = t_y + bullet_drop - sight_drop_comp - (my_vy * best_t)
     final_z = t_z - (my_vz * best_t)
-
-    # 🎯 THE REAL 3D FIX: คืนค่า Zeroing Tilt ให้สมการ 3D!
-    # คำนวณวิถีกระสุนที่เป๋ออกข้าง (Lateral Drift) เมื่อรถถังเอียง
-    if my_rot and len(my_rot) >= 9:
-        up_x, up_y, up_z = my_rot[3], my_rot[4], my_rot[5]
-        final_x -= (sight_drop_comp * up_x)
-        final_y -= (sight_drop_comp * up_y)
-        final_z -= (sight_drop_comp * up_z)
-    else:
-        final_y -= sight_drop_comp
     
     return final_x, final_y, final_z
 
@@ -606,6 +597,7 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     min_x, min_y, max_x, max_y = target_box_rect
     box_h = max(max_y - min_y, 1.0)
 
+    # 1. ระยะตก (Drop) จาก 2D Equation
     dist_t = max(0.0, min(1.0, distance_to_target / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
     exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
     drop_pixels_y = (GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t)) * box_h
@@ -624,11 +616,41 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
 
     calib_x, calib_y = calibration_offset
 
-    # 🎯 ตัดระบบการหมุนแกน 2D ทิ้งให้หมด 
-    # บวกพิกัดกันตรงๆ แบบนี้ทำให้กดลูกศรจูนได้ง่าย 
-    # ส่วนกระสุนเป๋เอียง 3D จัดการให้หมดแล้วจากขั้นตอนก่อนหน้า
-    final_x = base_x + dx + calib_x
-    final_y = base_y + dy + drop_pixels_y + calib_y
+    # 🎯 2. THE FLAWLESS MATRIX PROJECTION
+    # นำเวกเตอร์เอียงของรถถัง (Local UP) มาคูณเข้ากับหน้าเลนส์กล้องโดยตรง
+    # วิธีนี้จะไม่ถูกระยะทาง (Perspective) บีบอัดให้เพี้ยนอีกต่อไป
+    up_x, up_y = 0.0, -1.0 # ค่าเริ่มต้น: ชี้ขึ้นข้างบนจอ
+    
+    if my_rot and view_matrix and len(view_matrix) >= 16:
+        up_wx, up_wy, up_wz = my_rot[3], my_rot[4], my_rot[5]
+        
+        # 🎯 THE FIX: View Matrix เป็น 1D Array (16 elements) 
+        # ต้องใช้ Index แบบ 0, 4, 8 สำหรับแกน X และ 1, 5, 9 สำหรับแกน Y
+        clip_x = (up_wx * view_matrix[0]) + (up_wy * view_matrix[4]) + (up_wz * view_matrix[8])
+        clip_y = (up_wx * view_matrix[1]) + (up_wy * view_matrix[5]) + (up_wz * view_matrix[9])
+        
+        # กลับหัวแกน Y เพราะบนจอคอมพิวเตอร์ Y ชี้ลงพื้น
+        scr_vx = clip_x
+        scr_vy = -clip_y
+        
+        mag = math.hypot(scr_vx, scr_vy)
+        if mag > 0.001:
+            up_x = scr_vx / mag
+            up_y = scr_vy / mag
+
+    # 🎯 3. สร้างแกนทิศทาง "ลง" (Down) และ "ขวา" (Right) อ้างอิงตามรถถังบนหน้าจอ
+    down_x = -up_x
+    down_y = -up_y
+    right_x = -up_y
+    right_y = up_x
+
+    # 🎯 4. หมุนเฉพาะค่าจูนของกล้อง (Parallax Calibration)
+    rot_calib_x = (calib_x * right_x) + (calib_y * down_x)
+    rot_calib_y = (calib_x * right_y) + (calib_y * down_y)
+
+    # 🎯 5. รวมพิกัดทั้งหมด (ระยะตก drop_pixels_y ยังคงดึงลงพื้นโลกตรงๆ)
+    final_x = base_x + dx + rot_calib_x
+    final_y = base_y + dy + drop_pixels_y + rot_calib_y
 
     return (final_x, final_y)
 
@@ -2629,11 +2651,9 @@ class ESPOverlay(QWidget):
                     # 📉 Gravity Drop Compensation: 0.5 * g * t^2
                     gravity_offset = 0.5 * BULLET_GRAVITY * (best_t ** 2)
                     
-                    # 🎯 แก้ไขเป้าหมายให้รองรับตอนรถถังเอียง (Perfect Tilt Compensation)
-                    final_y += gravity_offset                  # แรงโน้มถ่วงดึงลงตรงๆ ตามแกนโลก (World Y) เสมอ
-                    final_x -= (sight_drop_comp * up_x)        # Zeroing ดันปืนขึ้นตามแกน Local UP ของป้อมปืน!
-                    final_y -= (sight_drop_comp * up_y)
-                    final_z -= (sight_drop_comp * up_z)
+                    # 🎯 แรงโน้มถ่วงดึงลงตรงๆ แกน Y ของโลกเท่านั้น!
+                    final_y += gravity_offset                  
+                    final_y -= sight_drop_comp
                     
                     # หักลบความเร็วรถถังเราออก (Galilean Relativity)
                     final_x -= (my_vx * best_t)
