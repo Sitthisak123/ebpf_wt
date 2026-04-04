@@ -13,3 +13,5 @@
     -at close 0_ atill not match becuase GROUND_AIM_HEIGHT_RATIO = 0.75 leadmark are above of target and when aim at lead mark the hit point will show at center of enemy(the place that leadmark should be)
 
 -remove Q keys to change target
+
+-croshair across > leadmark across

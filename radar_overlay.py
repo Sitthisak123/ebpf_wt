@@ -56,6 +56,7 @@ COLOR_AXIS_Z            = (64, 160, 255, 255)
 COLOR_BOX_HITPOINT      = (255, 40, 40, 230)
 COLOR_DEBUG_MUZZLE_RAY  = (80, 255, 120, 220)
 COLOR_DEBUG_BOX_ENTRY   = (255, 120, 40, 235)
+COLOR_DEBUG_VIRTUAL_BOX = (255, 64, 255, 235)
 COLOR_CALIBRATION_HIT   = (64, 255, 255, 245)
 COLOR_CLASS_ICON_GROUND = (255, 215, 96, 235)
 COLOR_CLASS_ICON_AIR    = (120, 220, 255, 235)
@@ -119,6 +120,7 @@ DRAW_UNIT_FAMILY_OVERLAY_DEBUG = False
 UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
 DEBUG_DRAW_MUZZLE_RAY = False
 DEBUG_DRAW_BOX_ENTRY_HIT = False
+DEBUG_DRAW_VIRTUAL_BOX = False
 DEBUG_DRAW_CALIBRATION_HIT = False
 ESP_POINT_ONLY_MODE = False             # เปลี่ยนเป็น False เพื่อปิดโหมดวาดแค่จุด
 GROUND_USE_SIMPLE_SCREEN_BOX = False    # เปลี่ยนเป็น False เพื่อปิดโหมดกล่อง 2D แบนๆ
@@ -577,15 +579,15 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     anchor_v = 0.5
     if target_anchor_screen:
         tx, ty = target_anchor_screen
-        if min_x <= tx <= max_x and min_y <= ty <= max_y:
-            anchor_u = (tx - min_x) / box_w
+        if min_y <= ty <= max_y:
             anchor_v = (ty - min_y) / box_h
 
     dist_t = max(0.0, min(1.0, distance_to_target / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
     exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
     anchor_v = min(0.98, anchor_v + GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t))
 
-    virtual_min_x = leadmark_screen[0] - (anchor_u * box_w)
+    box_center_x = (min_x + max_x) * 0.5
+    virtual_min_x = box_center_x - (anchor_u * box_w)
     virtual_max_x = virtual_min_x + box_w
     virtual_min_y = leadmark_screen[1] - (anchor_v * box_h)
     virtual_max_y = virtual_min_y + box_h
@@ -1682,6 +1684,7 @@ class ESPOverlay(QWidget):
         hit_points_to_draw = []
         debug_muzzle_rays_to_draw = []
         debug_box_entry_hits_to_draw = []
+        debug_virtual_boxes_to_draw = []
         calibration_hit_points_to_draw = []
         
         active_flight_data = None 
@@ -2578,14 +2581,20 @@ class ESPOverlay(QWidget):
                             
                             # 🎯 เช็ค NaN ก่อนแปลงเป็น int
                             if math.isfinite(px) and math.isfinite(py):
-                                # 🛡️ ใช้ avg_x และ avg_y ที่คำนวณไว้ด้านบนแทน screen_pos
-                                draw_sx, draw_sy = avg_x, avg_y
+                                # ใช้ center ของ 2D target box เป็น origin ของเส้น leadmark
+                                if target_box_rect:
+                                    draw_sx = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                    draw_sy = (target_box_rect[1] + target_box_rect[3]) * 0.5
+                                else:
+                                    draw_sx, draw_sy = avg_x, avg_y
                                 
                                 # ถ้าเป็นเครื่องบิน ให้ดึงพิกัดที่แม่นยำกว่ามาวาดเส้น
                                 if display_is_air:
                                     pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
                                     if pos_scr and pos_scr[2] > 0:
                                         draw_sx, draw_sy = pos_scr[0], pos_scr[1]
+                                elif target_box_rect:
+                                    px = (target_box_rect[0] + target_box_rect[2]) * 0.5
                                 
                                 # ✅ เพิ่มเข้าคิววาดเมื่อทุกอย่างเป็นตัวเลขปกติ
                                 if math.isfinite(draw_sx) and math.isfinite(draw_sy):
@@ -2619,7 +2628,33 @@ class ESPOverlay(QWidget):
                         )
                         if static_screen and static_screen[2] > 0:
                             spx, spy = static_screen[0], static_screen[1]
+                            if target_box_rect:
+                                spx = (target_box_rect[0] + target_box_rect[2]) * 0.5
                             if u_ptr == active_target_ptr and target_box_rect:
+                                if DEBUG_DRAW_VIRTUAL_BOX:
+                                    min_x, min_y, max_x, max_y = target_box_rect
+                                    box_w = max(max_x - min_x, 1.0)
+                                    box_h = max(max_y - min_y, 1.0)
+                                    anchor_u = 0.5
+                                    anchor_v = 0.5
+                                    if target_anchor_screen:
+                                        tx, ty = target_anchor_screen[0], target_anchor_screen[1]
+                                        if min_y <= ty <= max_y:
+                                            anchor_v = (ty - min_y) / box_h
+                                    dist_t = max(0.0, min(1.0, dist / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
+                                    exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
+                                    anchor_v = min(0.98, anchor_v + GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t))
+                                    box_center_x = (min_x + max_x) * 0.5
+                                    virtual_min_x = box_center_x - (anchor_u * box_w)
+                                    virtual_max_x = virtual_min_x + box_w
+                                    virtual_min_y = spy - (anchor_v * box_h)
+                                    virtual_max_y = virtual_min_y + box_h
+                                    debug_virtual_boxes_to_draw.append((
+                                        virtual_min_x,
+                                        virtual_min_y,
+                                        virtual_max_x,
+                                        virtual_max_y,
+                                    ))
                                 mapped_hitpoint = _map_aim_to_target_box_hitpoint(
                                     (self.center_x, self.center_y),
                                     (spx, spy),
@@ -2774,6 +2809,16 @@ class ESPOverlay(QWidget):
                     painter.drawEllipse(hp_pts[0] - 4, hp_pts[1] - 4, 8, 8)
                     painter.drawLine(hp_pts[0] - 6, hp_pts[1] - 6, hp_pts[0] + 6, hp_pts[1] + 6)
                     painter.drawLine(hp_pts[0] - 6, hp_pts[1] + 6, hp_pts[0] + 6, hp_pts[1] - 6)
+
+            if DEBUG_DRAW_VIRTUAL_BOX:
+                virtual_color = QColor(*COLOR_DEBUG_VIRTUAL_BOX)
+                painter.setPen(QPen(virtual_color, 2, Qt.DashDotLine))
+                for min_x, min_y, max_x, max_y in debug_virtual_boxes_to_draw:
+                    rect_pts = _screen_int_tuple(min_x, min_y, max_x, max_y)
+                    if not rect_pts:
+                        continue
+                    rect_x1, rect_y1, rect_x2, rect_y2 = rect_pts
+                    painter.drawRect(rect_x1, rect_y1, rect_x2 - rect_x1, rect_y2 - rect_y1)
 
             if DEBUG_DRAW_CALIBRATION_HIT:
                 calib_color = QColor(*COLOR_CALIBRATION_HIT)
