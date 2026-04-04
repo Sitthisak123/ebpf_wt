@@ -22,6 +22,14 @@ from src.utils.scanner import *
 from src.utils.mul import *
 from src.utils.debug import *
 
+
+def _console_supports_sticky_dashboard():
+    try:
+        term = os.environ.get("TERM", "").lower()
+        return sys.stdout.isatty() and term not in ("", "dumb")
+    except Exception:
+        return False
+
 COLOR_INFO_TEXT         = (255, 228, 64, 255)   
 COLOR_BARREL_LINE       = (0, 255, 0, 255)      
 COLOR_BOX_TARGET        = (255, 255, 0, 200)
@@ -2533,13 +2541,19 @@ class ESPOverlay(QWidget):
                             (curr_t - self.last_debug_log_time) >= DEBUG_LOG_INTERVAL
                         )
                         if should_refresh_console:
-                            if not self.console_initialized:
-                                sys.stdout.write("\033[2J\033[H")
-                                self.console_initialized = True
+                            if _console_supports_sticky_dashboard():
+                                if not self.console_initialized:
+                                    sys.stdout.write("\033[2J\033[H")
+                                    self.console_initialized = True
+                                else:
+                                    sys.stdout.write("\033[H\033[J")
+                                sys.stdout.write(out)
+                                sys.stdout.flush()
                             else:
-                                sys.stdout.write("\033[H\033[J")
-                            sys.stdout.write(out)
-                            sys.stdout.flush()
+                                if not self.console_initialized:
+                                    print("[*] Console note: sticky dashboard disabled (no ANSI/TTY support)")
+                                    self.console_initialized = True
+                                print(out, end="")
                             self.last_debug_log_time = curr_t
 
                     static_ground_final = None
