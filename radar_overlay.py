@@ -1535,6 +1535,7 @@ class ESPOverlay(QWidget):
         else:
             raw_vel = (0.0, 0.0, 0.0)
         cached = self.velocity_cache.get(u_ptr)
+        prev_meta = self.last_velocity_meta.get(u_ptr, {})
         pos_vel = None
 
         if cached and pos:
@@ -1594,7 +1595,9 @@ class ESPOverlay(QWidget):
 
         if not is_air:
             # Ground units often have tiny noisy vectors around zero.
-            idle_speed = 0.22  # m/s (~0.8 km/h)
+            idle_speed_enter = 0.22  # m/s (~0.8 km/h)
+            idle_speed_exit = 0.38
+            idle_speed = idle_speed_exit if prev_meta.get("source") == "ground_idle" else idle_speed_enter
             if raw_mag <= idle_speed and (pos_vel is None or pos_mag <= idle_speed):
                 chosen_vel = (0.0, 0.0, 0.0)
                 source = "ground_idle"
@@ -1602,6 +1605,21 @@ class ESPOverlay(QWidget):
                 # Ground lead solver should not react to suspension / axis-layout noise as vertical motion.
                 chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
             chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
+
+            # Ground world velocity is derived from noisy local raw fields + short-frame position deltas.
+            # Smooth the final vector to prevent source flapping and visible jitter on moving vehicles.
+            prev_vel = cached.get('vel') if cached else None
+            if prev_vel and len(prev_vel) == 3 and source != "ground_idle":
+                prev_mag = math.sqrt(prev_vel[0]**2 + prev_vel[1]**2 + prev_vel[2]**2)
+                if prev_mag > 0.0 or raw_mag > idle_speed_exit or pos_mag > idle_speed_exit:
+                    smoothing = 0.78 if source.startswith("pos_") else 0.68
+                    chosen_vel = tuple(
+                        (prev_vel[i] * smoothing) + (chosen_vel[i] * (1.0 - smoothing))
+                        for i in range(3)
+                    )
+                    chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
+                    chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
+                    source = f"{source}_smoothed"
 
         self.velocity_cache[u_ptr] = {
             'time': curr_t,
