@@ -33,7 +33,7 @@ def _console_supports_sticky_dashboard():
 COLOR_INFO_TEXT         = (255, 228, 64, 255)   
 COLOR_BARREL_LINE       = (0, 255, 0, 255)      
 COLOR_BOX_TARGET        = (255, 255, 0, 200)
-COLOR_BOX_SELECT_TARGET = (255, 255, 0, 200)
+COLOR_BOX_SELECT_TARGET = (0, 0, 0, 200)
 COLOR_TEXT_GROUND       = (255, 196, 20, 200)    
 COLOR_TEXT_AIR          = (255, 196, 20, 230)   
 COLOR_RELOAD_BG         = (0, 0, 0, 180)        
@@ -118,17 +118,21 @@ DRAW_CLASS_ICON_DEBUG_TEXT = False
 CLASS_ICON_DEBUG_TEXT_GAP = 12
 DRAW_UNIT_FAMILY_OVERLAY_DEBUG = False
 UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
+
 DEBUG_DRAW_MUZZLE_RAY = False
 DEBUG_DRAW_BOX_ENTRY_HIT = False
-DEBUG_DRAW_VIRTUAL_BOX = False
+DEBUG_DRAW_VIRTUAL_BOX = True
 DEBUG_DRAW_CALIBRATION_HIT = False
+
 ESP_POINT_ONLY_MODE = False             # เปลี่ยนเป็น False เพื่อปิดโหมดวาดแค่จุด
 GROUND_USE_SIMPLE_SCREEN_BOX = False    # เปลี่ยนเป็น False เพื่อปิดโหมดกล่อง 2D แบนๆ
 AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น False
+
 DRAW_BASE_HITPOINT = True
 CALIBRATION_STEP_PIXELS = 0.1
 CALIBRATION_STEP_FAST_PIXELS = 0.2
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
+
 GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
 GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
 GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
@@ -878,6 +882,74 @@ def _draw_unit_class_icon(painter, center_x, center_y, unit_family, size):
     painter.drawLine(int(center_x - half), int(center_y), int(center_x), int(center_y - 4))
     painter.drawLine(int(center_x + half), int(center_y), int(center_x), int(center_y - 4))
     painter.drawLine(int(center_x - 4), int(center_y + 4), int(center_x + 4), int(center_y + 4))
+
+
+def _draw_leadmark_glyph(painter, center_x, center_y, color, outer_radius=8, core_radius=3, pen_width=3):
+    painter.setPen(QPen(color, pen_width))
+    painter.drawEllipse(int(center_x - outer_radius), int(center_y - outer_radius), int(outer_radius * 2), int(outer_radius * 2))
+    painter.setBrush(color)
+    painter.drawEllipse(int(center_x - core_radius), int(center_y - core_radius), int(core_radius * 2), int(core_radius * 2))
+    painter.setBrush(Qt.NoBrush)
+
+
+def _blend_ground_lead_x(center_x, solver_x, target_vel_mag, distance_to_target, box_width):
+    try:
+        center_x = float(center_x)
+        solver_x = float(solver_x)
+        box_width = max(float(box_width), 1.0)
+        vel_mag = max(0.0, float(target_vel_mag))
+        dist = max(0.0, float(distance_to_target))
+
+        # Keep close/slow targets near center, but still allow more horizontal lead
+        # as motion and distance increase.
+        vel_k = max(0.0, min(1.0, vel_mag / 12.0))
+        dist_k = max(0.0, min(1.0, dist / 900.0))
+        blend_k = max(vel_k * 0.85, dist_k * 0.20)
+
+        blended_x = center_x + ((solver_x - center_x) * blend_k)
+
+        # Cap the visible horizontal offset to a fraction of the target box width.
+        max_ratio = 0.08 + (vel_k * 0.12) + (dist_k * 0.06)
+        max_offset = box_width * max_ratio
+        delta = blended_x - center_x
+        if delta > max_offset:
+            return center_x + max_offset
+        if delta < -max_offset:
+            return center_x - max_offset
+        return blended_x
+    except Exception:
+        return solver_x
+
+
+def _project_target_box_rect(view_matrix, box_data, screen_width, screen_height):
+    if not box_data or not view_matrix:
+        return None
+    pos, bmin, bmax, rot = box_data
+    if not pos or not bmin or not bmax or not rot:
+        return None
+
+    corners = [
+        (bmin[0], bmin[1], bmin[2]), (bmin[0], bmin[1], bmax[2]),
+        (bmin[0], bmax[1], bmin[2]), (bmin[0], bmax[1], bmax[2]),
+        (bmax[0], bmin[1], bmin[2]), (bmax[0], bmin[1], bmax[2]),
+        (bmax[0], bmax[1], bmin[2]), (bmax[0], bmax[1], bmax[2]),
+    ]
+    pts = []
+    for c in corners:
+        world_x = pos[0] + (c[0] * rot[0] + c[1] * rot[3] + c[2] * rot[6])
+        world_y = pos[1] + (c[0] * rot[1] + c[1] * rot[4] + c[2] * rot[7])
+        world_z = pos[2] + (c[0] * rot[2] + c[1] * rot[5] + c[2] * rot[8])
+        scr = world_to_screen(view_matrix, world_x, world_y, world_z, screen_width, screen_height)
+        if not scr or scr[2] <= 0:
+            return None
+        pts.append((scr[0], scr[1]))
+
+    return (
+        min(p[0] for p in pts),
+        min(p[1] for p in pts),
+        max(p[0] for p in pts),
+        max(p[1] for p in pts),
+    )
 
 
 def _unit_family_debug_label(unit_family):
@@ -1874,6 +1946,9 @@ class ESPOverlay(QWidget):
 
                 pos = get_unit_pos(self.scanner, u_ptr)
                 if not pos: continue
+                pre_vel = None
+                if not resolved_is_air:
+                    pre_vel = self._stabilize_velocity(u_ptr, False, pos, curr_t)
 
                 # Position checks (Origin ghost / Distance)
                 pos_origin_dist = math.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
@@ -1901,6 +1976,7 @@ class ESPOverlay(QWidget):
                     profile_tag,
                     profile_path,
                     (profile.get("unit_key") or ""),
+                    pre_vel,
                 ))
             
             # 🧹 Clean up Profile Cache for missing units
@@ -1932,10 +2008,62 @@ class ESPOverlay(QWidget):
                 profile_tag,
                 profile_path,
                 profile_unit_key,
+                pre_vel,
             ) in valid_targets:
-                res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
+                select_screen = None
+                select_box_rect = None
+                select_fire_origin = my_ground_shot_origin if my_ground_shot_origin else my_pos
+                select_vx, select_vy, select_vz = pre_vel if pre_vel else (0.0, 0.0, 0.0)
+                select_tx, select_ty, select_tz = pos[0], pos[1], pos[2]
+
+                if (not is_air_target) and current_bullet_speed > 0.0 and my_pos:
+                    # Ground selection: compare by leadmark-like point, not raw unit center.
+                    try:
+                        select_box_data = get_unit_3d_box_data(self.scanner, u_ptr, False)
+                        select_box_rect = _project_target_box_rect(
+                            view_matrix,
+                            select_box_data,
+                            self.screen_width,
+                            self.screen_height,
+                        )
+                        ground_aim_point = _get_ground_target_aim_point(select_box_data, pos, dist_to_me)
+                        if ground_aim_point:
+                            select_tx, select_ty, select_tz = ground_aim_point
+                    except Exception:
+                        select_box_rect = None
+
+                    select_t = max(dist_to_me / current_bullet_speed, 0.01)
+                    pred_x = select_tx + (select_vx * select_t)
+                    pred_y = select_ty + (select_vy * select_t)
+                    pred_z = select_tz + (select_vz * select_t)
+
+                    dx_imp = pred_x - (select_fire_origin[0] + my_vx * select_t)
+                    dz_imp = pred_z - (select_fire_origin[2] + my_vz * select_t)
+                    d_imp = math.hypot(dx_imp, dz_imp)
+
+                    if current_bullet_speed > 0.0:
+                        select_t = d_imp / current_bullet_speed
+                        bullet_drop = 0.5 * BULLET_GRAVITY * (select_t ** 2)
+                        t_sight = current_zeroing / current_bullet_speed
+                        bullet_drop -= (0.5 * BULLET_GRAVITY * (t_sight ** 2))
+                    else:
+                        bullet_drop = 0.0
+
+                    select_x = pred_x - (my_vx * select_t)
+                    select_y = pred_y + bullet_drop - (my_vy * select_t)
+                    select_z = pred_z - (my_vz * select_t)
+                    select_screen = world_to_screen(view_matrix, select_x, select_y, select_z, self.screen_width, self.screen_height)
+                else:
+                    # Air selection: keep old stable behavior, use unit center only.
+                    select_screen = world_to_screen(view_matrix, select_tx, select_ty, select_tz, self.screen_width, self.screen_height)
+
+                res_pos = select_screen
                 if res_pos and res_pos[2] > 0:
-                    dist_crosshair = math.hypot(res_pos[0] - self.center_x, res_pos[1] - self.center_y)
+                    select_sx = res_pos[0]
+                    select_sy = res_pos[1]
+                    if select_box_rect and not is_air_target:
+                        select_sx = (select_box_rect[0] + select_box_rect[2]) * 0.5
+                    dist_crosshair = math.hypot(select_sx - self.center_x, select_sy - self.center_y)
                     visible_targets.append((dist_crosshair, u_ptr))
 
             if visible_targets:
@@ -1986,6 +2114,7 @@ class ESPOverlay(QWidget):
                 profile_tag,
                 profile_path,
                 profile_unit_key,
+                pre_vel,
             ) in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
                 try:
@@ -2303,7 +2432,7 @@ class ESPOverlay(QWidget):
                     # ========================================================
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
-                    vel = self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
+                    vel = pre_vel if (pre_vel and not physics_is_air) else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
                     is_turning = False 
                     
                     if not vel or current_bullet_speed <= 0 or not my_pos or dist <= 10.0: continue
@@ -2594,7 +2723,9 @@ class ESPOverlay(QWidget):
                                     if pos_scr and pos_scr[2] > 0:
                                         draw_sx, draw_sy = pos_scr[0], pos_scr[1]
                                 elif target_box_rect:
-                                    px = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                    center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                    box_w = max(target_box_rect[2] - target_box_rect[0], 1.0)
+                                    px = _blend_ground_lead_x(center_x, px, math.sqrt(vx**2 + vy**2 + vz**2), dist, box_w)
                                 
                                 # ✅ เพิ่มเข้าคิววาดเมื่อทุกอย่างเป็นตัวเลขปกติ
                                 if math.isfinite(draw_sx) and math.isfinite(draw_sy):
@@ -2629,7 +2760,9 @@ class ESPOverlay(QWidget):
                         if static_screen and static_screen[2] > 0:
                             spx, spy = static_screen[0], static_screen[1]
                             if target_box_rect:
-                                spx = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                box_w = max(target_box_rect[2] - target_box_rect[0], 1.0)
+                                spx = _blend_ground_lead_x(center_x, spx, math.sqrt(vx**2 + vy**2 + vz**2), dist, box_w)
                             if u_ptr == active_target_ptr and target_box_rect:
                                 if DEBUG_DRAW_VIRTUAL_BOX:
                                     min_x, min_y, max_x, max_y = target_box_rect
@@ -2757,10 +2890,7 @@ class ESPOverlay(QWidget):
                         continue
                     painter.setPen(QPen(pred_color, 2, Qt.DotLine))
                     painter.drawLine(*line_pts)
-                    painter.setPen(QPen(pred_color, 2))
-                    painter.drawEllipse(center_pts[0] - 6, center_pts[1] - 6, 12, 12)
-                    painter.drawLine(center_pts[0] - 8, center_pts[1], center_pts[0] + 8, center_pts[1])
-                    painter.drawLine(center_pts[0], center_pts[1] - 8, center_pts[0], center_pts[1] + 8)
+                    _draw_leadmark_glyph(painter, center_pts[0], center_pts[1], pred_color, outer_radius=6, core_radius=2, pen_width=2)
                     continue
 
                 line_pts = _screen_int_tuple(lm['sx'], lm['sy'], lm['px'], lm['py'])
@@ -2775,11 +2905,7 @@ class ESPOverlay(QWidget):
                     blink_alpha = int(((math.sin(time.time() * 25.0) + 1.0) / 2.0) * 150 + 105)
                     pred_color.setAlpha(blink_alpha)
                 
-                painter.setPen(QPen(pred_color, 3))
-                painter.drawEllipse(center_pts[0] - 8, center_pts[1] - 8, 16, 16)
-                painter.setBrush(pred_color)
-                painter.drawEllipse(center_pts[0] - 3, center_pts[1] - 3, 6, 6)
-                painter.setBrush(Qt.NoBrush)
+                _draw_leadmark_glyph(painter, center_pts[0], center_pts[1], pred_color, outer_radius=8, core_radius=3, pen_width=3)
 
             for hp_x, hp_y in hit_points_to_draw:
                 hp_pts = _screen_int_tuple(hp_x, hp_y)
