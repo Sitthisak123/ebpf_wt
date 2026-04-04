@@ -597,7 +597,7 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     min_x, min_y, max_x, max_y = target_box_rect
     box_h = max(max_y - min_y, 1.0)
 
-    # 1. ระยะตก (Drop) จาก 2D Equation
+    # 1. ระยะตก (Drop) จาก 2D Equation (นี่คือ UI Parallax ไม่ใช่แรงโน้มถ่วง 3D!)
     dist_t = max(0.0, min(1.0, distance_to_target / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
     exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
     drop_pixels_y = (GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t)) * box_h
@@ -617,19 +617,15 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     calib_x, calib_y = calibration_offset
 
     # 🎯 2. THE FLAWLESS MATRIX PROJECTION
-    # นำเวกเตอร์เอียงของรถถัง (Local UP) มาคูณเข้ากับหน้าเลนส์กล้องโดยตรง
-    # วิธีนี้จะไม่ถูกระยะทาง (Perspective) บีบอัดให้เพี้ยนอีกต่อไป
     up_x, up_y = 0.0, -1.0 # ค่าเริ่มต้น: ชี้ขึ้นข้างบนจอ
     
     if my_rot and view_matrix and len(view_matrix) >= 16:
         up_wx, up_wy, up_wz = my_rot[3], my_rot[4], my_rot[5]
         
-        # 🎯 THE FIX: View Matrix เป็น 1D Array (16 elements) 
-        # ต้องใช้ Index แบบ 0, 4, 8 สำหรับแกน X และ 1, 5, 9 สำหรับแกน Y
+        # View Matrix 1D Array (16 elements)
         clip_x = (up_wx * view_matrix[0]) + (up_wy * view_matrix[4]) + (up_wz * view_matrix[8])
         clip_y = (up_wx * view_matrix[1]) + (up_wy * view_matrix[5]) + (up_wz * view_matrix[9])
         
-        # กลับหัวแกน Y เพราะบนจอคอมพิวเตอร์ Y ชี้ลงพื้น
         scr_vx = clip_x
         scr_vy = -clip_y
         
@@ -644,13 +640,16 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     right_x = -up_y
     right_y = up_x
 
-    # 🎯 4. หมุนเฉพาะค่าจูนของกล้อง (Parallax Calibration)
-    rot_calib_x = (calib_x * right_x) + (calib_y * down_x)
-    rot_calib_y = (calib_x * right_y) + (calib_y * down_y)
+    # 🎯 4. THE MASTERSTROKE: มัดรวม Parallax หน้าจอทั้งหมด!
+    # เราต้องเอาระยะตก UI (drop_pixels_y) ไปหมุนด้วย เพราะสเกลของเป้า Crosshair มันเอียงตามกล้อง!
+    total_parallax_y = drop_pixels_y + calib_y
 
-    # 🎯 5. รวมพิกัดทั้งหมด (ระยะตก drop_pixels_y ยังคงดึงลงพื้นโลกตรงๆ)
-    final_x = base_x + dx + rot_calib_x
-    final_y = base_y + dy + drop_pixels_y + rot_calib_y
+    rot_x = (calib_x * right_x) + (total_parallax_y * down_x)
+    rot_y = (calib_x * right_y) + (total_parallax_y * down_y)
+
+    # 🎯 5. รวมพิกัด (ดึง drop_pixels_y ที่บวกแยกออก เพราะมันถูกบวกใน rot_y ไปแล้ว)
+    final_x = base_x + dx + rot_x
+    final_y = base_y + dy + rot_y
 
     return (final_x, final_y)
 
