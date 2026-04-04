@@ -547,12 +547,14 @@ UNIT_FAMILY_SHIP_DESTROYER = 11
 UNIT_FAMILY_SHIP_CRUISER = 12
 UNIT_FAMILY_SHIP_BATTLESHIP = 13
 
-def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model, zero_pitch):
+def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model, zero_pitch, my_rot=None):
     if not target_pos or not fire_origin or bullet_speed <= 0.0:
         return None
 
+    # 🎯 ใช้ตำแหน่งศัตรูแบบเพียวๆ (ไม่บวกความเร็วศัตรู)
     t_x, t_y, t_z = target_pos
     my_vx, my_vy, my_vz = my_vel
+    
     best_t = math.dist((t_x, t_z), (fire_origin[0], fire_origin[2])) / bullet_speed
     best_t = max(best_t, 0.01)
     bullet_drop = 0.0
@@ -565,9 +567,19 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
             return None
         best_t, bullet_drop, _ = _simulate_projectile_range(horizontal_imp, model, zero_pitch)
 
-    final_x = t_x - (my_vx * best_t)
-    final_y = t_y + bullet_drop - (my_vy * best_t)
-    final_z = t_z - (my_vz * best_t)
+    # 🎯 ดึงแกน Local UP จาก Rotation (Tilt Compensation ของรถถังเรา)
+    up_x, up_y, up_z = 0.0, 1.0, 0.0
+    if my_rot and len(my_rot) >= 9:
+        up_x, up_y, up_z = my_rot[3], my_rot[4], my_rot[5]
+        
+    t_sight = zeroing / bullet_speed if bullet_speed > 0 else 0
+    sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
+
+    # 🎯 หักลบความเร็ว "ของเราเอง" และความเอียงของรถถัง "ของเราเอง" (ไม่เกี่ยวกับศัตรู)
+    final_x = t_x - (my_vx * best_t) - (sight_drop_comp * up_x)
+    final_y = t_y + bullet_drop - (my_vy * best_t) - (sight_drop_comp * up_y)
+    final_z = t_z - (my_vz * best_t) - (sight_drop_comp * up_z)
+    
     return final_x, final_y, final_z
 
 
@@ -590,8 +602,8 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
     anchor_v = min(0.98, anchor_v + GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t))
 
-    box_center_x = (min_x + max_x) * 0.5
-    virtual_min_x = box_center_x - (anchor_u * box_w)
+    # 🎯 FIX: ใช้ leadmark_screen[0] (spx) แทน box_center_x
+    virtual_min_x = leadmark_screen[0] - (anchor_u * box_w)
     virtual_max_x = virtual_min_x + box_w
     virtual_min_y = leadmark_screen[1] - (anchor_v * box_h)
     virtual_max_y = virtual_min_y + box_h
@@ -2101,6 +2113,12 @@ class ESPOverlay(QWidget):
             # ========================================================
             # 🎯 MAIN PROCESSING LOOP
             # ========================================================
+            # 🔧 PRE-CALCULATE BALLISTICS & ORIGIN FOR THIS FRAME
+            altitude = max(0.0, my_pos[1]) if my_pos else 0.0
+            ballistic_model = _make_ballistic_model(ballistic_profile, altitude)
+            zero_pitch = _solve_zero_pitch(current_zeroing, ballistic_model)
+            fire_origin = my_ground_shot_origin if my_ground_shot_origin else (my_pos if my_pos else (0.0, 0.0, 0.0))
+
             for (
                 u_ptr,
                 raw_name,
@@ -2513,91 +2531,90 @@ class ESPOverlay(QWidget):
                     )
 
                     # =========================================================
-                    # 🚀 WT TRUE BALLISTICS SOLVER (Lanz-Odermatt & SPAAG Radar)
+                    # 🚀 WT TRUE BALLISTICS SOLVER (TILT-COMPENSATED)
                     # =========================================================
                     altitude = max(0.0, my_pos[1])
-                    ballistic_model = _make_ballistic_model(ballistic_profile, altitude)
-                    is_active_target = (u_ptr == active_target_ptr)
-                    fire_origin = my_ground_shot_origin if (not physics_is_air and my_ground_shot_origin) else my_pos
+                    rho = 1.225 * math.pow(max(1.0 - (2.25577e-5 * altitude), 0.0), 4.2561)
+                    
+                    is_sub_caliber = (current_bullet_speed >= 1200.0)
+                    if is_sub_caliber:
+                        eff_cd = current_bullet_cd if current_bullet_cd > 0 else 0.20
+                        eff_caliber = current_bullet_caliber if current_bullet_caliber < 0.05 else current_bullet_caliber * 0.25
+                    else:
+                        eff_cd = current_bullet_cd if current_bullet_cd > 0 else 0.35
+                        eff_caliber = current_bullet_caliber
 
+                    area = math.pi * ((eff_caliber / 2.0) ** 2)
+                    base_k = (0.5 * rho * eff_cd * area) / current_bullet_mass if current_bullet_mass > 0.001 else 0.0001
+                    
+                    avg_speed = current_bullet_speed * (1.0 - min(dist / 5000.0, 0.4))
+                    mach = avg_speed / 343.0
+                    
+                    if mach > 2.5:    mach_mult = 0.35 + (1.0 / mach) 
+                    elif mach > 1.2:  mach_mult = 0.95                
+                    elif mach > 0.8:  mach_mult = 0.9                
+                    else:             mach_mult = 0.85                
+
+                    k = base_k * mach_mult
+
+                    t_sight = current_zeroing / current_bullet_speed if current_bullet_speed > 0 else 0
+                    sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
+                    
                     best_t = dist / current_bullet_speed if current_bullet_speed > 0 else 0.1
                     final_x, final_y, final_z = t_x, t_y, t_z
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
-                    bullet_drop = 0.0
-                    zero_pitch = 0.0
-
-                    if is_active_target and leadmark_in_range:
-                        zero_cache_key = (
-                            round(ballistic_model["speed"], 1),
-                            round(ballistic_model["mass"], 4),
-                            round(ballistic_model["caliber"], 5),
-                            round(ballistic_model["cx"], 4),
-                            round(ballistic_model["vel_lo"], 1),
-                            round(ballistic_model["vel_hi"], 1),
-                            round(current_zeroing, 1),
-                            int(altitude // 100),
-                        )
-                        zero_pitch = self.ballistic_zero_cache.get(zero_cache_key)
-                        if zero_pitch is None:
-                            zero_pitch = _solve_zero_pitch(current_zeroing, ballistic_model)
-                            self.ballistic_zero_cache[zero_cache_key] = zero_pitch
-                            if len(self.ballistic_zero_cache) > 64:
-                                self.ballistic_zero_cache.clear()
-
-                        # 🔄 Iterative TOF Solver (High-Precision for Active Target)
-                        for _ in range(3):
-                            if physics_is_air:
-                                pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
-                                pred_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
-                                pred_z = t_z + (vz * best_t) + (0.5 * az * (best_t ** 2))
-                            else:
-                                pred_x = t_x + (vx * best_t)
-                                pred_y = t_y + (vy * best_t)
-                                pred_z = t_z + (vz * best_t)
-                            
-                            dx_imp = pred_x - (fire_origin[0] + my_vx * best_t)
-                            dz_imp = pred_z - (fire_origin[2] + my_vz * best_t)
-                            horizontal_imp = math.hypot(dx_imp, dz_imp)
-
-                            if current_bullet_speed > 0 and horizontal_imp > 0.01:
-                                best_t, bullet_drop, _ = _simulate_projectile_range(
-                                    horizontal_imp,
-                                    ballistic_model,
-                                    zero_pitch,
-                                )
-                            else:
-                                best_t = 999.0
-                                bullet_drop = 0.0
-                            final_x, final_y, final_z = pred_x, pred_y, pred_z
-                    elif leadmark_in_range:
-                        # 🎯 Lightweight Solver for other units (Background ESP)
-                        pred_x = t_x + (vx * best_t)
-                        pred_y = t_y + (vy * best_t)
-                        pred_z = t_z + (vz * best_t)
+                    
+                    # 🎯 ดึงองศาการเอียงของรถถังเรา (My Unit Rotation)
+                    my_rot = get_unit_rotation(self.scanner, my_unit)
+                    if not my_rot:
+                        my_rot = (1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0)
                         
-                        dx_imp = pred_x - (fire_origin[0] + my_vx * best_t)
-                        dz_imp = pred_z - (fire_origin[2] + my_vz * best_t)
-                        d_imp = math.hypot(dx_imp, dz_imp)
+                    # 📐 ดึงแกน 'ด้านบน' ของรถถังเรา (Local UP Vector) ออกมาจาก Matrix
+                    up_x, up_y, up_z = my_rot[3], my_rot[4], my_rot[5]
+                    
+                    # 📍 จุดกำเนิดกระสุนที่แท้จริง: เลื่อนขึ้น 1.5m ตามองศารถถัง (ไม่ฝืนตั้งตรงแบบเดิมแล้ว)
+                    origin_x = my_pos[0] + (1.5 * up_x)
+                    origin_y = my_pos[1] + (1.5 * up_y)
+                    origin_z = my_pos[2] + (1.5 * up_z)
 
+                    # 🔄 Iterative TOF Solver (วนลูป 4 รอบเพื่อความนิ่ง)
+                    for _ in range(4):
+                        if physics_is_air:
+                            pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
+                            pred_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
+                            pred_z = t_z + (vz * best_t) + (0.5 * az * (best_t ** 2))
+                        else:
+                            pred_x = t_x + (vx * best_t)
+                            pred_y = t_y + (vy * best_t)
+                            pred_z = t_z + (vz * best_t)
+                        
+                        # ใช้ออริจินใหม่ที่เอียงตามรถถังในการหาระยะจัดกระสุน
+                        dx_imp = pred_x - (origin_x + my_vx * best_t)
+                        dy_imp = pred_y - (origin_y + my_vy * best_t)
+                        dz_imp = pred_z - (origin_z + my_vz * best_t)
+                        d_imp = math.sqrt(dx_imp**2 + dy_imp**2 + dz_imp**2)
+                        
                         if current_bullet_speed > 0:
-                            best_t = d_imp / current_bullet_speed
-                            bullet_drop = 0.5 * BULLET_GRAVITY * (best_t ** 2)
-                            t_sight = current_zeroing / current_bullet_speed
-                            bullet_drop -= (0.5 * BULLET_GRAVITY * (t_sight**2))
+                            if k > 0.000001:
+                                kx = min(k * d_imp, 5.0) 
+                                best_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
+                            else:
+                                best_t = d_imp / current_bullet_speed
                         else:
                             best_t = 999.0
-                            bullet_drop = 0.0
-                        
+                            
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
-                    else:
-                        best_t = 0.0
-                        bullet_drop = 0.0
-                        gravity_offset = 0.0
-                        final_x, final_y, final_z = t_x, t_y, t_z
 
-                    gravity_offset = bullet_drop
-                    final_y += bullet_drop
+                    # 📉 Gravity Drop Compensation: 0.5 * g * t^2
+                    gravity_offset = 0.5 * BULLET_GRAVITY * (best_t ** 2)
                     
+                    # 🎯 แก้ไขเป้าหมายให้รองรับตอนรถถังเอียง (Perfect Tilt Compensation)
+                    final_y += gravity_offset                  # แรงโน้มถ่วงดึงลงตรงๆ ตามแกนโลก (World Y) เสมอ
+                    final_x -= (sight_drop_comp * up_x)        # Zeroing ดันปืนขึ้นตามแกน Local UP ของป้อมปืน!
+                    final_y -= (sight_drop_comp * up_y)
+                    final_z -= (sight_drop_comp * up_z)
+                    
+                    # หักลบความเร็วรถถังเราออก (Galilean Relativity)
                     final_x -= (my_vx * best_t)
                     final_y -= (my_vy * best_t)
                     final_z -= (my_vz * best_t)
@@ -2699,6 +2716,7 @@ class ESPOverlay(QWidget):
                             current_zeroing,
                             ballistic_model,
                             zero_pitch,
+                            my_rot  # 🎯 ส่งค่าความเอียงเข้าไปตรงนี้
                         )
 
                     # 🛡️ เช็คว่าพิกัดทำนายไม่ใช่ค่าว่าง
@@ -2781,8 +2799,9 @@ class ESPOverlay(QWidget):
                                     dist_t = max(0.0, min(1.0, dist / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
                                     exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
                                     anchor_v = min(0.98, anchor_v + GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t))
-                                    box_center_x = (min_x + max_x) * 0.5
-                                    virtual_min_x = box_center_x - (anchor_u * box_w)
+                                    
+                                    # 🎯 FIX: เปลี่ยนจาก box_center_x เป็น spx (ให้กล่องวิ่งซ้าย/ขวาตามจุดเผื่อยิง)
+                                    virtual_min_x = spx - (anchor_u * box_w)
                                     virtual_min_y = spy - (anchor_v * box_h)
                                     
                                     # 🎯 ดึงมุมกล่อง 3D ปัจจุบัน แล้วนำมา Shift (เลื่อน 2D) ตามเป้าดักยิง
