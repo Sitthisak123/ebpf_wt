@@ -2783,15 +2783,44 @@ class ESPOverlay(QWidget):
                                     anchor_v = min(0.98, anchor_v + GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t))
                                     box_center_x = (min_x + max_x) * 0.5
                                     virtual_min_x = box_center_x - (anchor_u * box_w)
-                                    virtual_max_x = virtual_min_x + box_w
                                     virtual_min_y = spy - (anchor_v * box_h)
-                                    virtual_max_y = virtual_min_y + box_h
-                                    debug_virtual_boxes_to_draw.append((
-                                        virtual_min_x,
-                                        virtual_min_y,
-                                        virtual_max_x,
-                                        virtual_max_y,
-                                    ))
+                                    
+                                    # 🎯 ดึงมุมกล่อง 3D ปัจจุบัน แล้วนำมา Shift (เลื่อน 2D) ตามเป้าดักยิง
+                                    curr_bmin, curr_bmax = get_unit_bbox(self.scanner, u_ptr)
+                                    curr_rot = get_unit_rotation(self.scanner, u_ptr)
+                                    
+                                    dx = virtual_min_x - min_x
+                                    dy = virtual_min_y - min_y
+                                    
+                                    if curr_bmin and curr_bmax and curr_rot:
+                                        local_corners = [
+                                            (curr_bmin[0], curr_bmin[1], curr_bmin[2]), (curr_bmin[0], curr_bmin[1], curr_bmax[2]),
+                                            (curr_bmin[0], curr_bmax[1], curr_bmin[2]), (curr_bmin[0], curr_bmax[1], curr_bmax[2]),
+                                            (curr_bmax[0], curr_bmin[1], curr_bmin[2]), (curr_bmax[0], curr_bmin[1], curr_bmax[2]),
+                                            (curr_bmax[0], curr_bmax[1], curr_bmin[2]), (curr_bmax[0], curr_bmax[1], curr_bmax[2])
+                                        ]
+                                        shifted_pts = []
+                                        for c in local_corners:
+                                            world_x = pos[0] + (c[0]*curr_rot[0] + c[1]*curr_rot[3] + c[2]*curr_rot[6])
+                                            world_y = pos[1] + (c[0]*curr_rot[1] + c[1]*curr_rot[4] + c[2]*curr_rot[7])
+                                            world_z = pos[2] + (c[0]*curr_rot[2] + c[1]*curr_rot[5] + c[2]*curr_rot[8])
+                                            scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
+                                            if scr and scr[2] > 0:
+                                                shifted_pts.append((scr[0] + dx, scr[1] + dy))
+                                        
+                                        if len(shifted_pts) == 8:
+                                            debug_virtual_boxes_to_draw.append(shifted_pts)
+                                        else:
+                                            debug_virtual_boxes_to_draw.append((virtual_min_x, virtual_min_y, virtual_min_x + box_w, virtual_min_y + box_h))
+                                    else:
+                                        virtual_max_x = virtual_min_x + box_w
+                                        virtual_max_y = virtual_min_y + box_h
+                                        debug_virtual_boxes_to_draw.append((
+                                            virtual_min_x,
+                                            virtual_min_y,
+                                            virtual_max_x,
+                                            virtual_max_y,
+                                        ))
                                 mapped_hitpoint = _map_aim_to_target_box_hitpoint(
                                     (self.center_x, self.center_y),
                                     (spx, spy),
@@ -2943,12 +2972,22 @@ class ESPOverlay(QWidget):
             if DEBUG_DRAW_VIRTUAL_BOX:
                 virtual_color = QColor(*COLOR_DEBUG_VIRTUAL_BOX)
                 painter.setPen(QPen(virtual_color, 2, Qt.DashDotLine))
-                for min_x, min_y, max_x, max_y in debug_virtual_boxes_to_draw:
-                    rect_pts = _screen_int_tuple(min_x, min_y, max_x, max_y)
-                    if not rect_pts:
-                        continue
-                    rect_x1, rect_y1, rect_x2, rect_y2 = rect_pts
-                    painter.drawRect(rect_x1, rect_y1, rect_x2 - rect_x1, rect_y2 - rect_y1)
+                for box_item in debug_virtual_boxes_to_draw:
+                    if len(box_item) == 8:
+                        # วาด 3D Wireframe (8 มุม)
+                        edges = [
+                            (0,1), (0,2), (1,3), (2,3), # ฐานล่าง
+                            (4,5), (4,6), (5,7), (6,7), # ฐานบน
+                            (0,4), (1,5), (2,6), (3,7)  # เสาแนวตั้ง
+                        ]
+                        for p1, p2 in edges:
+                            painter.drawLine(int(box_item[p1][0]), int(box_item[p1][1]), int(box_item[p2][0]), int(box_item[p2][1]))
+                    elif len(box_item) == 4:
+                        # วาดกล่อง 2D (4 ค่า) กรณี Fallback
+                        rect_pts = _screen_int_tuple(*box_item)
+                        if rect_pts:
+                            rect_x1, rect_y1, rect_x2, rect_y2 = rect_pts
+                            painter.drawRect(rect_x1, rect_y1, rect_x2 - rect_x1, rect_y2 - rect_y1)
 
             if DEBUG_DRAW_CALIBRATION_HIT:
                 calib_color = QColor(*COLOR_CALIBRATION_HIT)
