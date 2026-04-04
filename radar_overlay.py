@@ -49,6 +49,7 @@ COLOR_THREAD_WARNING    = (255, 0, 0, 100)
 COLOR_THREAD_WARNING2   = (255, 0, 0, 255) 
 COLOR_THREAD_ALERT      = (255, 180, 0, 80)
 COLOR_THREAD_ALERT2     = (255, 180, 0, 255)
+
 COLOR_AXIS_X            = (255, 64, 64, 255)
 COLOR_AXIS_Y            = (64, 255, 64, 255)
 COLOR_AXIS_Z            = (64, 160, 255, 255)
@@ -2060,8 +2061,8 @@ class ESPOverlay(QWidget):
                                     (0,4), (1,5), (2,6), (3,7)  # เสาแนวตั้ง
                                 ]
                                 
-                                # เลือกสีกรอบ (สีแดงสำหรับรถถัง, สีส้มสำหรับเครื่องบิน)
-                                box_color = QColor(255, 50, 50, 180) if not is_air_target else QColor(*COLOR_BOX_TARGET)
+                               
+                                box_color = QColor(*COLOR_BOX_TARGET) if not is_air_target else QColor(*COLOR_BOX_TARGET)
                                 if u_ptr == active_target_ptr:
                                     box_color = QColor(*COLOR_BOX_SELECT_TARGET)
                                 painter.setPen(QPen(box_color, 1.5))
