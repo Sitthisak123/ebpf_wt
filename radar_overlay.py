@@ -132,7 +132,7 @@ AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น Fals
 
 DRAW_BASE_HITPOINT = False
 CALIBRATION_STEP_PIXELS = 0.05
-CALIBRATION_STEP_FAST_PIXELS = 0.1
+CALIBRATION_STEP_FAST_PIXELS = 0.05
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 
 GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
@@ -564,7 +564,6 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
     if not target_pos or not fire_origin or bullet_speed <= 0.0:
         return None
 
-    # 🎯 ใช้ตำแหน่งศัตรูแบบเพียวๆ (ไม่บวกความเร็วศัตรู)
     t_x, t_y, t_z = target_pos
     my_vx, my_vy, my_vz = my_vel
     
@@ -580,57 +579,58 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
             return None
         best_t, bullet_drop, _ = _simulate_projectile_range(horizontal_imp, model, zero_pitch)
 
-    # 🎯 ดึงแกน Local UP จาก Rotation (Tilt Compensation ของรถถังเรา)
-    up_x, up_y, up_z = 0.0, 1.0, 0.0
-    if my_rot and len(my_rot) >= 9:
-        up_x, up_y, up_z = my_rot[3], my_rot[4], my_rot[5]
-        
     t_sight = zeroing / bullet_speed if bullet_speed > 0 else 0
     sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
 
-    # 🎯 หักลบความเร็ว "ของเราเอง" และความเอียงของรถถัง "ของเราเอง" (ไม่เกี่ยวกับศัตรู)
-    final_x = t_x - (my_vx * best_t) - (sight_drop_comp * up_x)
-    final_y = t_y + bullet_drop - (my_vy * best_t) - (sight_drop_comp * up_y)
-    final_z = t_z - (my_vz * best_t) - (sight_drop_comp * up_z)
+    final_x = t_x - (my_vx * best_t)
+    final_y = t_y + bullet_drop - (my_vy * best_t)
+    final_z = t_z - (my_vz * best_t)
+
+    # 🎯 THE REAL 3D FIX: คืนค่า Zeroing Tilt ให้สมการ 3D!
+    # คำนวณวิถีกระสุนที่เป๋ออกข้าง (Lateral Drift) เมื่อรถถังเอียง
+    if my_rot and len(my_rot) >= 9:
+        up_x, up_y, up_z = my_rot[3], my_rot[4], my_rot[5]
+        final_x -= (sight_drop_comp * up_x)
+        final_y -= (sight_drop_comp * up_y)
+        final_z -= (sight_drop_comp * up_z)
+    else:
+        final_y -= sight_drop_comp
     
     return final_x, final_y, final_z
 
 
-def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_anchor_screen=None, distance_to_target=0.0):
+def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_pos=None, distance_to_target=0.0, my_rot=None, view_matrix=None, screen_w=1920, screen_h=1080, calibration_offset=(0.0, 0.0)):
     if not aim_screen or not leadmark_screen or not target_box_rect:
         return None
 
     min_x, min_y, max_x, max_y = target_box_rect
-    box_w = max(max_x - min_x, 1.0)
     box_h = max(max_y - min_y, 1.0)
-
-    anchor_u = 0.5
-    anchor_v = 0.5
-    if target_anchor_screen:
-        tx, ty = target_anchor_screen
-        if min_y <= ty <= max_y:
-            anchor_v = (ty - min_y) / box_h
 
     dist_t = max(0.0, min(1.0, distance_to_target / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
     exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
-    anchor_v = min(0.98, anchor_v + GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t))
+    drop_pixels_y = (GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t)) * box_h
 
-    # 🎯 FIX: ใช้ leadmark_screen[0] (spx) แทน box_center_x
-    virtual_min_x = leadmark_screen[0] - (anchor_u * box_w)
-    virtual_max_x = virtual_min_x + box_w
-    virtual_min_y = leadmark_screen[1] - (anchor_v * box_h)
-    virtual_max_y = virtual_min_y + box_h
+    dx = aim_screen[0] - leadmark_screen[0]
+    dy = aim_screen[1] - leadmark_screen[1]
 
-    ax, ay = aim_screen
-    if not (virtual_min_x <= ax <= virtual_max_x and virtual_min_y <= ay <= virtual_max_y):
-        return None
+    base_x = (min_x + max_x) * 0.5
+    base_y = (min_y + max_y) * 0.5
 
-    u = (ax - virtual_min_x) / box_w
-    v = (ay - virtual_min_y) / box_h
-    return (
-        min_x + (u * box_w),
-        min_y + (v * box_h),
-    )
+    if target_pos and view_matrix:
+        tx, ty, tz = target_pos
+        scr_center = world_to_screen(view_matrix, tx, ty, tz, screen_w, screen_h)
+        if scr_center and scr_center[2] > 0:
+            base_x, base_y = scr_center[0], scr_center[1]
+
+    calib_x, calib_y = calibration_offset
+
+    # 🎯 ตัดระบบการหมุนแกน 2D ทิ้งให้หมด 
+    # บวกพิกัดกันตรงๆ แบบนี้ทำให้กดลูกศรจูนได้ง่าย 
+    # ส่วนกระสุนเป๋เอียง 3D จัดการให้หมดแล้วจากขั้นตอนก่อนหน้า
+    final_x = base_x + dx + calib_x
+    final_y = base_y + dy + drop_pixels_y + calib_y
+
+    return (final_x, final_y)
 
 
 def _apply_dynamic_hitpoint_y_correction(hitpoint, profile, distance_to_target):
@@ -1619,9 +1619,9 @@ class ESPOverlay(QWidget):
                 print("[CALIB] offset reset")
             self.calibration_last_keys["backspace"] = backspace_now
 
-        # 🎯 3. คำนวณตำแหน่งที่จะวาด (อ้างอิงจากฐาน Hitpoint หลัก)
-        calib_x = context["base_hitpoint"][0] + self.calibration_offset[0]
-        calib_y = context["base_hitpoint"][1] + self.calibration_offset[1]
+        # 🎯 3. ไม่ต้องบวกเพิ่มแล้ว ดึงพิกัดที่หมุนแกนมาแล้วไปใช้ได้เลย!
+        calib_x = context["base_hitpoint"][0]
+        calib_y = context["base_hitpoint"][1]
 
         # 🎯 4. ระบบบันทึกข้อมูล (Single-Shot Trigger)
         if enter_now and not self.calibration_last_keys.get("enter", False):
@@ -2801,10 +2801,6 @@ class ESPOverlay(QWidget):
                         )
                         if static_screen and static_screen[2] > 0:
                             spx, spy = static_screen[0], static_screen[1]
-                            if target_box_rect and target_anchor_screen and target_anchor_screen[2] > 0:
-                                center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
-                                pixel_lead_x = spx - target_anchor_screen[0]
-                                spx = center_x + pixel_lead_x
                                 
                             if u_ptr == active_target_ptr and target_box_rect:
                                 if DEBUG_DRAW_VIRTUAL_BOX:
@@ -2865,11 +2861,13 @@ class ESPOverlay(QWidget):
                                     (self.center_x, self.center_y),
                                     (spx, spy),
                                     target_box_rect,
-                                    (
-                                        target_anchor_screen[0],
-                                        target_anchor_screen[1],
-                                    ) if target_anchor_screen and target_anchor_screen[2] > 0 else None,
+                                    (t_x, t_y, t_z),    
                                     dist,
+                                    my_rot,
+                                    view_matrix,        
+                                    self.screen_width,  
+                                    self.screen_height,
+                                    self.calibration_offset  # 🎯 ส่งตัวแปรนี้เพิ่มเข้าไปท้ายสุด!
                                 )
                                 if mapped_hitpoint:
                                     mapped_hitpoint = _apply_dynamic_hitpoint_y_correction(
