@@ -45,6 +45,146 @@ PAT_MATRIX_CHAIN  = "41 88 B4 14 ?? ?? ?? ?? 41 88 B4 14 ?? ?? ?? ??"
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BBOX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "unit_bbox_persistence.json")
+VIEW_MATRIX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "view_matrix_persistence.json")
+DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
+
+
+def _get_binary_fingerprint(binary_path=DEFAULT_GAME_BINARY_PATH):
+    try:
+        real_path = os.path.realpath(binary_path)
+        st = os.stat(real_path)
+        return {
+            "path": real_path,
+            "size": int(st.st_size),
+            "mtime_ns": int(st.st_mtime_ns),
+        }
+    except Exception:
+        return None
+
+
+def _fingerprint_matches(doc):
+    persisted = doc.get("build_fingerprint") if isinstance(doc, dict) else None
+    if not persisted:
+        return True
+    current = _get_binary_fingerprint()
+    if not current:
+        return False
+    return (
+        os.path.realpath(str(persisted.get("path", ""))) == current["path"]
+        and int(persisted.get("size", -1)) == current["size"]
+        and int(persisted.get("mtime_ns", -1)) == current["mtime_ns"]
+    )
+
+
+def _load_bbox_persistence():
+    if not os.path.exists(BBOX_PERSISTENCE_PATH):
+        return None
+    try:
+        with open(BBOX_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            print("  [!] Persistence warning: bbox ignored due to build fingerprint mismatch")
+            return None
+        bbmin_off = int(doc.get("bbmin_off", 0) or 0)
+        bbmax_off = int(doc.get("bbmax_off", 0) or 0)
+        if not (0x100 <= bbmin_off < bbmax_off <= 0x400):
+            print("  [!] Persistence warning: bbox ignored due to invalid offset range")
+            return None
+        return {
+            "bbmin_off": bbmin_off,
+            "bbmax_off": bbmax_off,
+            "source": doc.get("source", "unknown"),
+            "updated_by_tool": doc.get("updated_by_tool", "unknown"),
+            "confidence": float(doc.get("confidence", 0.0) or 0.0),
+        }
+    except Exception:
+        return None
+
+
+def _write_view_matrix_persistence(camera_off, matrix_off, source, updated_by_tool, confidence):
+    try:
+        if not _can_overwrite_persistence(VIEW_MATRIX_PERSISTENCE_PATH, confidence):
+            print("  [*] Skip auto-save view persistence: existing confidence is higher")
+            return None
+        os.makedirs(os.path.dirname(VIEW_MATRIX_PERSISTENCE_PATH), exist_ok=True)
+        payload = {
+            "updated_at": __import__("datetime").datetime.now().isoformat(),
+            "camera_off": int(camera_off),
+            "matrix_off": int(matrix_off),
+            "source": source,
+            "updated_by_tool": updated_by_tool,
+            "confidence": float(confidence),
+            "build_fingerprint": _get_binary_fingerprint(),
+        }
+        with open(VIEW_MATRIX_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        return VIEW_MATRIX_PERSISTENCE_PATH
+    except Exception:
+        return None
+
+
+def _needs_bbox_persistence_update(bbmin_off, bbmax_off):
+    current = _load_bbox_persistence()
+    if not current:
+        return True
+    return (
+        int(current.get("bbmin_off", -1)) != int(bbmin_off)
+        or int(current.get("bbmax_off", -1)) != int(bbmax_off)
+    )
+
+
+def _needs_view_persistence_update(camera_off, matrix_off):
+    current = _load_view_matrix_persistence()
+    if not current:
+        return True
+    return (
+        int(current.get("camera_off", -1)) != int(camera_off)
+        or int(current.get("matrix_off", -1)) != int(matrix_off)
+    )
+
+
+def _load_view_matrix_persistence():
+    if not os.path.exists(VIEW_MATRIX_PERSISTENCE_PATH):
+        return None
+    try:
+        with open(VIEW_MATRIX_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            print("  [!] Persistence warning: view matrix ignored due to build fingerprint mismatch")
+            return None
+        matrix_off_raw = doc.get("matrix_off", 0)
+        camera_off_raw = doc.get("camera_off", mul.OFF_CAMERA_PTR)
+        matrix_off = int(matrix_off_raw, 16) if isinstance(matrix_off_raw, str) else int(matrix_off_raw or 0)
+        camera_off = int(camera_off_raw, 16) if isinstance(camera_off_raw, str) else int(camera_off_raw or mul.OFF_CAMERA_PTR)
+        if not (0x100 <= matrix_off <= 0x400):
+            print("  [!] Persistence warning: view matrix ignored due to invalid matrix offset")
+            return None
+        if not (0x100 <= camera_off <= 0x1000):
+            print("  [!] Persistence warning: view matrix ignored due to invalid camera offset")
+            return None
+        return {
+            "matrix_off": matrix_off,
+            "camera_off": camera_off,
+            "source": doc.get("source", "unknown"),
+            "updated_by_tool": doc.get("updated_by_tool", "unknown"),
+            "confidence": float(doc.get("confidence", 0.0) or 0.0),
+        }
+    except Exception:
+        return None
+
+
+def _can_overwrite_persistence(path, new_confidence):
+    try:
+        if not os.path.exists(path):
+            return True
+        with open(path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            return True
+        current_confidence = float(doc.get("confidence", 0.0) or 0.0)
+        return float(new_confidence) >= current_confidence
+    except Exception:
+        return True
 
 # ==========================================
 # 🛠️ คลาสสำหรับอ่าน Memory & Pattern Scanning
@@ -313,6 +453,8 @@ def _load_bbox_persistence():
             return None
         with open(BBOX_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if not _fingerprint_matches(data):
+            return None
         bmin_off = int(data.get("bbmin_off", 0) or 0)
         bmax_off = int(data.get("bbmax_off", 0) or 0)
         if 0x100 <= bmin_off <= 0x400 and bmin_off < bmax_off <= 0x400:
@@ -320,20 +462,28 @@ def _load_bbox_persistence():
                 "bbmin_off": bmin_off,
                 "bbmax_off": bmax_off,
                 "source": data.get("source") or "persisted",
+                "updated_by_tool": data.get("updated_by_tool", "unknown"),
+                "confidence": float(data.get("confidence", 0.0) or 0.0),
             }
     except Exception:
         return None
     return None
 
 
-def _write_bbox_persistence(bbmin_off, bbmax_off, source):
+def _write_bbox_persistence(bbmin_off, bbmax_off, source, updated_by_tool, confidence):
     try:
+        if not _can_overwrite_persistence(BBOX_PERSISTENCE_PATH, confidence):
+            print("  [*] Skip auto-save bbox persistence: existing confidence is higher")
+            return None
         os.makedirs(os.path.dirname(BBOX_PERSISTENCE_PATH), exist_ok=True)
         payload = {
             "updated_at": __import__("datetime").datetime.now().isoformat(),
             "bbmin_off": int(bbmin_off),
             "bbmax_off": int(bbmax_off),
             "source": source,
+            "updated_by_tool": updated_by_tool,
+            "confidence": float(confidence),
+            "build_fingerprint": _get_binary_fingerprint(),
         }
         with open(BBOX_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
@@ -559,11 +709,35 @@ def init_dynamic_offsets(scanner, base_address):
         mul.OFF_UNIT_X = _handle_fallback("UNIT_X", mul.OFF_UNIT_X)
         mul.OFF_UNIT_ROTATION = mul.OFF_UNIT_X - 0x24
 
-    # 2️⃣ บังคับใช้ Bounding Box ตัวจริงที่หาได้จาก Dumper!
-    mul.OFF_UNIT_BBMIN = 0x0238
-    mul.OFF_UNIT_BBMAX = 0x0244
-    print(f"  [+] 🚀 FORCE LINUX BBOX! BBMIN = {hex(mul.OFF_UNIT_BBMIN)}")
-    print(f"  [+] 🚀 FORCE LINUX BBOX! BBMAX = {hex(mul.OFF_UNIT_BBMAX)}")
+    # 2️⃣ Bounding Box persistence ที่ยืนยันจาก dumper/debugger จะ override scanner vote
+    bbox_persistence = _load_bbox_persistence()
+    if bbox_persistence:
+        mul.OFF_UNIT_BBMIN = bbox_persistence["bbmin_off"]
+        mul.OFF_UNIT_BBMAX = bbox_persistence["bbmax_off"]
+        print(
+            f"  [+] ✅ OVERRIDE! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} "
+            f"BBMAX = {hex(mul.OFF_UNIT_BBMAX)} (persistence:{bbox_persistence['source']}"
+            f" tool:{bbox_persistence['updated_by_tool']} conf:{bbox_persistence['confidence']:.2f})"
+        )
+    else:
+        mul.OFF_UNIT_BBMIN = 0x0238
+        mul.OFF_UNIT_BBMAX = 0x0244
+        print("  [!] Persistence warning: bbox fallback is active")
+        print(f"  [+] 📦 FALLBACK BBOX! BBMIN = {hex(mul.OFF_UNIT_BBMIN)}")
+        print(f"  [+] 📦 FALLBACK BBOX! BBMAX = {hex(mul.OFF_UNIT_BBMAX)}")
+    if _needs_bbox_persistence_update(mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX):
+        saved = _write_bbox_persistence(
+            mul.OFF_UNIT_BBMIN,
+            mul.OFF_UNIT_BBMAX,
+            "scanner_auto_bbox",
+            "scanner",
+            0.72,
+        )
+        if saved:
+            print(
+                f"  [+] 💾 AUTO-SAVED! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} "
+                f"BBMAX = {hex(mul.OFF_UNIT_BBMAX)}"
+            )
 
     # ---------------------------------------------------------
     # 🎯 Phase 4: สแกนหาข้อมูลสถานะ (State, Team, Info, Reload)
@@ -680,7 +854,31 @@ def init_dynamic_offsets(scanner, base_address):
         print(f"  [+] ✅ BINGO! VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)}")
     else:
         mul.OFF_VIEW_MATRIX = 0x1C0
+        print("  [!] Persistence warning: view matrix scanner fell back to default offset")
         print("  [!] ⚠️ Chain Match ล้มเหลว! ใช้ค่า Fallback: 0x1C0")
+
+    view_persistence = _load_view_matrix_persistence()
+    if view_persistence:
+        mul.OFF_CAMERA_PTR = view_persistence["camera_off"]
+        mul.OFF_VIEW_MATRIX = view_persistence["matrix_off"]
+        print(
+            f"  [+] ✅ OVERRIDE! CAMERA_PTR = {hex(mul.OFF_CAMERA_PTR)} "
+            f"VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)} (persistence:{view_persistence['source']}"
+            f" tool:{view_persistence['updated_by_tool']} conf:{view_persistence['confidence']:.2f})"
+        )
+    if _needs_view_persistence_update(mul.OFF_CAMERA_PTR, mul.OFF_VIEW_MATRIX):
+        saved = _write_view_matrix_persistence(
+            mul.OFF_CAMERA_PTR,
+            mul.OFF_VIEW_MATRIX,
+            "scanner_auto_view_matrix",
+            "scanner",
+            0.78,
+        )
+        if saved:
+            print(
+                f"  [+] 💾 AUTO-SAVED! CAMERA_PTR = {hex(mul.OFF_CAMERA_PTR)} "
+                f"VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)}"
+            )
 
     # Re-validate DAT_MANAGER using actual visual offsets discovered in phase 5.
     validated_managers = []

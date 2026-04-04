@@ -2,6 +2,8 @@ import os
 import sys
 import struct
 import math
+import json
+import argparse
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
@@ -10,7 +12,47 @@ if PROJECT_ROOT not in sys.path:
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 import src.utils.mul as mul
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VIEW_MATRIX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "view_matrix_persistence.json")
+DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
+
+
+def _get_binary_fingerprint(binary_path=DEFAULT_GAME_BINARY_PATH):
+    try:
+        real_path = os.path.realpath(binary_path)
+        st = os.stat(real_path)
+        return {
+            "path": real_path,
+            "size": int(st.st_size),
+            "mtime_ns": int(st.st_mtime_ns),
+        }
+    except Exception:
+        return None
+
+
+def _write_persistence(camera_off, matrix_off):
+    doc = {
+        "camera_off": int(camera_off),
+        "matrix_off": int(matrix_off),
+        "source": "find_real_matrix_manual_write",
+        "updated_by_tool": "find_real_matrix",
+        "confidence": 0.95,
+        "notes": "Written by tools/find_real_matrix.py",
+        "build_fingerprint": _get_binary_fingerprint(),
+    }
+    os.makedirs(os.path.dirname(VIEW_MATRIX_PERSISTENCE_PATH), exist_ok=True)
+    with open(VIEW_MATRIX_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=2, ensure_ascii=False)
+    print(f"\n[+] Wrote view persistence: {VIEW_MATRIX_PERSISTENCE_PATH}")
+    print(f"    camera_off={hex(camera_off)} matrix_off={hex(matrix_off)}")
+
 def main():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--write-persistence", action="store_true")
+    parser.add_argument("--camera-off", type=lambda x: int(x, 0), default=0x670)
+    parser.add_argument("--matrix-off", type=lambda x: int(x, 0), default=0x1D0)
+    args = parser.parse_args()
+
     pid = get_game_pid()
     if not pid:
         print("[-] หาโปรเซสเกมไม่เจอ")
@@ -48,6 +90,9 @@ def main():
                 print(f"     [{m[8]:>9.2f}, {m[9]:>9.2f}, {m[10]:>9.2f}, {m[11]:>9.2f}]")
                 print(f"     [{m[12]:>9.2f}, {m[13]:>9.2f}, {m[14]:>9.2f}, {m[15]:>9.2f}]")
             except: pass
+
+    if args.write_persistence:
+        _write_persistence(args.camera_off, args.matrix_off)
 
 if __name__ == '__main__':
     main()

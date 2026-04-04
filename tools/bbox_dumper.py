@@ -3,6 +3,8 @@ import sys
 import struct
 import math
 import time
+import json
+import argparse
 
 # 📍 ชี้พิกัดกลับไปหา Root Folder
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -11,6 +13,39 @@ if PROJECT_ROOT not in sys.path:
 
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 import src.utils.mul as mul
+
+BBOX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "unit_bbox_persistence.json")
+DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
+
+
+def _get_binary_fingerprint(binary_path=DEFAULT_GAME_BINARY_PATH):
+    try:
+        real_path = os.path.realpath(binary_path)
+        st = os.stat(real_path)
+        return {
+            "path": real_path,
+            "size": int(st.st_size),
+            "mtime_ns": int(st.st_mtime_ns),
+        }
+    except Exception:
+        return None
+
+
+def _write_persistence(bbmin_off, bbmax_off):
+    doc = {
+        "bbmin_off": int(bbmin_off),
+        "bbmax_off": int(bbmax_off),
+        "source": "bbox_dumper_manual_write",
+        "updated_by_tool": "bbox_dumper",
+        "confidence": 0.95,
+        "notes": "Written by tools/bbox_dumper.py",
+        "build_fingerprint": _get_binary_fingerprint(),
+    }
+    os.makedirs(os.path.dirname(BBOX_PERSISTENCE_PATH), exist_ok=True)
+    with open(BBOX_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=2, ensure_ascii=False)
+    print(f"[+] Wrote bbox persistence: {BBOX_PERSISTENCE_PATH}")
+    print(f"    bbmin_off={hex(bbmin_off)} bbmax_off={hex(bbmax_off)}")
 
 # ตั้งค่าหน้าจอตาม main.py ของท่าน
 SCREEN_WIDTH = 2560
@@ -94,6 +129,12 @@ def scan_bbox(scanner, target_ptr):
     return candidates
 
 def main():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--write-persistence", action="store_true")
+    parser.add_argument("--bbmin-off", type=lambda x: int(x, 0), default=0x238)
+    parser.add_argument("--bbmax-off", type=lambda x: int(x, 0), default=0x244)
+    args = parser.parse_args()
+
     pid = get_game_pid()
     if not pid:
         print("[-] ไม่พบเกม War Thunder")
@@ -151,6 +192,8 @@ def main():
         print()
         
     print("💡 คำแนะนำ: เลือก Offset ที่ขนาดกว้าง/ยาว/สูง ตรงกับความจริงที่สุด (เช่น รถถังทั่วไปยาว ~6-8m)")
+    if args.write_persistence:
+        _write_persistence(args.bbmin_off, args.bbmax_off)
 
 if __name__ == '__main__':
     main()

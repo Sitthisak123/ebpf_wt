@@ -13,6 +13,7 @@ from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address
 import src.utils.mul as mul
 
 BALLISTIC_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "ballistic_layout_persistence.json")
+DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
 
 MUZZLE_VELOCITY_OFF = 0x2048
 WEAPON_SCAN_START = 0x2030
@@ -109,6 +110,19 @@ def layout_to_absolute_offsets(best_layout):
     }
 
 
+def _get_binary_fingerprint(binary_path=DEFAULT_GAME_BINARY_PATH):
+    try:
+        real_path = os.path.realpath(binary_path)
+        st = os.stat(real_path)
+        return {
+            "path": real_path,
+            "size": int(st.st_size),
+            "mtime_ns": int(st.st_mtime_ns),
+        }
+    except Exception:
+        return None
+
+
 def write_ballistic_layout_persistence(payload):
     best_layout = payload.get("best_layout") or {}
     if not best_layout:
@@ -125,6 +139,9 @@ def write_ballistic_layout_persistence(payload):
         "pid": payload.get("pid", 0),
         "image_base": payload.get("image_base", 0),
         "weapon_source": payload.get("weapon_source"),
+        "build_fingerprint": _get_binary_fingerprint(),
+        "updated_by_tool": "ballistic_layout_dumper",
+        "confidence": 0.92,
         "best_layout_score": best_layout.get("score", -999),
         "layout": offsets,
         "best_layout_snapshot": {

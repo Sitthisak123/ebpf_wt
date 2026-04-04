@@ -132,7 +132,8 @@ BALLISTIC_VEL_RANGE_Y_OFF = 0x2080
 BALLISTIC_PERSISTENCE_PATH = os.path.join("config", "ballistic_layout_persistence.json")
 BBOX_PERSISTENCE_PATH = os.path.join("config", "unit_bbox_persistence.json")
 VIEW_CANDIDATE_PERSISTENCE_PATH = os.path.join("config", "view_matrix_candidate_persistence.json")
-VIEW_CANDIDATE_PERSISTENCE_ENABLE = True
+VIEW_CANDIDATE_PERSISTENCE_ENABLE = False
+DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
 GUN_BULLET_LIST_PTR_OFF = 0x358
 GUN_BULLET_LIST_COUNT_OFF = 0xA0
 GUN_BULLET_SLOT_BASE_OFF = 0xA8
@@ -224,6 +225,60 @@ GROUND_HITPOINT_DROP_EXP = 0.480        #ถ้าใกล้ๆ เกือ�
 GROUND_HITPOINT_DROP_RANGE = 1600.0
 
 
+def _get_binary_fingerprint(binary_path=DEFAULT_GAME_BINARY_PATH):
+    try:
+        real_path = os.path.realpath(binary_path)
+        st = os.stat(real_path)
+        return {
+            "path": real_path,
+            "size": int(st.st_size),
+            "mtime_ns": int(st.st_mtime_ns),
+        }
+    except Exception:
+        return None
+
+
+def _fingerprint_matches(doc):
+    persisted = doc.get("build_fingerprint") if isinstance(doc, dict) else None
+    if not persisted:
+        return True
+    current = _get_binary_fingerprint()
+    if not current:
+        return False
+    return (
+        os.path.realpath(str(persisted.get("path", ""))) == current["path"]
+        and int(persisted.get("size", -1)) == current["size"]
+        and int(persisted.get("mtime_ns", -1)) == current["mtime_ns"]
+    )
+
+
+def _can_overwrite_persistence(path, new_confidence):
+    try:
+        if not os.path.exists(path):
+            return True
+        with open(path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            return True
+        current_confidence = float(doc.get("confidence", 0.0) or 0.0)
+        return float(new_confidence) >= current_confidence
+    except Exception:
+        return True
+
+
+def _load_persistence_doc(path):
+    try:
+        if not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            return None
+        return doc
+    except Exception:
+        return None
+
+
 def _load_ballistic_layout_persistence():
     global BALLISTIC_STRUCT_BASE_OFF
     global BALLISTIC_SPEED_OFF
@@ -240,6 +295,9 @@ def _load_ballistic_layout_persistence():
     try:
         with open(BALLISTIC_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
             doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            print("[!] Persistence warning: ballistic ignored due to build fingerprint mismatch")
+            return False
         layout = doc.get("layout") or {}
         required_keys = (
             "base_off",
@@ -252,6 +310,7 @@ def _load_ballistic_layout_persistence():
             "vel_range_y_off",
         )
         if not all(k in layout for k in required_keys):
+            print("[!] Persistence warning: ballistic ignored due to missing layout keys")
             return False
 
         BALLISTIC_STRUCT_BASE_OFF = int(layout["base_off"])
@@ -262,9 +321,90 @@ def _load_ballistic_layout_persistence():
         BALLISTIC_MAX_DISTANCE_OFF = int(layout["max_distance_off"])
         BALLISTIC_VEL_RANGE_X_OFF = int(layout["vel_range_x_off"])
         BALLISTIC_VEL_RANGE_Y_OFF = int(layout["vel_range_y_off"])
+        print("[*] 📦 Loaded Ballistic Persistence")
         print(
-            "[*] Loaded ballistic persistence:"
-            f" layout={layout.get('layout_name', 'unknown')}"
+            f"    layout={layout.get('layout_name', 'unknown')} | "
+            f"base={hex(BALLISTIC_STRUCT_BASE_OFF)} | "
+            f"speed={hex(BALLISTIC_SPEED_OFF)} | mass={hex(BALLISTIC_MASS_OFF)}"
+        )
+        print(
+            f"    cal={hex(BALLISTIC_CALIBER_OFF)} | cx={hex(BALLISTIC_CX_OFF)} | "
+            f"maxDist={hex(BALLISTIC_MAX_DISTANCE_OFF)} | "
+            f"vrX={hex(BALLISTIC_VEL_RANGE_X_OFF)} | vrY={hex(BALLISTIC_VEL_RANGE_Y_OFF)}"
+        )
+        print(
+            f"    source={doc.get('source', 'unknown')} | "
+            f"tool={doc.get('updated_by_tool', 'unknown')} | "
+            f"conf={float(doc.get('confidence', 0.0) or 0.0):.2f}"
+        )
+        return True
+    except Exception as e:
+        print(f"[!] Persistence warning: ballistic load failed: {e}")
+        return False
+
+
+def _infer_ballistic_layout_name():
+    speed_rel = BALLISTIC_SPEED_OFF - BALLISTIC_STRUCT_BASE_OFF
+    mass_rel = BALLISTIC_MASS_OFF - BALLISTIC_STRUCT_BASE_OFF
+    caliber_rel = BALLISTIC_CALIBER_OFF - BALLISTIC_STRUCT_BASE_OFF
+    cx_rel = BALLISTIC_CX_OFF - BALLISTIC_STRUCT_BASE_OFF
+    max_dist_rel = BALLISTIC_MAX_DISTANCE_OFF - BALLISTIC_STRUCT_BASE_OFF
+    vel_x_rel = BALLISTIC_VEL_RANGE_X_OFF - BALLISTIC_STRUCT_BASE_OFF
+    vel_y_rel = BALLISTIC_VEL_RANGE_Y_OFF - BALLISTIC_STRUCT_BASE_OFF
+    if (
+        speed_rel == -0x08
+        and mass_rel == 0x04
+        and caliber_rel == 0x08
+        and cx_rel == 0x0C
+        and max_dist_rel == 0x10
+        and vel_x_rel == 0x24
+        and vel_y_rel == 0x28
+    ):
+        return "layout_old_guess"
+    if (
+        speed_rel == 0x00
+        and mass_rel == 0x0C
+        and caliber_rel == 0x10
+        and cx_rel == 0x14
+        and max_dist_rel == 0x18
+        and vel_x_rel == 0x24
+        and vel_y_rel == 0x28
+    ):
+        return "layout_new_guess"
+    return "layout_runtime_unknown"
+
+
+def _write_ballistic_layout_persistence(source="radar_overlay_auto_ballistic"):
+    try:
+        if not _can_overwrite_persistence(BALLISTIC_PERSISTENCE_PATH, 0.68):
+            print("[*] Skip auto-save ballistic persistence: existing confidence is higher")
+            return False
+        os.makedirs(os.path.dirname(BALLISTIC_PERSISTENCE_PATH), exist_ok=True)
+        doc = {
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "build_fingerprint": _get_binary_fingerprint(),
+            "weapon_source": "runtime_effective_offsets",
+            "best_layout_score": 0,
+            "source": source,
+            "updated_by_tool": "radar_overlay",
+            "confidence": 0.68,
+            "layout": {
+                "layout_name": _infer_ballistic_layout_name(),
+                "base_off": int(BALLISTIC_STRUCT_BASE_OFF),
+                "speed_off": int(BALLISTIC_SPEED_OFF),
+                "mass_off": int(BALLISTIC_MASS_OFF),
+                "caliber_off": int(BALLISTIC_CALIBER_OFF),
+                "cx_off": int(BALLISTIC_CX_OFF),
+                "max_distance_off": int(BALLISTIC_MAX_DISTANCE_OFF),
+                "vel_range_x_off": int(BALLISTIC_VEL_RANGE_X_OFF),
+                "vel_range_y_off": int(BALLISTIC_VEL_RANGE_Y_OFF),
+            },
+        }
+        with open(BALLISTIC_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=2, ensure_ascii=False)
+        print(
+            "[*] 💾 AUTO-SAVED! Ballistic persistence:"
+            f" layout={doc['layout']['layout_name']}"
             f" base={hex(BALLISTIC_STRUCT_BASE_OFF)}"
             f" speed={hex(BALLISTIC_SPEED_OFF)}"
             f" mass={hex(BALLISTIC_MASS_OFF)}"
@@ -273,14 +413,19 @@ def _load_ballistic_layout_persistence():
             f" maxDist={hex(BALLISTIC_MAX_DISTANCE_OFF)}"
             f" vrX={hex(BALLISTIC_VEL_RANGE_X_OFF)}"
             f" vrY={hex(BALLISTIC_VEL_RANGE_Y_OFF)}"
+            f" source={doc['source']}"
+            f" tool={doc['updated_by_tool']}"
+            f" conf={doc['confidence']:.2f}"
         )
         return True
     except Exception as e:
-        print(f"[*] Ballistic persistence load failed: {e}")
+        print(f"[*] Ballistic persistence auto-save failed: {e}")
         return False
 
 
-_load_ballistic_layout_persistence()
+_ballistic_persistence_loaded = _load_ballistic_layout_persistence()
+if not _ballistic_persistence_loaded:
+    _write_ballistic_layout_persistence()
 
 
 def _load_unit_bbox_persistence():
@@ -293,25 +438,56 @@ def _load_unit_bbox_persistence():
     try:
         with open(BBOX_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
             doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            print("[!] Persistence warning: bbox ignored due to build fingerprint mismatch")
+            return False
         bbmin_off = int(doc.get("bbmin_off", 0) or 0)
         bbmax_off = int(doc.get("bbmax_off", 0) or 0)
         if not (0x100 <= bbmin_off < bbmax_off <= 0x400):
+            print("[!] Persistence warning: bbox ignored due to invalid offset range")
             return False
         OFF_UNIT_BBMIN = bbmin_off
         OFF_UNIT_BBMAX = bbmax_off
+        print("[*] 📦 Loaded BBox Persistence")
         print(
-            "[*] Loaded bbox persistence:"
-            f" bbmin={hex(OFF_UNIT_BBMIN)}"
-            f" bbmax={hex(OFF_UNIT_BBMAX)}"
-            f" source={doc.get('source', 'unknown')}"
+            f"    bbmin={hex(OFF_UNIT_BBMIN)} | bbmax={hex(OFF_UNIT_BBMAX)}"
+        )
+        print(
+            f"    source={doc.get('source', 'unknown')} | "
+            f"tool={doc.get('updated_by_tool', 'unknown')} | "
+            f"conf={float(doc.get('confidence', 0.0) or 0.0):.2f}"
         )
         return True
     except Exception as e:
-        print(f"[*] Bbox persistence load failed: {e}")
+        print(f"[!] Persistence warning: bbox load failed: {e}")
         return False
 
 
 _load_unit_bbox_persistence()
+
+
+def _log_view_matrix_persistence_preflight():
+    doc = _load_persistence_doc(os.path.join("config", "view_matrix_persistence.json"))
+    if not doc:
+        return False
+    try:
+        camera_off = int(doc.get("camera_off", 0) or 0)
+        matrix_off = int(doc.get("matrix_off", 0) or 0)
+        print("[*] 👁️  Loaded View Persistence")
+        print(
+            f"    camera={hex(camera_off)} | matrix={hex(matrix_off)} | apply=phase8"
+        )
+        print(
+            f"    source={doc.get('source', 'unknown')} | "
+            f"tool={doc.get('updated_by_tool', 'unknown')} | "
+            f"conf={float(doc.get('confidence', 0.0) or 0.0):.2f}"
+        )
+        return True
+    except Exception:
+        return False
+
+
+_log_view_matrix_persistence_preflight()
 
 
 def _load_view_candidate_persistence():
