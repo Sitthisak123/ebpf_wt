@@ -9,22 +9,22 @@ Purpose:
 - [x] `my_rot`
 - [x] `my_local_axes`
 - [x] `my_gun_origin`
-- [ ] `my_sight_origin`
+- [x] `my_sight_origin`
 - [x] `target_pos`
 - [x] `target_rot`
 - [ ] `target_body_bbox`
-- [ ] `target_turret_bbox`
+- [x] `target_turret_bbox`
 - [ ] optional `target_hit_bone`
 - [x] projectile profile
 - [x] active view matrix
 
 ## Phase 1: My Vehicle Geometry
 
-- [ ] Compute `my_parallax_local = my_sight_origin - my_gun_origin`
+- [x] Compute `my_parallax_local = my_sight_origin - my_gun_origin`
 - [ ] Split local delta into:
-  - [ ] forward
-  - [ ] up
-  - [ ] lateral
+  - [x] forward
+  - [x] up
+  - [x] lateral
 - [x] Verify signs in untilted and tilted states.
 
 ## Phase 2: Target Aim Geometry
@@ -90,6 +90,10 @@ Purpose:
   - current runtime fallback is first-person active camera position
   - next candidate from Ghidra: `gunnerOpticFps[].pos`
 - `target_turret_bbox`
-  - current runtime fallback is bbox-derived geometry
-  - next candidate from Ghidra: turret/superstructure bbox path
+  - current runtime candidate winner is `0x1f90 / 0x1f9c`
+  - secondary candidate is `0x1f78 / 0x1f84`
+  - `0x1f80 / 0x1f8c` is currently rejected
 - current stable production fallback remains `vertical_baseline_table.json`
+- optics runtime note:
+  - first-person `camera_local - barrel_base_local` was stable on tested vehicle
+  - third-person should not be trusted unless separately validated
