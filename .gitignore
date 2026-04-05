@@ -7,4 +7,5 @@ codex*.log
 gemini*.log
 dumps
 .gemini
-datamine/*
+datamine/
+
