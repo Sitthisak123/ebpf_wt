@@ -5,29 +5,29 @@ Purpose:
 
 ## Sight / Optics
 
-- [ ] Confirm active first-person camera object path.
-- [ ] Find whether first-person camera position is true gunner sight origin or only active view camera.
-- [ ] Find optics / gunner sight mount as a vehicle-local transform.
-- [ ] Check whether optics path is global-manager based or unit-local based.
+- [x] Confirm active first-person camera object path.
+- [x] Find whether first-person camera position is true gunner sight origin or only active view camera.
+- [x] Find optics / gunner sight mount as a vehicle-local transform.
+- [x] Check whether optics path is global-manager based or unit-local based.
 - [ ] Verify if optics object changes between third-person and first-person.
 
 ## Gun / Barrel
 
-- [ ] Confirm stable gun origin path.
+- [x] Confirm stable gun origin path.
 - [ ] Confirm stable barrel base path.
 - [ ] Confirm stable barrel tip / muzzle path.
 - [ ] Verify which point best represents bore origin for parallax math.
 
 ## Vehicle Local Geometry
 
-- [ ] Confirm local axes mapping from unit rotation matrix.
+- [x] Confirm local axes mapping from unit rotation matrix.
 - [ ] Verify axis meaning per ground vehicle:
-  - [ ] forward
-  - [ ] up
-  - [ ] left/right
+  - [x] forward
+  - [x] up
+  - [x] left/right
 - [ ] Confirm body bbox path.
-- [ ] Confirm turret bbox path.
-- [ ] Verify whether current bbox includes cannon length.
+- [x] Confirm turret bbox path.
+- [x] Verify whether current bbox includes cannon length.
 
 ## Damage Model / Bones / Named Parts
 
@@ -38,10 +38,10 @@ Purpose:
   - [ ] `optic`
   - [ ] `sight`
   - [ ] `camera`
-  - [ ] `gunner`
+  - [x] `gunner`
   - [ ] `barrel`
   - [ ] `muzzle`
-  - [ ] `turret`
+  - [x] `turret`
   - [ ] `hull`
 
 ## Target Geometry
@@ -53,16 +53,34 @@ Purpose:
 
 ## Validation
 
-- [ ] Compare first-person camera local position against barrel base local position.
+- [x] Compare first-person camera local position against barrel base local position.
 - [ ] Compare optics/sight candidate against first-person camera position.
 - [ ] Compare body/turret bbox against on-screen 3D box.
 - [ ] Verify all chosen paths across multiple vehicles.
 
 ## Output Needed
 
-- [ ] `my_sight_origin`
-- [ ] `my_gun_origin`
-- [ ] `my_local_axes`
+- [x] `my_sight_origin`
+- [x] `my_gun_origin`
+- [x] `my_local_axes`
 - [ ] `target_body_bbox`
-- [ ] `target_turret_bbox`
+- [x] `target_turret_bbox`
 - [ ] optional `target_hit_bone`
+
+## Current Best Candidates
+
+- `my_sight_origin`
+  - primary candidate: `gunnerOpticFps[].pos`
+  - fallback candidate: `gunnerFps.pos`
+  - current runtime fallback: first-person active camera position
+- `my_gun_origin`
+  - current runtime barrel probe path is usable
+  - `weapon_rearsight_node__nodeTm` exists in ECS weapon path and may help locate exact weapon node transforms
+- `target_turret_bbox`
+  - turret/superstructure bbox path exists via `bone_turret` and `turretsBoundingBoxExtent`
+
+## Notes
+
+- `FUN_018aaba0` is the strongest config-side parser found so far for unit optics/camera geometry.
+- `gunnerOpticFps[].pos` is currently the best confirmed vehicle-local sight candidate.
+- `first-person local_camera -> camera_position` is a usable runtime estimate, but Ghidra evidence suggests it is still an active view camera path, not the cleanest geometry source.
