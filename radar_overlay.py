@@ -1623,7 +1623,7 @@ class ESPOverlay(QWidget):
                 if ctrl_now:
                     parallax_step = 0.1
                     if self._keyboard_down("left"):
-                        self.camera_parallax = max(0.0, self.camera_parallax - parallax_step)
+                        self.camera_parallax -= parallax_step
                     elif self._keyboard_down("right"):
                         self.camera_parallax += parallax_step
 
