@@ -47,7 +47,7 @@ Purpose:
 ## Target Geometry
 
 - [ ] Find body-only bbox that excludes cannon.
-- [ ] Find turret-only bbox.
+- [x] Find turret-only bbox.
 - [ ] Find target hit bone / weakspot / preferred impact point if available.
 - [ ] Verify whether turret/body transforms are usable at runtime.
 
@@ -55,7 +55,7 @@ Purpose:
 
 - [x] Compare first-person camera local position against barrel base local position.
 - [ ] Compare optics/sight candidate against first-person camera position.
-- [ ] Compare body/turret bbox against on-screen 3D box.
+- [x] Compare body/turret bbox against on-screen 3D box.
 - [ ] Verify all chosen paths across multiple vehicles.
 
 ## Output Needed
@@ -78,9 +78,15 @@ Purpose:
   - `weapon_rearsight_node__nodeTm` exists in ECS weapon path and may help locate exact weapon node transforms
 - `target_turret_bbox`
   - turret/superstructure bbox path exists via `bone_turret` and `turretsBoundingBoxExtent`
+  - current runtime candidate winner: `0x1f90 / 0x1f9c`
+  - secondary runtime candidate: `0x1f78 / 0x1f84`
 
 ## Notes
 
 - `FUN_018aaba0` is the strongest config-side parser found so far for unit optics/camera geometry.
 - `gunnerOpticFps[].pos` is currently the best confirmed vehicle-local sight candidate.
 - `first-person local_camera -> camera_position` is a usable runtime estimate, but Ghidra evidence suggests it is still an active view camera path, not the cleanest geometry source.
+- runtime dumps across 9 ground vehicles showed:
+  - `0x1f80 / 0x1f8c` is not usable as body bbox in current builds tested
+  - `0x1f78 / 0x1f84` is stable but looks like a lower/partial strip
+  - `0x1f90 / 0x1f9c` is stable and looks like the best turret/superstructure volume candidate

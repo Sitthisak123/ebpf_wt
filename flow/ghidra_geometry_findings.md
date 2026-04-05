@@ -179,6 +179,39 @@ Interpretation:
 - `target_turret_bbox`
   - best current candidate: turret/superstructure bbox path from `FUN_00ae4310` and `FUN_00ae4ed0`
 
+## Runtime Dumper Validation
+
+### `optic_runtime_probe_dumper.py`
+
+Validated on `ussr_2s3m` in first-person:
+- `Cam-Barrel Δ mean = [0.4164, -0.0216, -1.6128]`
+- `stddev = [0.0, 0.0, 0.0]`
+
+Interpretation:
+- first-person active camera minus barrel-base local delta is stable enough to use as a runtime candidate.
+- only the `up` component should be trusted first for parallax math.
+- this path should be limited to first-person / gunner view.
+
+Observed stale candidates:
+- direct world offsets `0x1e6c` and `0x2638` returned zero vectors on current build and should not be promoted.
+
+### `turret_bbox_candidate_dumper.py`
+
+Validated across 9 ground vehicles:
+- `0x1f80 / 0x1f8c`
+  - invalid on all tested vehicles
+- `0x1f78 / 0x1f84`
+  - valid on all tested vehicles
+  - appears to be a lower / thinner partial strip
+- `0x1f90 / 0x1f9c`
+  - valid on all tested vehicles
+  - appears to be the best full turret / superstructure volume candidate
+
+Current runtime ranking:
+1. `target_turret_bbox = 0x1f90 / 0x1f9c`
+2. fallback candidate `0x1f78 / 0x1f84`
+3. reject `0x1f80 / 0x1f8c`
+
 ## Still Missing
 
 - direct runtime memory offsets for:
