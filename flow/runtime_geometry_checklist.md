@@ -5,18 +5,18 @@ Purpose:
 
 ## Inputs
 
-- [ ] `my_pos`
-- [ ] `my_rot`
-- [ ] `my_local_axes`
-- [ ] `my_gun_origin`
+- [x] `my_pos`
+- [x] `my_rot`
+- [x] `my_local_axes`
+- [x] `my_gun_origin`
 - [ ] `my_sight_origin`
-- [ ] `target_pos`
-- [ ] `target_rot`
+- [x] `target_pos`
+- [x] `target_rot`
 - [ ] `target_body_bbox`
 - [ ] `target_turret_bbox`
 - [ ] optional `target_hit_bone`
-- [ ] projectile profile
-- [ ] active view matrix
+- [x] projectile profile
+- [x] active view matrix
 
 ## Phase 1: My Vehicle Geometry
 
@@ -25,7 +25,7 @@ Purpose:
   - [ ] forward
   - [ ] up
   - [ ] lateral
-- [ ] Verify signs in untilted and tilted states.
+- [x] Verify signs in untilted and tilted states.
 
 ## Phase 2: Target Aim Geometry
 
@@ -54,12 +54,12 @@ Purpose:
 
 ## Fallback Strategy
 
-- [ ] If `my_sight_origin` missing:
-  - [ ] fallback to first-person camera estimate
+- [x] If `my_sight_origin` missing:
+  - [x] fallback to first-person camera estimate
 - [ ] If target body/turret geometry missing:
-  - [ ] fallback to bbox-derived center
-- [ ] If dynamic path invalid:
-  - [ ] fallback to `vertical_baseline_table.json`
+  - [x] fallback to bbox-derived center
+- [x] If dynamic path invalid:
+  - [x] fallback to `vertical_baseline_table.json`
 
 ## Config / Flags
 
@@ -72,14 +72,24 @@ Purpose:
 
 ## Validation
 
-- [ ] Test first-person untilted.
-- [ ] Test first-person tilted-left.
-- [ ] Test first-person tilted-right.
-- [ ] Test near / mid / far distance.
-- [ ] Test APFSDS first before HE/full-cal.
+- [x] Test first-person untilted.
+- [x] Test first-person tilted-left.
+- [x] Test first-person tilted-right.
+- [x] Test near / mid / far distance.
+- [x] Test APFSDS first before HE/full-cal.
 
 ## Success Criteria
 
 - [ ] No per-vehicle baseline required for primary path.
 - [ ] Small residual correction only.
 - [ ] Tilt no longer forces manual retune.
+
+## Current Runtime Notes
+
+- `my_sight_origin`
+  - current runtime fallback is first-person active camera position
+  - next candidate from Ghidra: `gunnerOpticFps[].pos`
+- `target_turret_bbox`
+  - current runtime fallback is bbox-derived geometry
+  - next candidate from Ghidra: turret/superstructure bbox path
+- current stable production fallback remains `vertical_baseline_table.json`
