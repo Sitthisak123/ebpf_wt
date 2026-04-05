@@ -1,0 +1,112 @@
+{
+  "updated_at": "2026-04-05T18:17:49",
+  "source": "hitpoint_calibration_autobuild",
+  "updated_by_tool": "vertical_baseline_config_builder",
+  "source_input": "/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt/dumps/hitpoint_calibration_samples.deduped_20260405_155551.jsonl",
+  "records_kept": 59,
+  "records_dropped": 0,
+  "distance_step": 200.0,
+  "min_points": 2,
+  "dedupe": {
+    "distance_eps": 3.0,
+    "vertical_eps": 0.3,
+    "x_eps": 0.3,
+    "time_eps": 8.0
+  },
+  "table": {
+    "apfsds_like": {
+      "us_rdf_lt": {
+        "speed": 1463.0,
+        "caliber": 0.026,
+        "curve": [
+          [
+            296.255,
+            1.017
+          ],
+          [
+            580.517,
+            -3.067
+          ],
+          [
+            778.4,
+            -7.2
+          ],
+          [
+            1174.794,
+            -14.833
+          ]
+        ]
+      },
+      "ussr_t_80ue1_sm": {
+        "speed": 1700.0,
+        "caliber": 0.025,
+        "curve": [
+          [
+            295.374,
+            0.217
+          ],
+          [
+            579.644,
+            -5.533
+          ],
+          [
+            777.53,
+            -9.567
+          ],
+          [
+            1173.928,
+            -20.833
+          ]
+        ]
+      }
+    },
+    "he_fullcal_like": {
+      "ussr_t_80ue1_sm": {
+        "speed": 850.0,
+        "caliber": 0.125,
+        "curve": [
+          [
+            279.78,
+            3.18
+          ],
+          [
+            579.664,
+            -1.633
+          ],
+          [
+            777.551,
+            -0.5
+          ],
+          [
+            1173.948,
+            5.167
+          ]
+        ]
+      }
+    },
+    "other": {
+      "us_rdf_lt": {
+        "speed": 910.0,
+        "caliber": 0.075,
+        "curve": [
+          [
+            296.28,
+            5.083
+          ],
+          [
+            580.543,
+            29.867
+          ],
+          [
+            778.425,
+            20.4
+          ],
+          [
+            1174.819,
+            -6.067
+          ]
+        ]
+      }
+    }
+  }
+}

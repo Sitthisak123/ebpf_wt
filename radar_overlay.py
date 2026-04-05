@@ -36,7 +36,8 @@ def _console_supports_sticky_dashboard():
 COLOR_INFO_TEXT         = (255, 228, 64, 255)   
 COLOR_BARREL_LINE       = (0, 255, 0, 255)      
 COLOR_BOX_TARGET        = (255, 255, 0, 200)
-COLOR_BOX_SELECT_TARGET = (0, 0, 0, 200)
+COLOR_BOX_SELECT_TARGET = (255, 255, 0, 200)
+COLOR_BOX_MY_UNIT       = (80, 220, 255, 220)
 COLOR_TEXT_GROUND       = (255, 196, 20, 200)    
 COLOR_TEXT_AIR          = (255, 196, 20, 230)   
 COLOR_RELOAD_BG         = (0, 0, 0, 180)        
@@ -59,7 +60,6 @@ COLOR_AXIS_Z            = (64, 160, 255, 255)
 COLOR_BOX_HITPOINT      = (255, 40, 40, 230)
 COLOR_DEBUG_MUZZLE_RAY  = (80, 255, 120, 220)
 COLOR_DEBUG_BOX_ENTRY   = (255, 120, 40, 235)
-COLOR_DEBUG_VIRTUAL_BOX = (255, 64, 255, 235)
 COLOR_CALIBRATION_HIT   = (0, 150, 255, 255)
 COLOR_CLASS_ICON_GROUND = (255, 215, 96, 235)
 COLOR_CLASS_ICON_AIR    = (120, 220, 255, 235)
@@ -81,12 +81,6 @@ DEBUG_AXIS_LABELS_AIR = {
     "Z": "Z/L",
 }
 
-BOT_KEYWORDS = [
-    # "speaker", "water", "panzerzug", "windmill", "dummy", "dummy_plane",
-    # "unit_fulda_windmill", "airfield", "noground", "fortification",
-    # "bot", "ai_", "_ai", "target", "truck", "cannon", "aaa", "artillery",
-    # "infantry", "freighter", "hangar", "technic", "vent", "railway", "freight",
-]
 NON_PLAYABLE_RUNTIME_HINTS = (
     # "dummy",
     # "airfield",
@@ -129,16 +123,79 @@ ESP_POINT_ONLY_MODE = False             # เปลี่ยนเป็น Fals
 GROUND_USE_SIMPLE_SCREEN_BOX = False    # เปลี่ยนเป็น False เพื่อปิดโหมดกล่อง 2D แบนๆ
 AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น False
 
-DRAW_BASE_HITPOINT = False
-CALIBRATION_STEP_PIXELS = 0.05
-CALIBRATION_STEP_FAST_PIXELS = 0.05
+DRAW_BASE_HITPOINT = True
+SHOW_MY_UNIT_BOX = False
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
-CAMERA_PARALLAX_STEP = 0.1
-CAMERA_PARALLAX_FAST_STEP = 0.5
+LOCK_CAMERA_PARALLAX = True
 
 GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
 GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
 GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
+
+VERTICAL_BASELINE_AUTO_ENABLE = True
+VERTICAL_BASELINE_CONFIG_PATH = os.path.join("config", "vertical_baseline_table.json")
+DEFAULT_VERTICAL_BASELINE_TABLE = {
+    "apfsds_like": {
+        "us_rdf_lt": {
+            "speed": 1463.0,
+            "caliber": 0.026,
+            "curve": [
+                (300.0, 1.017),
+                (500.0, -3.067),
+                (700.0, -7.200),
+                (1100.0, -14.833),
+            ],
+        },
+        "ussr_t_80ue1_sm": {
+            "speed": 1700.0,
+            "caliber": 0.025,
+            "curve": [
+                (300.0, 0.217),
+                (500.0, -5.533),
+                (700.0, -9.567),
+                (1100.0, -20.833),
+            ],
+        },
+    },
+    "he_fullcal_like": {
+        "ussr_t_80ue1_sm": {
+            "speed": 850.0,
+            "caliber": 0.125,
+            "curve": [
+                (300.0, 3.180),
+                (500.0, -1.633),
+                (700.0, -0.500),
+                (1100.0, 5.167),
+            ],
+        },
+    },
+    "other": {
+        "ussr_zsu_57_2": {
+            "speed": 1000.0,
+            "caliber": 0.057,
+            "curve": [
+                (100.0, 4.200),
+                (200.0, 5.100),
+                (400.0, 3.950),
+                (600.0, 1.500),
+                (800.0, -1.550),
+                (1200.0, -3.750),
+            ],
+        },
+        "us_rdf_lt": {
+            "speed": 910.0,
+            "caliber": 0.075,
+            "curve": [
+                (300.0, 5.083),
+                (500.0, 29.867),
+                (700.0, 20.400),
+                (1100.0, -6.067),
+            ],
+        },
+    },
+}
+VERTICAL_BASELINE_TABLE = json.loads(json.dumps(DEFAULT_VERTICAL_BASELINE_TABLE))
+
 BALLISTIC_STRUCT_BASE_OFF = 0x2058
 BALLISTIC_SPEED_OFF = 0x2050
 BALLISTIC_MASS_OFF = 0x205C
@@ -190,14 +247,6 @@ BALLISTIC_MODEL0_SUBCAL_MIN = 1.0  # baseline ของ model_0_direct subcalibe
 BALLISTIC_MODEL0_SUBCAL_MAX = 20.60  # clamp กัน heuristic โตเกินจริง
 
 DEBUG_DRAW_CALIBRATION_HIT = True
-HITPOINT_DYNAMIC_Y_CORRECTION_ENABLE = False  # ใช้ correction ที่ fit จาก calibration samples
-HITPOINT_DYNAMIC_Y_C0 = 3.9466988621714605
-HITPOINT_DYNAMIC_Y_C1_DISTANCE_KM = 0.9904876542040268
-HITPOINT_DYNAMIC_Y_C2_SPEED_DELTA100 = -1.115741131934388
-HITPOINT_DYNAMIC_Y_C3_DISTANCE_SPEED = 2.703058755910346
-HITPOINT_DYNAMIC_Y_C4_CALIBER_DELTA_MM = 0.1640374544497992
-HITPOINT_DYNAMIC_Y_MIN = 0.0
-HITPOINT_DYNAMIC_Y_MAX = 20.0
 DRAG_BAND_DEFAULT = 0.5  # ใช้เมื่อ VRange ใช้ไม่ได้; สูงขึ้น = drag กลางแรงขึ้นเล็กน้อย
 DRAG_FACTOR_BASE = 0.84  # สูงขึ้น = leadmark สูงขึ้น, ต่ำลง = leadmark ต่ำลง
 DRAG_FACTOR_BAND_WEIGHT = 0.18  # สูงขึ้น = ผลของ VRange ต่อ leadmark ชัดขึ้น
@@ -228,6 +277,7 @@ SNIPER_ZOOM_SCALE = 3.5       # อัตราการซูม (เท่า)
 SNIPER_WINDOW_SIZE = 350      # ขนาดกรอบหน้าต่าง Sniper (พิกเซล)
 SNIPER_POS_X = 20             # ตำแหน่งแกน X (มุมซ้ายบน)
 SNIPER_POS_Y = 220            # ตำแหน่งแกน Y (มุมซ้ายบน ถัดจากตัวหนังสือ)
+SNIPER_MIN_RANGE = 250.0      # ระยะต่ำสุดที่จะเปิด PiP sniper
 
 #- อยากกดลงทุกระยะอีกหน่อย: เพิ่ม GROUND_HITPOINT_DROP_BASE
 #- อยากให้ระยะไกลลงมากขึ้น: เพิ่ม GROUND_HITPOINT_DROP_EXP
@@ -306,6 +356,71 @@ def _load_persistence_doc(path):
         return doc
     except Exception:
         return None
+
+
+def _load_vertical_baseline_config():
+    global VERTICAL_BASELINE_TABLE
+
+    VERTICAL_BASELINE_TABLE = json.loads(json.dumps(DEFAULT_VERTICAL_BASELINE_TABLE))
+    path = VERTICAL_BASELINE_CONFIG_PATH
+    if not os.path.exists(path):
+        return False
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        table = doc.get("table") if isinstance(doc, dict) and "table" in doc else doc
+        if not isinstance(table, dict):
+            print("[!] Vertical baseline config ignored: root table is not a dict")
+            return False
+
+        normalized = {}
+        profile_count = 0
+        for bucket_name, bucket_table in table.items():
+            if not isinstance(bucket_table, dict):
+                continue
+            clean_bucket = {}
+            for unit_key, raw_entry in bucket_table.items():
+                entry = _normalize_vertical_baseline_entry(raw_entry)
+                curve = []
+                for point in entry.get("curve", []) or []:
+                    if not isinstance(point, (list, tuple)) or len(point) < 2:
+                        continue
+                    try:
+                        curve.append((float(point[0]), float(point[1])))
+                    except Exception:
+                        continue
+                if not curve:
+                    continue
+                entry["curve"] = sorted(curve, key=lambda item: item[0])
+                clean_bucket[str(unit_key)] = entry
+                profile_count += 1
+            if clean_bucket:
+                normalized[str(bucket_name)] = clean_bucket
+
+        if not normalized:
+            print("[!] Vertical baseline config ignored: no usable curves found")
+            return False
+
+        VERTICAL_BASELINE_TABLE = normalized
+        source = "vertical_baseline_table"
+        updated_by = "unknown"
+        if isinstance(doc, dict):
+            source = doc.get("source", source)
+            updated_by = doc.get("updated_by_tool", updated_by)
+
+        print("[*] 📐 Loaded Vertical Baseline Config")
+        print(
+            f"    path={path} | buckets={len(VERTICAL_BASELINE_TABLE)} | "
+            f"profiles={profile_count}"
+        )
+        print(
+            f"    source={source} | tool={updated_by}"
+        )
+        return True
+    except Exception as e:
+        print(f"[!] Vertical baseline config load failed: {e}")
+        return False
 
 
 def _load_ballistic_layout_persistence():
@@ -591,7 +706,7 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
     return final_x, final_y, final_z
 
 
-def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_pos=None, distance_to_target=0.0, my_rot=None, view_matrix=None, screen_w=2560, screen_h=1440, calibration_offset=(0.0, 0.0), camera_parallax=15.5):
+def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_pos=None, distance_to_target=0.0, my_rot=None, view_matrix=None, screen_w=2560, screen_h=1440, calibration_offset=(0.0, 0.0), vertical_correction=0.0, camera_parallax=-4.5):
     if not aim_screen or not leadmark_screen or not target_box_rect:
         return None
 
@@ -616,7 +731,8 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
         if scr_center and scr_center[2] > 0:
             base_x, base_y = scr_center[0], scr_center[1]
 
-    calib_x, calib_y = calibration_offset
+    calib_x = float(calibration_offset[0]) if calibration_offset else 0.0
+    vertical_correction = float(vertical_correction or 0.0)
 
     up_x, up_y = 0.0, -1.0 
     if my_rot and view_matrix and len(view_matrix) >= 16:
@@ -635,42 +751,105 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
 
     # 🎯 ใช้อัตราส่วนเปอร์เซ็นต์ที่แยกแกน X, Y ออกจากกัน (100% = ขอบกล่อง)
     scaled_calib_x = (calib_x / 100.0) * box_w
-    scaled_calib_y = (calib_y / 100.0) * box_h
+    scaled_vertical_correction = (vertical_correction / 100.0) * box_h
     scaled_parallax = (camera_parallax / 100.0) * box_h
 
     parallax_shift_x = scaled_parallax * down_x
     parallax_shift_y = scaled_parallax * down_y
 
     final_x = base_x + dx + scaled_calib_x + parallax_shift_x
-    final_y = base_y + dy + drop_pixels_y + scaled_calib_y + parallax_shift_y
+    final_y = base_y + dy + drop_pixels_y + scaled_vertical_correction + parallax_shift_y
 
     return (final_x, final_y)
 
 
-def _apply_dynamic_hitpoint_y_correction(hitpoint, profile, distance_to_target):
-    if not HITPOINT_DYNAMIC_Y_CORRECTION_ENABLE or not hitpoint:
-        return hitpoint
-    model_enum = int(profile.get("model_enum", 0) or 0)
-    speed = float(profile.get("speed", 0.0) or 0.0)
-    caliber = float(profile.get("caliber", 0.0) or 0.0)
-    mass = float(profile.get("mass", 0.0) or 0.0)
-    if model_enum not in (0, 4):
-        return hitpoint
-    if not _is_subcaliber_ballistic(speed, caliber, mass):
-        return hitpoint
+def _vertical_baseline_ammo_bucket(profile):
+    speed = float((profile or {}).get("speed", 0.0) or 0.0)
+    caliber = float((profile or {}).get("caliber", 0.0) or 0.0)
+    if speed >= 1200.0 and caliber <= 0.05:
+        return "apfsds_like"
+    if caliber >= 0.09:
+        return "he_fullcal_like"
+    return "other"
 
-    distance_km = max(0.0, float(distance_to_target or 0.0) / 1000.0)
-    speed_delta100 = max(0.0, speed - 1500.0) / 100.0
-    caliber_delta_mm = max(0.0, caliber - 0.016) / 0.001
-    y_up = (
-        HITPOINT_DYNAMIC_Y_C0 +
-        (HITPOINT_DYNAMIC_Y_C1_DISTANCE_KM * distance_km) +
-        (HITPOINT_DYNAMIC_Y_C2_SPEED_DELTA100 * speed_delta100) +
-        (HITPOINT_DYNAMIC_Y_C3_DISTANCE_SPEED * distance_km * speed_delta100) +
-        (HITPOINT_DYNAMIC_Y_C4_CALIBER_DELTA_MM * caliber_delta_mm)
-    )
-    y_up = max(HITPOINT_DYNAMIC_Y_MIN, min(HITPOINT_DYNAMIC_Y_MAX, y_up))
-    return (hitpoint[0], hitpoint[1] - y_up)
+
+def _interpolate_vertical_curve(points, distance_to_target):
+    if not points:
+        return 0.0
+    dist = float(distance_to_target or 0.0)
+    ordered = sorted(points, key=lambda item: item[0])
+    if dist <= ordered[0][0]:
+        return float(ordered[0][1])
+    if dist >= ordered[-1][0]:
+        return float(ordered[-1][1])
+    for i in range(len(ordered) - 1):
+        left_d, left_v = ordered[i]
+        right_d, right_v = ordered[i + 1]
+        if left_d <= dist <= right_d:
+            t = _smoothstep(left_d, right_d, dist)
+            return float(left_v) + (float(right_v) - float(left_v)) * t
+    return float(ordered[-1][1])
+
+
+def _normalize_vertical_baseline_entry(entry):
+    if isinstance(entry, dict):
+        return {
+            "speed": float(entry.get("speed", 0.0) or 0.0),
+            "caliber": float(entry.get("caliber", 0.0) or 0.0),
+            "curve": entry.get("curve", []) or [],
+        }
+    return {
+        "speed": 0.0,
+        "caliber": 0.0,
+        "curve": entry or [],
+    }
+
+
+def _choose_vertical_baseline_entry(my_unit_key, ballistic_profile):
+    ammo_bucket = _vertical_baseline_ammo_bucket(ballistic_profile)
+    speed = float((ballistic_profile or {}).get("speed", 0.0) or 0.0)
+    caliber = float((ballistic_profile or {}).get("caliber", 0.0) or 0.0)
+
+    def iter_candidates(bucket_name):
+        table = VERTICAL_BASELINE_TABLE.get(bucket_name, {}) or {}
+        for unit_key, raw_entry in table.items():
+            entry = _normalize_vertical_baseline_entry(raw_entry)
+            yield bucket_name, unit_key, entry
+
+    bucket_table = VERTICAL_BASELINE_TABLE.get(ammo_bucket, {}) or {}
+    if my_unit_key in bucket_table:
+        return ammo_bucket, my_unit_key, _normalize_vertical_baseline_entry(bucket_table[my_unit_key])
+
+    candidates = list(iter_candidates(ammo_bucket))
+    if not candidates:
+        for bucket_name in VERTICAL_BASELINE_TABLE.keys():
+            candidates.extend(iter_candidates(bucket_name))
+    if not candidates:
+        return ammo_bucket, "", {"speed": 0.0, "caliber": 0.0, "curve": []}
+
+    best = None
+    best_score = None
+    for bucket_name, unit_key, entry in candidates:
+        ref_speed = float(entry.get("speed", 0.0) or 0.0)
+        ref_caliber = float(entry.get("caliber", 0.0) or 0.0)
+        speed_term = abs(speed - ref_speed) / max(max(speed, ref_speed, 1.0), 1.0)
+        caliber_term = abs(caliber - ref_caliber) / max(max(caliber, ref_caliber, 0.001), 0.001)
+        score = speed_term + (caliber_term * 2.0)
+        if best_score is None or score < best_score:
+            best_score = score
+            best = (bucket_name, unit_key, entry)
+    return best
+
+
+def _get_auto_vertical_baseline(my_unit_key, ballistic_profile, distance_to_target):
+    if not VERTICAL_BASELINE_AUTO_ENABLE:
+        return 0.0
+    _bucket_name, _matched_unit_key, entry = _choose_vertical_baseline_entry(my_unit_key or "", ballistic_profile)
+    curve = entry.get("curve", []) if isinstance(entry, dict) else []
+    return _interpolate_vertical_curve(curve, distance_to_target) if curve else 0.0
+
+
+_load_vertical_baseline_config()
 
 
 def _get_ground_target_aim_point(box_data, fallback_pos, distance_to_target):
@@ -1518,7 +1697,8 @@ class ESPOverlay(QWidget):
         self.shutdown_requested = False
         self.startup_time = time.time()
         self.calibration_offset = [0.0, 0.0]
-        self.camera_parallax = 15.5  # 🎯 NEW: ค่าแรงเหวี่ยงกล้องเริ่มต้น (T-80U-E1)
+        self.vertical_correction = 0.0
+        self.camera_parallax = -4.5  # 🎯 NEW: ค่าแรงเหวี่ยงกล้องเริ่มต้น (T-80U-E1)
         self.calibration_last_keys = {
             "enter": False,
             "backspace": False,
@@ -1615,12 +1795,13 @@ class ESPOverlay(QWidget):
         
         if backspace_now and not self.calibration_last_keys.get("backspace", False):
             self.calibration_offset = [0.0, 0.0]
+            self.vertical_correction = 0.0
             
         self.calibration_last_keys["backspace"] = backspace_now
 
         if not enter_now:
                 step = 0.1
-                if ctrl_now:
+                if ctrl_now and not LOCK_CAMERA_PARALLAX:
                     parallax_step = 0.1
                     if self._keyboard_down("left"):
                         self.camera_parallax -= parallax_step
@@ -1636,24 +1817,34 @@ class ESPOverlay(QWidget):
                         self.calibration_offset[0] += step
                     
                 if self._keyboard_down("up"):
-                    self.calibration_offset[1] -= step
+                    self.vertical_correction -= step
                 elif self._keyboard_down("down"):
-                    self.calibration_offset[1] += step
+                    self.vertical_correction += step
 
         calib_x = context["base_hitpoint"][0]
         calib_y = context["base_hitpoint"][1]
 
         if enter_now and not self.calibration_last_keys.get("enter", False):
+            auto_vertical_baseline = float(context.get("auto_vertical_baseline", 0.0) or 0.0)
             sample = {
                 "captured_at": time.time(),
-                "unit_ptr": context.get("unit_ptr", 0),
-                "unit_key": context.get("unit_key", ""),
+                "target_unit_ptr": context.get("target_unit_ptr", context.get("unit_ptr", 0)),
+                "target_unit_key": context.get("target_unit_key", context.get("unit_key", "")),
+                "my_unit_ptr": context.get("my_unit_ptr", 0),
+                "my_unit_key": context.get("my_unit_key", ""),
+                "my_vehicle_name": context.get("my_vehicle_name", ""),
+                # Backward-compat aliases for old parsers
+                "unit_ptr": context.get("target_unit_ptr", context.get("unit_ptr", 0)),
+                "unit_key": context.get("target_unit_key", context.get("unit_key", "")),
                 "distance": context.get("distance", 0.0),
                 "model_enum": context.get("model_enum", 0),
                 "speed": context.get("speed", 0.0),
                 "caliber": context.get("caliber", 0.0),
                 "camera_parallax": round(self.camera_parallax, 3),
-                "calibration_offset": [round(self.calibration_offset[0], 3), round(self.calibration_offset[1], 3)],
+                "auto_vertical_baseline": round(auto_vertical_baseline, 3),
+                "vertical_correction": round(self.vertical_correction, 3),
+                "effective_vertical_correction": round(auto_vertical_baseline + self.vertical_correction, 3),
+                "calibration_offset": [round(self.calibration_offset[0], 3), round(self.vertical_correction, 3)],
             }
             self._save_calibration_sample(sample)
 
@@ -1888,11 +2079,15 @@ class ESPOverlay(QWidget):
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
             my_is_air = False
+            my_name = ""
+            my_name_key = ""
             for u_ptr, is_air in all_units_data:
                 if u_ptr == my_unit:
                     my_is_air = is_air; break
             if my_unit:
                 my_profile = get_unit_filter_profile(self.scanner, my_unit)
+                my_name = my_profile.get("short_name") or ""
+                my_name_key = my_profile.get("unit_key") or ""
                 if my_profile.get("kind") == "air":
                     my_is_air = True
                 elif my_profile.get("kind") == "ground":
@@ -1911,6 +2106,39 @@ class ESPOverlay(QWidget):
                             my_ground_shot_origin = my_barrel_data[1] or my_barrel_data[0] or my_pos
                 except Exception:
                     my_ground_shot_origin = my_pos
+
+            if SHOW_MY_UNIT_BOX and my_unit and my_pos:
+                try:
+                    my_bmin, my_bmax = get_unit_bbox(self.scanner, my_unit)
+                    my_rot = get_unit_rotation(self.scanner, my_unit)
+                    if my_bmin and my_bmax and my_rot:
+                        my_corners = [
+                            (my_bmin[0], my_bmin[1], my_bmin[2]), (my_bmin[0], my_bmin[1], my_bmax[2]),
+                            (my_bmin[0], my_bmax[1], my_bmin[2]), (my_bmin[0], my_bmax[1], my_bmax[2]),
+                            (my_bmax[0], my_bmin[1], my_bmin[2]), (my_bmax[0], my_bmin[1], my_bmax[2]),
+                            (my_bmax[0], my_bmax[1], my_bmin[2]), (my_bmax[0], my_bmax[1], my_bmax[2]),
+                        ]
+                        my_pts = []
+                        for c in my_corners:
+                            world_x = my_pos[0] + (c[0] * my_rot[0] + c[1] * my_rot[3] + c[2] * my_rot[6])
+                            world_y = my_pos[1] + (c[0] * my_rot[1] + c[1] * my_rot[4] + c[2] * my_rot[7])
+                            world_z = my_pos[2] + (c[0] * my_rot[2] + c[1] * my_rot[5] + c[2] * my_rot[8])
+                            scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
+                            if scr and scr[2] > 0:
+                                my_pts.append((int(scr[0]), int(scr[1])))
+                            else:
+                                my_pts.append(None)
+                        if my_pts.count(None) == 0:
+                            my_edges = [
+                                (0, 1), (0, 2), (1, 3), (2, 3),
+                                (4, 5), (4, 6), (5, 7), (6, 7),
+                                (0, 4), (1, 5), (2, 6), (3, 7),
+                            ]
+                            painter.setPen(QPen(QColor(*COLOR_BOX_MY_UNIT), 1.5))
+                            for p1, p2 in my_edges:
+                                painter.drawLine(my_pts[p1][0], my_pts[p1][1], my_pts[p2][0], my_pts[p2][1])
+                except Exception:
+                    pass
 
             if my_unit != self.last_my_unit:
                 reset_runtime_caches(clear_view=True)
@@ -2820,6 +3048,11 @@ class ESPOverlay(QWidget):
                                     
                                 # 🎯 THE CLEAN HITPOINT ENGINE (ลบ VirtualBox ทิ้ง และทำงานเฉพาะ Selected Ground Target)
                                 if u_ptr == active_target_ptr and target_box_rect and not physics_is_air:
+                                    auto_vertical_baseline = _get_auto_vertical_baseline(
+                                        my_name_key,
+                                        ballistic_profile,
+                                        dist,
+                                    )
                                     mapped_hitpoint = _map_aim_to_target_box_hitpoint(
                                         (self.center_x, self.center_y),
                                         (spx, spy),
@@ -2831,15 +3064,10 @@ class ESPOverlay(QWidget):
                                         self.screen_width,  
                                         self.screen_height,
                                         self.calibration_offset,
+                                        self.vertical_correction + auto_vertical_baseline,
                                         self.camera_parallax  # 🎯 ส่งค่าแรงเหวี่ยงกล้องเข้าไป
                                     )
                                     if mapped_hitpoint:
-                                        mapped_hitpoint = _apply_dynamic_hitpoint_y_correction(
-                                            mapped_hitpoint,
-                                            ballistic_profile,
-                                            dist,
-                                        )
-                                        
                                         is_hitpoint_inside_bbox = True
                                         bx1, by1, bx2, by2 = target_box_rect
                                         hx, hy = mapped_hitpoint
@@ -2862,14 +3090,22 @@ class ESPOverlay(QWidget):
                                             active_sniper_data = {
                                                 'center_x': avg_x,
                                                 'center_y': avg_y,
-                                                'hitpoint': mapped_hitpoint
+                                                'hitpoint': mapped_hitpoint,
+                                                'target_box_rect': target_box_rect,
+                                                'distance': dist,
                                             }
 
                                             # 🛠️ BUG FIX: ย้ายฟังก์ชันวาดกากบาทสีฟ้า (Calibration) เข้ามาด้วย!
                                             calib_point = self._handle_hitpoint_calibration({
+                                                "target_unit_ptr": u_ptr,
+                                                "target_unit_label": raw_name,
+                                                "target_unit_key": name_key,
                                                 "unit_ptr": u_ptr,
                                                 "unit_label": raw_name,
                                                 "unit_key": name_key,
+                                                "my_unit_ptr": my_unit if my_unit else 0,
+                                                "my_unit_key": my_name_key,
+                                                "my_vehicle_name": my_name,
                                                 "distance": dist,
                                                 "zeroing": current_zeroing,
                                                 "model_enum": ballistic_profile.get("model_enum", 0),
@@ -2878,6 +3114,7 @@ class ESPOverlay(QWidget):
                                                 "caliber": ballistic_profile.get("caliber", 0.0),
                                                 "cx": ballistic_profile.get("cx", 0.0),
                                                 "drag_k": ballistic_model.get("drag_k", 0.0),
+                                                "auto_vertical_baseline": auto_vertical_baseline,
                                                 "base_hitpoint": mapped_hitpoint,
                                             })
                                             if calib_point:
@@ -3027,19 +3264,40 @@ class ESPOverlay(QWidget):
                     painter.drawLine(hp_pts[0], hp_pts[1] - 8, hp_pts[0], hp_pts[1] + 8)
                     
                 painter.setPen(calib_color)
-                painter.drawText(20, 140, f"[CALIB] Arrow: Weakspot {self.calibration_offset[0]:.1f}, {self.calibration_offset[1]:.1f} | Ctrl+Left/Right: Parallax {self.camera_parallax:.1f} | Ctrl+Shift: Fast | Enter: Save")
+                painter.drawText(
+                    20,
+                    140,
+                    f"[CALIB] Arrow: WeakspotX {self.calibration_offset[0]:.1f} | "
+                    f"Vertical {self.vertical_correction:.1f} | "
+                    f"AutoBase {'ON' if VERTICAL_BASELINE_AUTO_ENABLE else 'OFF'} | "
+                    f"Parallax {self.camera_parallax:.1f}{' [LOCK]' if LOCK_CAMERA_PARALLAX else ''} | "
+                    f"Enter: Save"
+                )
             
             # ========================================================
             # 🔎 PICTURE-IN-PICTURE (PiP) SNIPER SCOPE RENDERER
             # ========================================================
             if ENABLE_SNIPER_MODE and active_sniper_data:
                 try:
+                    if float(active_sniper_data.get('distance', 0.0) or 0.0) < SNIPER_MIN_RANGE:
+                        raise ValueError("sniper_min_range_skip")
                     cx = active_sniper_data['center_x']
                     cy = active_sniper_data['center_y']
                     t_hit = active_sniper_data['hitpoint']
+                    sniper_box_rect = active_sniper_data.get('target_box_rect')
                     
                     # 1. คำนวณขนาดที่จะแคปเจอร์
-                    cap_size = int(SNIPER_WINDOW_SIZE / SNIPER_ZOOM_SCALE)
+                    base_cap_size = int(SNIPER_WINDOW_SIZE / SNIPER_ZOOM_SCALE)
+                    cap_size = base_cap_size
+                    if sniper_box_rect:
+                        bx1, by1, bx2, by2 = sniper_box_rect
+                        box_w = max(1.0, float(bx2) - float(bx1))
+                        box_h = max(1.0, float(by2) - float(by1))
+                        # ถ้าเป้าใหญ่กว่ากรอบ crop ปกติ ให้ขยายพื้นที่แคปเพื่อบีบเป้าลงมาให้พอดี PiP
+                        target_span = max(box_w, box_h)
+                        fit_cap_size = int(target_span * 1.12)
+                        cap_size = max(cap_size, fit_cap_size)
+                    cap_size = max(32, min(cap_size, self.screen_width, self.screen_height))
                     
                     # ป้องกันการแคปทะลุขอบจอ (ยึดจากจุดกึ่งกลางรถถังโดยตรง)
                     left = int(max(0, min(self.screen_width - cap_size, cx - cap_size / 2)))
