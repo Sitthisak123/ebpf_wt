@@ -133,6 +133,8 @@ DRAW_BASE_HITPOINT = False
 CALIBRATION_STEP_PIXELS = 0.05
 CALIBRATION_STEP_FAST_PIXELS = 0.05
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
+CAMERA_PARALLAX_STEP = 0.1
+CAMERA_PARALLAX_FAST_STEP = 0.5
 
 GROUND_AIM_HEIGHT_RATIO_CLOSE = 0.50
 GROUND_AIM_HEIGHT_RATIO_FAR = 0.75
@@ -589,11 +591,13 @@ def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed,
     return final_x, final_y, final_z
 
 
-def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_pos=None, distance_to_target=0.0, my_rot=None, view_matrix=None, screen_w=1920, screen_h=1080, calibration_offset=(0.0, 0.0)):
+def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect, target_pos=None, distance_to_target=0.0, my_rot=None, view_matrix=None, screen_w=2560, screen_h=1440, calibration_offset=(0.0, 0.0), camera_parallax=15.5):
     if not aim_screen or not leadmark_screen or not target_box_rect:
         return None
 
     min_x, min_y, max_x, max_y = target_box_rect
+    # 🎯 THE PROPORTIONAL FIX: ดึงความกว้างและความสูงมาแยกกันคำนวณ!
+    box_w = max(max_x - min_x, 1.0)
     box_h = max(max_y - min_y, 1.0)
 
     dist_t = max(0.0, min(1.0, distance_to_target / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
@@ -617,13 +621,10 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     up_x, up_y = 0.0, -1.0 
     if my_rot and view_matrix and len(view_matrix) >= 16:
         up_wx, up_wy, up_wz = my_rot[3], my_rot[4], my_rot[5]
-        
         clip_x = (up_wx * view_matrix[0]) + (up_wy * view_matrix[4]) + (up_wz * view_matrix[8])
         clip_y = (up_wx * view_matrix[1]) + (up_wy * view_matrix[5]) + (up_wz * view_matrix[9])
-        
         scr_vx = clip_x
         scr_vy = -clip_y
-        
         mag = math.hypot(scr_vx, scr_vy)
         if mag > 0.001:
             up_x = scr_vx / mag
@@ -631,23 +632,17 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
 
     down_x = -up_x
     down_y = -up_y
-    right_x = -up_y
-    right_y = up_x
 
-    # 🎯 THE FINAL T-80U-E1 PARALLAX ENGINE
-    # 7.5 คือ Camera Parallax คงที่ของ T-80U-E1
-    # - (calib_y * 0.33) คือการชดเชยการฉายภาพตาม "ความสูงของรถถังเป้าหมาย" (Target Height Projection)
-    target_parallax_compensation = 7.5 - (calib_y * 0.33)
+    # 🎯 ใช้อัตราส่วนเปอร์เซ็นต์ที่แยกแกน X, Y ออกจากกัน (100% = ขอบกล่อง)
+    scaled_calib_x = (calib_x / 100.0) * box_w
+    scaled_calib_y = (calib_y / 100.0) * box_h
+    scaled_parallax = (camera_parallax / 100.0) * box_h
 
-    # หมุนเฉพาะการชดเชยแกน X และ Parallax รวม ตามองศาการเอียงรถถังของเรา
-    rot_x = (calib_x * right_x) + (target_parallax_compensation * down_x)
-    rot_y = (calib_x * right_y) + (target_parallax_compensation * down_y)
+    parallax_shift_x = scaled_parallax * down_x
+    parallax_shift_y = scaled_parallax * down_y
 
-    # นำ calib_y (ที่ใช้เล็งจุดอ่อน) มาหักลบส่วนที่หมุนไปแล้ว เพื่อให้มันทำงานเป็น Vertical Target Offset เสมอ
-    target_hull_offset = calib_y - target_parallax_compensation
-
-    final_x = base_x + dx + rot_x
-    final_y = base_y + dy + drop_pixels_y + rot_y + target_hull_offset
+    final_x = base_x + dx + scaled_calib_x + parallax_shift_x
+    final_y = base_y + dy + drop_pixels_y + scaled_calib_y + parallax_shift_y
 
     return (final_x, final_y)
 
@@ -1523,6 +1518,7 @@ class ESPOverlay(QWidget):
         self.shutdown_requested = False
         self.startup_time = time.time()
         self.calibration_offset = [0.0, 0.0]
+        self.camera_parallax = 15.5  # 🎯 NEW: ค่าแรงเหวี่ยงกล้องเริ่มต้น (T-80U-E1)
         self.calibration_last_keys = {
             "enter": False,
             "backspace": False,
@@ -1583,10 +1579,10 @@ class ESPOverlay(QWidget):
             app.quit()
 
     def _update_screen_metrics(self):
-        screen = self.screen() or QApplication.primaryScreen()
-        geometry = screen.geometry() if screen is not None else QApplication.desktop().screenGeometry()
-        self.screen_width = geometry.width()
-        self.screen_height = geometry.height()
+        # screen = self.screen() or QApplication.primaryScreen()
+        # geometry = screen.geometry() if screen is not None else QApplication.desktop().screenGeometry()
+        self.screen_width = 2560
+        self.screen_height = 1440
         self.center_x = self.screen_width / 2
         self.center_y = self.screen_height / 2
 
@@ -1612,37 +1608,41 @@ class ESPOverlay(QWidget):
         if not DEBUG_DRAW_CALIBRATION_HIT or not context:
             return None
 
-        # 🎯 1. ดึงสถานะปุ่มปัจจุบัน (ใช้ชื่อปุ่มมาตรฐานของ lib keyboard)
         enter_now = self._keyboard_down("enter")
+        backspace_now = self._keyboard_down("backspace")
+        ctrl_now = self._keyboard_down("ctrl") or self._keyboard_down("left ctrl") or self._keyboard_down("right ctrl")
+        shift_now = self._keyboard_down("shift") or self._keyboard_down("left shift") or self._keyboard_down("right shift")
         
-        # 🎯 2. [Logic Gate] ล็อกไม่ให้ขยับจุดถ้ากำลังกด Enter เพื่อป้องกันพิกัดกระโดด
-        if not enter_now:
-            is_shift = self._keyboard_down("shift") or self._keyboard_down("right shift")
-            step = CALIBRATION_STEP_FAST_PIXELS if is_shift else CALIBRATION_STEP_PIXELS
+        if backspace_now and not self.calibration_last_keys.get("backspace", False):
+            self.calibration_offset = [0.0, 0.0]
             
-            # ⬅️ เปลี่ยนมาใช้ปุ่มลูกศร (Arrow Keys)
-            if self._keyboard_down("left"):
-                self.calibration_offset[0] -= step
-            elif self._keyboard_down("right"):
-                self.calibration_offset[0] += step
-                
-            if self._keyboard_down("up"):
-                self.calibration_offset[1] -= step
-            elif self._keyboard_down("down"):
-                self.calibration_offset[1] += step
+        self.calibration_last_keys["backspace"] = backspace_now
 
-            # 🔄 ปุ่มรีเซ็ตและอัปเดตสถานะ (Backspace)
-            backspace_now = self._keyboard_down("backspace")
-            if backspace_now and not self.calibration_last_keys.get("backspace", False):
-                self.calibration_offset = [0.0, 0.0]
-                print("[CALIB] offset reset")
-            self.calibration_last_keys["backspace"] = backspace_now
+        if not enter_now:
+                step = CALIBRATION_STEP_FAST_PIXELS if shift_now else CALIBRATION_STEP_PIXELS
+                if ctrl_now:
+                    parallax_step = CAMERA_PARALLAX_FAST_STEP if shift_now else CAMERA_PARALLAX_STEP
+                    if self._keyboard_down("left"):
+                        self.camera_parallax = max(0.0, self.camera_parallax - parallax_step)
+                    elif self._keyboard_down("right"):
+                        self.camera_parallax += parallax_step
 
-        # 🎯 3. ไม่ต้องบวกเพิ่มแล้ว ดึงพิกัดที่หมุนแกนมาแล้วไปใช้ได้เลย!
+                # 🎯 ลูกศรเพียวๆ = ปรับจุดอ่อน (Weakspot) ซ้าย/ขวา/บน/ล่าง
+                if self._keyboard_down("left"):
+                    if not ctrl_now:
+                        self.calibration_offset[0] -= step
+                elif self._keyboard_down("right"):
+                    if not ctrl_now:
+                        self.calibration_offset[0] += step
+                    
+                if self._keyboard_down("up"):
+                    self.calibration_offset[1] -= step
+                elif self._keyboard_down("down"):
+                    self.calibration_offset[1] += step
+
         calib_x = context["base_hitpoint"][0]
         calib_y = context["base_hitpoint"][1]
 
-        # 🎯 4. ระบบบันทึกข้อมูล (Single-Shot Trigger)
         if enter_now and not self.calibration_last_keys.get("enter", False):
             sample = {
                 "captured_at": time.time(),
@@ -1652,12 +1652,11 @@ class ESPOverlay(QWidget):
                 "model_enum": context.get("model_enum", 0),
                 "speed": context.get("speed", 0.0),
                 "caliber": context.get("caliber", 0.0),
+                "camera_parallax": round(self.camera_parallax, 3),
                 "calibration_offset": [round(self.calibration_offset[0], 3), round(self.calibration_offset[1], 3)],
             }
             self._save_calibration_sample(sample)
-            print(f"[CALIB] SUCCESS: Saved offset {self.calibration_offset}")
 
-        # อัปเดตสถานะปุ่ม Enter สำหรับเฟรมถัดไป
         self.calibration_last_keys["enter"] = enter_now
 
         return (calib_x, calib_y)
@@ -2831,7 +2830,8 @@ class ESPOverlay(QWidget):
                                         view_matrix,        
                                         self.screen_width,  
                                         self.screen_height,
-                                        self.calibration_offset 
+                                        self.calibration_offset,
+                                        self.camera_parallax  # 🎯 ส่งค่าแรงเหวี่ยงกล้องเข้าไป
                                     )
                                     if mapped_hitpoint:
                                         mapped_hitpoint = _apply_dynamic_hitpoint_y_correction(
@@ -2840,14 +2840,14 @@ class ESPOverlay(QWidget):
                                             dist,
                                         )
                                         
-                                        # 🎯 THE BBOX BOUNDARY CHECK
                                         is_hitpoint_inside_bbox = True
                                         bx1, by1, bx2, by2 = target_box_rect
                                         hx, hy = mapped_hitpoint
                                         
-                                        # เผื่อระยะขอบ (Margin) 20% เพื่อไม่ให้จุดกระพริบหายเวลาเป้าขยับ
-                                        margin_x = (bx2 - bx1) * 0.20
-                                        margin_y = (by2 - by1) * 0.20
+                                        # 🛠️ THE FIX: ขยายขอบเขต (Margin) ให้กว้างขึ้น!
+                                        # บวกเพิ่ม 50px เผื่อให้จุด Hitpoint ที่ถูกดึงลงด้วย Camera Parallax ไม่หลุดกล่องจนปุ่มกดตาย
+                                        margin_x = (bx2 - bx1) * 0.20 + 50.0
+                                        margin_y = (by2 - by1) * 0.20 + 50.0
                                         
                                         if not ((bx1 - margin_x) <= hx <= (bx2 + margin_x) and (by1 - margin_y) <= hy <= (by2 + margin_y)):
                                             is_hitpoint_inside_bbox = False
@@ -3027,7 +3027,7 @@ class ESPOverlay(QWidget):
                     painter.drawLine(hp_pts[0], hp_pts[1] - 8, hp_pts[0], hp_pts[1] + 8)
                     
                 painter.setPen(calib_color)
-                painter.drawText(20, 140, "[CALIB] I/J/K/L move | Shift fast | Backspace reset | Enter save")
+                painter.drawText(20, 140, f"[CALIB] Arrow: Weakspot {self.calibration_offset[0]:.1f}, {self.calibration_offset[1]:.1f} | Ctrl+Left/Right: Parallax {self.camera_parallax:.1f} | Ctrl+Shift: Fast | Enter: Save")
             
             # ========================================================
             # 🔎 PICTURE-IN-PICTURE (PiP) SNIPER SCOPE RENDERER
@@ -3086,6 +3086,9 @@ class ESPOverlay(QWidget):
 
 if __name__ == '__main__':
     try:
+        # 🎯 เพิ่มบรรทัดนี้: ปิดระบบ OS Display Scaling ให้จอ 2560x1440 แมปพิกเซลแบบ 1:1 เสมอ
+        QApplication.setAttribute(Qt.AA_DisableHighDpiScaling, True)
+
         pid = get_game_pid()
         base_addr = get_game_base_address(pid)
         if base_addr == 0:
