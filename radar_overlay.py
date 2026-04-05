@@ -2893,11 +2893,24 @@ class ESPOverlay(QWidget):
                                                 "sx": fire_origin_screen[0], "sy": fire_origin_screen[1], "px": spx, "py": spy,
                                             })
 
+                                # 🎯 THE PERFECT STATIC LEADMARK SYNC
                                 if target_vel_mag > 0.05 and math.isfinite(spx) and math.isfinite(spy):
+                                    draw_spx = spx
+                                    draw_sx = avg_x
+                                    draw_sy = avg_y
+                                    
+                                    if target_box_rect and target_anchor_screen:
+                                        center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                        center_y = (target_box_rect[1] + target_box_rect[3]) * 0.5
+                                        draw_sx = center_x
+                                        draw_sy = center_y
+                                        # หักลบความคลาดเคลื่อน 3D Perspective ให้จุดปลายแกน X ตรงกับ Bounding Box
+                                        draw_spx = center_x + (spx - target_anchor_screen[0])
+
                                     lead_marks_to_draw.append({
-                                        'sx': avg_x,
-                                        'sy': avg_y,
-                                        'px': spx,
+                                        'sx': draw_sx,
+                                        'sy': draw_sy,
+                                        'px': draw_spx,
                                         'py': spy,
                                         'is_air': False,
                                         'is_turning': False,
