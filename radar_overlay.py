@@ -139,6 +139,7 @@ GROUND_AIM_HEIGHT_RATIO_BLEND_MAX = 1200.0
 
 VERTICAL_BASELINE_AUTO_ENABLE = True
 VERTICAL_BASELINE_CONFIG_PATH = os.path.join("config", "vertical_baseline_table.json")
+VERTICAL_BASELINE_RUNTIME_SOURCE = "default"
 DEFAULT_VERTICAL_BASELINE_TABLE = {
     "apfsds_like": {
         "us_rdf_lt": {
@@ -200,6 +201,8 @@ DEFAULT_VERTICAL_BASELINE_TABLE = {
     },
 }
 VERTICAL_BASELINE_TABLE = json.loads(json.dumps(DEFAULT_VERTICAL_BASELINE_TABLE))
+DYNAMIC_PARALLAX_SCALE = 1
+DYNAMIC_WORLDSPACE_ENABLE = True
 
 BALLISTIC_STRUCT_BASE_OFF = 0x2058
 BALLISTIC_SPEED_OFF = 0x2050
@@ -287,7 +290,7 @@ ENABLE_SNIPER_MODE = True
 SNIPER_ZOOM_SCALE = 3.5       # อัตราการซูม (เท่า)
 SNIPER_WINDOW_SIZE = 350      # ขนาดกรอบหน้าต่าง Sniper (พิกเซล)
 SNIPER_POS_X = 20             # ตำแหน่งแกน X (มุมซ้ายบน)
-SNIPER_POS_Y = 220            # ตำแหน่งแกน Y (มุมซ้ายบน ถัดจากตัวหนังสือ)
+SNIPER_POS_Y = 320            # ตำแหน่งแกน Y (มุมซ้ายบน ถัดจากตัวหนังสือ)
 SNIPER_MIN_RANGE = 250.0      # ระยะต่ำสุดที่จะเปิด PiP sniper
 
 #- อยากกดลงทุกระยะอีกหน่อย: เพิ่ม GROUND_HITPOINT_DROP_BASE
@@ -370,9 +373,10 @@ def _load_persistence_doc(path):
 
 
 def _load_vertical_baseline_config():
-    global VERTICAL_BASELINE_TABLE
+    global VERTICAL_BASELINE_TABLE, VERTICAL_BASELINE_RUNTIME_SOURCE
 
     VERTICAL_BASELINE_TABLE = json.loads(json.dumps(DEFAULT_VERTICAL_BASELINE_TABLE))
+    VERTICAL_BASELINE_RUNTIME_SOURCE = "default"
     path = VERTICAL_BASELINE_CONFIG_PATH
     if not os.path.exists(path):
         return False
@@ -414,6 +418,7 @@ def _load_vertical_baseline_config():
             return False
 
         VERTICAL_BASELINE_TABLE = normalized
+        VERTICAL_BASELINE_RUNTIME_SOURCE = "file"
         source = "vertical_baseline_table"
         updated_by = "unknown"
         if isinstance(doc, dict):
@@ -774,6 +779,37 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     return (final_x, final_y)
 
 
+def _get_hitpoint_parallax_debug_terms(target_box_rect, my_rot=None, view_matrix=None, camera_parallax=0.0):
+    if not target_box_rect:
+        return None
+    min_x, min_y, max_x, max_y = target_box_rect
+    box_h = max(max_y - min_y, 1.0)
+
+    up_x, up_y = 0.0, -1.0
+    if my_rot and view_matrix and len(view_matrix) >= 16:
+        up_wx, up_wy, up_wz = my_rot[3], my_rot[4], my_rot[5]
+        clip_x = (up_wx * view_matrix[0]) + (up_wy * view_matrix[4]) + (up_wz * view_matrix[8])
+        clip_y = (up_wx * view_matrix[1]) + (up_wy * view_matrix[5]) + (up_wz * view_matrix[9])
+        scr_vx = clip_x
+        scr_vy = -clip_y
+        mag = math.hypot(scr_vx, scr_vy)
+        if mag > 0.001:
+            up_x = scr_vx / mag
+            up_y = scr_vy / mag
+
+    down_x = -up_x
+    down_y = -up_y
+    scaled_parallax = (float(camera_parallax or 0.0) / 100.0) * box_h
+    return {
+        "box_h": float(box_h),
+        "down_x": float(down_x),
+        "down_y": float(down_y),
+        "scaled_parallax": float(scaled_parallax),
+        "shift_x": float(scaled_parallax * down_x),
+        "shift_y": float(scaled_parallax * down_y),
+    }
+
+
 def _vertical_baseline_ammo_bucket(profile):
     speed = float((profile or {}).get("speed", 0.0) or 0.0)
     caliber = float((profile or {}).get("caliber", 0.0) or 0.0)
@@ -951,10 +987,11 @@ def _get_dynamic_my_geometry(scanner, cgame_base, my_unit, my_box_data):
             camera_local[2] - barrel_base_local[2],
         )
         unit_height = max(unit_dims[1], 0.25)
-        dynamic_parallax_pct = (delta_local[1] / unit_height) * 100.0
+        dynamic_parallax_pct = (delta_local[1] / unit_height) * 100.0 * DYNAMIC_PARALLAX_SCALE
         return {
             "camera_ptr": camera_ptr,
             "camera_world": camera_world,
+            "barrel_base_world": barrel_base,
             "camera_local": camera_local,
             "barrel_base_local": barrel_base_local,
             "delta_local": delta_local,
@@ -962,6 +999,16 @@ def _get_dynamic_my_geometry(scanner, cgame_base, my_unit, my_box_data):
         }
     except Exception:
         return None
+
+
+def _offset_world_point(world_point, world_offset):
+    if not world_point or not world_offset:
+        return world_point
+    return (
+        float(world_point[0] + world_offset[0]),
+        float(world_point[1] + world_offset[1]),
+        float(world_point[2] + world_offset[2]),
+    )
 
 
 def _get_ground_target_aim_point(box_data, fallback_pos, distance_to_target):
@@ -1969,24 +2016,25 @@ class ESPOverlay(QWidget):
 
         if not enter_now:
                 step = 0.1
+                compare_controls_active = DEBUG_COMPARE_DYNAMIC_GEOMETRY
                 if ctrl_now and not LOCK_CAMERA_PARALLAX:
                     parallax_step = 0.1
-                    if self._keyboard_down("left"):
+                    if (not compare_controls_active) and self._keyboard_down("left"):
                         self.camera_parallax -= parallax_step
-                    elif self._keyboard_down("right"):
+                    elif (not compare_controls_active) and self._keyboard_down("right"):
                         self.camera_parallax += parallax_step
 
                 # 🎯 ลูกศรเพียวๆ = ปรับจุดอ่อน (Weakspot) ซ้าย/ขวา/บน/ล่าง
-                if self._keyboard_down("left"):
+                if (not compare_controls_active) and self._keyboard_down("left"):
                     if not ctrl_now:
                         self.calibration_offset[0] -= step
-                elif self._keyboard_down("right"):
+                elif (not compare_controls_active) and self._keyboard_down("right"):
                     if not ctrl_now:
                         self.calibration_offset[0] += step
 
-                if self._keyboard_down("up"):
+                if (not compare_controls_active) and self._keyboard_down("up"):
                     self.vertical_correction -= step
-                elif self._keyboard_down("down"):
+                elif (not compare_controls_active) and self._keyboard_down("down"):
                     self.vertical_correction += step
 
         calib_x = context["base_hitpoint"][0]
@@ -3229,15 +3277,41 @@ class ESPOverlay(QWidget):
                                         dist,
                                     )
                                     effective_camera_parallax = self.camera_parallax
+                                    dynamic_world_offset = None
+                                    dynamic_static_screen = static_screen
                                     if my_dynamic_geometry:
                                         effective_camera_parallax = float(
                                             my_dynamic_geometry.get("dynamic_parallax_pct", self.camera_parallax)
                                         )
+                                        if DYNAMIC_WORLDSPACE_ENABLE:
+                                            camera_world = my_dynamic_geometry.get("camera_world")
+                                            barrel_base_world = my_dynamic_geometry.get("barrel_base_world")
+                                            if camera_world and barrel_base_world:
+                                                dynamic_world_offset = (
+                                                    float(camera_world[0] - barrel_base_world[0]),
+                                                    float(camera_world[1] - barrel_base_world[1]),
+                                                    float(camera_world[2] - barrel_base_world[2]),
+                                                )
+                                                dynamic_static_world = _offset_world_point(static_ground_final, dynamic_world_offset)
+                                                projected_dynamic_static = world_to_screen(
+                                                    view_matrix,
+                                                    dynamic_static_world[0],
+                                                    dynamic_static_world[1],
+                                                    dynamic_static_world[2],
+                                                    self.screen_width,
+                                                    self.screen_height,
+                                                )
+                                                if projected_dynamic_static and projected_dynamic_static[2] > 0:
+                                                    dynamic_static_screen = projected_dynamic_static
+                                                    effective_camera_parallax = 0.0
                                     compare_base_hitpoint = None
                                     compare_fallback_hitpoint = None
+                                    dynamic_spx, dynamic_spy = spx, spy
+                                    if dynamic_static_screen and dynamic_static_screen[2] > 0:
+                                        dynamic_spx, dynamic_spy = dynamic_static_screen[0], dynamic_static_screen[1]
                                     compare_dynamic_hitpoint = _map_aim_to_target_box_hitpoint(
                                         (self.center_x, self.center_y),
-                                        (spx, spy),
+                                        (dynamic_spx, dynamic_spy),
                                         target_box_rect,
                                         (t_x, t_y, t_z),
                                         dist,
@@ -3314,10 +3388,27 @@ class ESPOverlay(QWidget):
                                                 fallback_dist_px = math.hypot(fallback_dx, fallback_dy)
                                             else:
                                                 fallback_dx = fallback_dy = fallback_dist_px = 0.0
+                                            dynamic_parallax_terms = _get_hitpoint_parallax_debug_terms(
+                                                target_box_rect,
+                                                my_rot,
+                                                view_matrix,
+                                                effective_camera_parallax,
+                                            )
+                                            fallback_parallax_terms = _get_hitpoint_parallax_debug_terms(
+                                                target_box_rect,
+                                                my_rot,
+                                                view_matrix,
+                                                self.camera_parallax,
+                                            )
                                             if compare_base_hitpoint or compare_fallback_hitpoint or compare_dynamic_hitpoint:
                                                 dynamic_compare_debug = {
                                                     "target_box_source": dynamic_box_source,
                                                     "fallback_box_source": "unit_bbox",
+                                                    "baseline_source": VERTICAL_BASELINE_RUNTIME_SOURCE,
+                                                    "baseline_value": float(auto_vertical_baseline),
+                                                    "dynamic_geometry_used": bool(my_dynamic_geometry),
+                                                    "dynamic_worldspace_used": bool(dynamic_world_offset) and bool(dynamic_static_screen and dynamic_static_screen[2] > 0),
+                                                    "dynamic_parallax_scale": float(DYNAMIC_PARALLAX_SCALE),
                                                     "dynamic_parallax": float(effective_camera_parallax),
                                                     "fallback_parallax": float(self.camera_parallax),
                                                     "base_dx_px": base_dx,
@@ -3326,6 +3417,11 @@ class ESPOverlay(QWidget):
                                                     "fallback_dx_px": fallback_dx,
                                                     "fallback_dy_px": fallback_dy,
                                                     "fallback_dist_px": fallback_dist_px,
+                                                    "dynamic_parallax_terms": dynamic_parallax_terms,
+                                                    "fallback_parallax_terms": fallback_parallax_terms,
+                                                    "dynamic_world_offset": dynamic_world_offset,
+                                                    "dynamic_screen_dx": (dynamic_spx - spx) if dynamic_static_screen and static_screen else 0.0,
+                                                    "dynamic_screen_dy": (dynamic_spy - spy) if dynamic_static_screen and static_screen else 0.0,
                                                 }
                                     if mapped_hitpoint:
                                         is_hitpoint_inside_bbox = True
@@ -3476,7 +3572,7 @@ class ESPOverlay(QWidget):
             show_base_compare = compare_visibility_mode in ("all", "base")
             show_fallback_compare = compare_visibility_mode in ("all", "fallback")
             show_dynamic_compare = compare_visibility_mode in ("all", "dynamic")
-            show_live_hitpoint = (not DEBUG_COMPARE_DYNAMIC_GEOMETRY) or compare_visibility_mode == "off"
+            show_live_hitpoint = not DEBUG_COMPARE_DYNAMIC_GEOMETRY
 
             if show_live_hitpoint:
                 for hp_x, hp_y in hit_points_to_draw:
@@ -3539,7 +3635,8 @@ class ESPOverlay(QWidget):
                     painter.drawLine(hp_pts[0] - 6, hp_pts[1] + 6, hp_pts[0] + 6, hp_pts[1] - 6)
 
 
-            if DEBUG_DRAW_CALIBRATION_HIT:
+            show_calibration_markers = DEBUG_DRAW_CALIBRATION_HIT and (not DEBUG_COMPARE_DYNAMIC_GEOMETRY)
+            if show_calibration_markers:
                 calib_color = QColor(*COLOR_CALIBRATION_HIT)
                 
                 # ⚙️ CONFIG: ความหนาของเส้น (1 = บางสุด, 2 = ปกติ)
@@ -3585,9 +3682,23 @@ class ESPOverlay(QWidget):
                 painter.drawText(
                     20,
                     165,
-                    f"[CMP-VIS] {self._get_compare_visibility_mode().upper()} | "
-                    f"Left/Right: switch | Up: all | Down: off | "
-                    f"Src Dyn:{dynamic_compare_debug['target_box_source']} Base:{dynamic_compare_debug['fallback_box_source']} | "
+                    f"[CMP] {self._get_compare_visibility_mode().upper()} | "
+                    f"VB:{dynamic_compare_debug['baseline_source']} {dynamic_compare_debug['baseline_value']:.2f} | "
+                    f"DG:{'ON' if dynamic_compare_debug['dynamic_geometry_used'] else 'OFF'} | "
+                    f"WS:{'ON' if dynamic_compare_debug.get('dynamic_worldspace_used') else 'OFF'} | "
+                    f"Scale:{dynamic_compare_debug['dynamic_parallax_scale']:.2f}"
+                )
+                painter.drawText(
+                    20,
+                    190,
+                    f"[CMP-PATH] B=unit_bbox+baseP | "
+                    f"F={dynamic_compare_debug['target_box_source']}+baseP | "
+                    f"D={dynamic_compare_debug['target_box_source']}+dynP"
+                )
+                painter.drawText(
+                    20,
+                    215,
+                    f"[CMP-Δ] Src Dyn:{dynamic_compare_debug['target_box_source']} Base:{dynamic_compare_debug['fallback_box_source']} | "
                     f"ΔBase {dynamic_compare_debug['base_dist_px']:.2f} "
                     f"(dx {dynamic_compare_debug['base_dx_px']:.2f}, dy {dynamic_compare_debug['base_dy_px']:.2f}) | "
                     f"ΔFallback {dynamic_compare_debug['fallback_dist_px']:.2f} "
@@ -3595,12 +3706,43 @@ class ESPOverlay(QWidget):
                     f"DynP {dynamic_compare_debug['dynamic_parallax']:.2f} | "
                     f"BaseP {dynamic_compare_debug['fallback_parallax']:.2f}"
                 )
+                dyn_terms = dynamic_compare_debug.get("dynamic_parallax_terms") or {}
+                fb_terms = dynamic_compare_debug.get("fallback_parallax_terms") or {}
+                painter.drawText(
+                    20,
+                    240,
+                    f"[CMP-PY] Dyn downY {dyn_terms.get('down_y', 0.0):.3f} shiftY {dyn_terms.get('shift_y', 0.0):.3f} "
+                    f"(scaled {dyn_terms.get('scaled_parallax', 0.0):.3f}) | "
+                    f"Base downY {fb_terms.get('down_y', 0.0):.3f} shiftY {fb_terms.get('shift_y', 0.0):.3f} "
+                    f"(scaled {fb_terms.get('scaled_parallax', 0.0):.3f})"
+                )
+                world_off = dynamic_compare_debug.get("dynamic_world_offset") or (0.0, 0.0, 0.0)
+                painter.drawText(
+                    20,
+                    265,
+                    f"[CMP-WS] Off({world_off[0]:.3f}, {world_off[1]:.3f}, {world_off[2]:.3f}) | "
+                    f"ScreenΔ ({dynamic_compare_debug.get('dynamic_screen_dx', 0.0):.3f}, "
+                    f"{dynamic_compare_debug.get('dynamic_screen_dy', 0.0):.3f})"
+                )
             elif DEBUG_COMPARE_DYNAMIC_GEOMETRY:
                 painter.setPen(QColor(*COLOR_DYNAMIC_COMPARE_HIT))
                 painter.drawText(
                     20,
                     165,
-                    f"[CMP-VIS] {self._get_compare_visibility_mode().upper()} | Left/Right: switch | Up: all | Down: off"
+                    f"[CMP] {self._get_compare_visibility_mode().upper()} | "
+                    f"VB:{VERTICAL_BASELINE_RUNTIME_SOURCE} | DG:{'ON' if my_dynamic_geometry else 'OFF'} | "
+                    f"WS:OFF | "
+                    f"Scale:{DYNAMIC_PARALLAX_SCALE:.2f}"
+                )
+                painter.drawText(
+                    20,
+                    190,
+                    "[CMP-PATH] B=unit_bbox+baseP | F=dyn_bbox+baseP | D=dyn_bbox+dynP"
+                )
+                painter.drawText(
+                    20,
+                    215,
+                    "[CMP-CTL] Left/Right: switch | Up: all | Down: off"
                 )
             
             # ========================================================
