@@ -124,7 +124,6 @@ UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
 
 DEBUG_DRAW_MUZZLE_RAY = False
 DEBUG_DRAW_BOX_ENTRY_HIT = False
-DEBUG_DRAW_VIRTUAL_BOX = True
 
 ESP_POINT_ONLY_MODE = False             # เปลี่ยนเป็น False เพื่อปิดโหมดวาดแค่จุด
 GROUND_USE_SIMPLE_SCREEN_BOX = False    # เปลี่ยนเป็น False เพื่อปิดโหมดกล่อง 2D แบนๆ
@@ -635,20 +634,20 @@ def _map_aim_to_target_box_hitpoint(aim_screen, leadmark_screen, target_box_rect
     right_x = -up_y
     right_y = up_x
 
-    # 🎯 THE MASTERSTROKE 3.0: DYNAMIC PARALLAX ENGINE
-    # สร้างโมเดลความสูงกล้องจำลองจากข้อมูลทุกคันที่ท่านส่งมา (Leopard ยัน MBT-70)
-    # สูตรนี้จะปรับแรงเหวี่ยง 3D อัตโนมัติตามรูปทรงรถถังแต่ละคัน การันตี Error < 1px!
-    dynamic_parallax = 7.5 - (calib_y * 0.33)
+    # 🎯 THE FINAL T-80U-E1 PARALLAX ENGINE
+    # 7.5 คือ Camera Parallax คงที่ของ T-80U-E1
+    # - (calib_y * 0.33) คือการชดเชยการฉายภาพตาม "ความสูงของรถถังเป้าหมาย" (Target Height Projection)
+    target_parallax_compensation = 7.5 - (calib_y * 0.33)
 
-    # หมุนเฉพาะค่าจูนแกน X และความสูงกล้อง (แกน Y ของกล้อง) ตามองศารถ
-    rot_x = (calib_x * right_x) + (dynamic_parallax * down_x)
-    rot_y = (calib_x * right_y) + (dynamic_parallax * down_y)
+    # หมุนเฉพาะการชดเชยแกน X และ Parallax รวม ตามองศาการเอียงรถถังของเรา
+    rot_x = (calib_x * right_x) + (target_parallax_compensation * down_x)
+    rot_y = (calib_x * right_y) + (target_parallax_compensation * down_y)
 
-    # นำ calib_y มาหักลบส่วนที่หมุนไปแล้ว เพื่อปล่อยให้แรงตกกระสุนดึงลงพื้นตรงๆ เสมอ!
-    gravity_remainder = calib_y - dynamic_parallax
+    # นำ calib_y (ที่ใช้เล็งจุดอ่อน) มาหักลบส่วนที่หมุนไปแล้ว เพื่อให้มันทำงานเป็น Vertical Target Offset เสมอ
+    target_hull_offset = calib_y - target_parallax_compensation
 
     final_x = base_x + dx + rot_x
-    final_y = base_y + dy + drop_pixels_y + rot_y + gravity_remainder
+    final_y = base_y + dy + drop_pixels_y + rot_y + target_hull_offset
 
     return (final_x, final_y)
 
@@ -2818,137 +2817,92 @@ class ESPOverlay(QWidget):
                             self.screen_height,
                         )
                         if static_screen and static_screen[2] > 0:
-                            spx, spy = static_screen[0], static_screen[1]
-                                
-                            if u_ptr == active_target_ptr and target_box_rect:
-                                if DEBUG_DRAW_VIRTUAL_BOX:
-                                    min_x, min_y, max_x, max_y = target_box_rect
-                                    box_w = max(max_x - min_x, 1.0)
-                                    box_h = max(max_y - min_y, 1.0)
-                                    anchor_u = 0.5
-                                    anchor_v = 0.5
-                                    if target_anchor_screen:
-                                        tx, ty = target_anchor_screen[0], target_anchor_screen[1]
-                                        if min_y <= ty <= max_y:
-                                            anchor_v = (ty - min_y) / box_h
-                                    dist_t = max(0.0, min(1.0, dist / max(GROUND_HITPOINT_DROP_RANGE, 1.0)))
-                                    exp_t = (math.exp(dist_t) - 1.0) / (math.e - 1.0)
-                                    anchor_v = min(0.98, anchor_v + GROUND_HITPOINT_DROP_BASE + (GROUND_HITPOINT_DROP_EXP * exp_t))
+                                spx, spy = static_screen[0], static_screen[1]
                                     
-                                    # 🎯 FIX: เปลี่ยนจาก box_center_x เป็น spx (ให้กล่องวิ่งซ้าย/ขวาตามจุดเผื่อยิง)
-                                    virtual_min_x = spx - (anchor_u * box_w)
-                                    virtual_min_y = spy - (anchor_v * box_h)
-                                    
-                                    # 🎯 ดึงมุมกล่อง 3D ปัจจุบัน แล้วนำมา Shift (เลื่อน 2D) ตามเป้าดักยิง
-                                    curr_bmin, curr_bmax = get_unit_bbox(self.scanner, u_ptr)
-                                    curr_rot = get_unit_rotation(self.scanner, u_ptr)
-                                    
-                                    dx = virtual_min_x - min_x
-                                    dy = virtual_min_y - min_y
-                                    
-                                    if curr_bmin and curr_bmax and curr_rot:
-                                        local_corners = [
-                                            (curr_bmin[0], curr_bmin[1], curr_bmin[2]), (curr_bmin[0], curr_bmin[1], curr_bmax[2]),
-                                            (curr_bmin[0], curr_bmax[1], curr_bmin[2]), (curr_bmin[0], curr_bmax[1], curr_bmax[2]),
-                                            (curr_bmax[0], curr_bmin[1], curr_bmin[2]), (curr_bmax[0], curr_bmin[1], curr_bmax[2]),
-                                            (curr_bmax[0], curr_bmax[1], curr_bmin[2]), (curr_bmax[0], curr_bmax[1], curr_bmax[2])
-                                        ]
-                                        shifted_pts = []
-                                        for c in local_corners:
-                                            world_x = pos[0] + (c[0]*curr_rot[0] + c[1]*curr_rot[3] + c[2]*curr_rot[6])
-                                            world_y = pos[1] + (c[0]*curr_rot[1] + c[1]*curr_rot[4] + c[2]*curr_rot[7])
-                                            world_z = pos[2] + (c[0]*curr_rot[2] + c[1]*curr_rot[5] + c[2]*curr_rot[8])
-                                            scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
-                                            if scr and scr[2] > 0:
-                                                shifted_pts.append((scr[0] + dx, scr[1] + dy))
-                                        
-                                        if len(shifted_pts) == 8:
-                                            debug_virtual_boxes_to_draw.append(shifted_pts)
-                                        else:
-                                            debug_virtual_boxes_to_draw.append((virtual_min_x, virtual_min_y, virtual_min_x + box_w, virtual_min_y + box_h))
-                                    else:
-                                        virtual_max_x = virtual_min_x + box_w
-                                        virtual_max_y = virtual_min_y + box_h
-                                        debug_virtual_boxes_to_draw.append((
-                                            virtual_min_x,
-                                            virtual_min_y,
-                                            virtual_max_x,
-                                            virtual_max_y,
-                                        ))
-                                mapped_hitpoint = _map_aim_to_target_box_hitpoint(
-                                    (self.center_x, self.center_y),
-                                    (spx, spy),
-                                    target_box_rect,
-                                    (t_x, t_y, t_z),    
-                                    dist,
-                                    my_rot,
-                                    view_matrix,        
-                                    self.screen_width,  
-                                    self.screen_height,
-                                    self.calibration_offset  # 🎯 ส่งตัวแปรนี้เพิ่มเข้าไปท้ายสุด!
-                                )
-                                if mapped_hitpoint:
-                                    mapped_hitpoint = _apply_dynamic_hitpoint_y_correction(
-                                        mapped_hitpoint,
-                                        ballistic_profile,
+                                # 🎯 THE CLEAN HITPOINT ENGINE (ลบ VirtualBox ทิ้ง และทำงานเฉพาะ Selected Ground Target)
+                                if u_ptr == active_target_ptr and target_box_rect and not physics_is_air:
+                                    mapped_hitpoint = _map_aim_to_target_box_hitpoint(
+                                        (self.center_x, self.center_y),
+                                        (spx, spy),
+                                        target_box_rect,
+                                        (t_x, t_y, t_z),    
                                         dist,
-                                    )
-                                    if DRAW_BASE_HITPOINT:
-                                        hit_points_to_draw.append(mapped_hitpoint)
-                                        
-                                    # 🎯 FIX 1: เก็บข้อมูล Sniper ทันทีถ้าเป็นเป้าหมายหลัก
-                                    if u_ptr == active_target_ptr:
-                                        active_sniper_data = {
-                                            'center_x': avg_x,
-                                            'center_y': avg_y,
-                                            'hitpoint': mapped_hitpoint
-                                        }
-
-                                    calib_point = self._handle_hitpoint_calibration({
-                                        "unit_ptr": u_ptr,
-                                        "unit_label": unit_name,
-                                        "unit_key": dna.get("name_key", ""),
-                                        "distance": dist,
-                                        "zeroing": current_zeroing,
-                                        "model_enum": ballistic_profile.get("model_enum", 0),
-                                        "speed": ballistic_profile.get("speed", 0.0),
-                                        "mass": ballistic_profile.get("mass", 0.0),
-                                        "caliber": ballistic_profile.get("caliber", 0.0),
-                                        "cx": ballistic_profile.get("cx", 0.0),
-                                        "drag_k": ballistic_model.get("drag_k", 0.0),
-                                        "base_hitpoint": mapped_hitpoint,
-                                    })
-                                    if calib_point:
-                                        calibration_hit_points_to_draw.append(calib_point)
-                                    if DRAW_BASE_HITPOINT and DEBUG_DRAW_BOX_ENTRY_HIT:
-                                        debug_box_entry_hits_to_draw.append(mapped_hitpoint)
-                                if DEBUG_DRAW_MUZZLE_RAY:
-                                    fire_origin_screen = world_to_screen(
-                                        view_matrix,
-                                        fire_origin[0],
-                                        fire_origin[1],
-                                        fire_origin[2],
-                                        self.screen_width,
+                                        my_rot,
+                                        view_matrix,        
+                                        self.screen_width,  
                                         self.screen_height,
+                                        self.calibration_offset 
                                     )
-                                    if fire_origin_screen and fire_origin_screen[2] > 0:
-                                        debug_muzzle_rays_to_draw.append({
-                                            "sx": fire_origin_screen[0],
-                                            "sy": fire_origin_screen[1],
-                                            "px": spx,
-                                            "py": spy,
-                                        })
+                                    if mapped_hitpoint:
+                                        mapped_hitpoint = _apply_dynamic_hitpoint_y_correction(
+                                            mapped_hitpoint,
+                                            ballistic_profile,
+                                            dist,
+                                        )
+                                        
+                                        # 🎯 THE BBOX BOUNDARY CHECK
+                                        is_hitpoint_inside_bbox = True
+                                        bx1, by1, bx2, by2 = target_box_rect
+                                        hx, hy = mapped_hitpoint
+                                        
+                                        # เผื่อระยะขอบ (Margin) 20% เพื่อไม่ให้จุดกระพริบหายเวลาเป้าขยับ
+                                        margin_x = (bx2 - bx1) * 0.20
+                                        margin_y = (by2 - by1) * 0.20
+                                        
+                                        if not ((bx1 - margin_x) <= hx <= (bx2 + margin_x) and (by1 - margin_y) <= hy <= (by2 + margin_y)):
+                                            is_hitpoint_inside_bbox = False
 
-                            if target_vel_mag > 0.05 and math.isfinite(spx) and math.isfinite(spy):
-                                lead_marks_to_draw.append({
-                                    'sx': avg_x,
-                                    'sy': avg_y,
-                                    'px': spx,
-                                    'py': spy,
-                                    'is_air': False,
-                                    'is_turning': False,
-                                    'style': 'ground_static',
-                                })
+                                        # 🎯 รวบทุกอย่างที่เกี่ยวกับ Hitpoint มาซ่อนไว้ในเงื่อนไขนี้ทั้งหมด!
+                                        if is_hitpoint_inside_bbox:
+                                            if DRAW_BASE_HITPOINT:
+                                                hit_points_to_draw.append(mapped_hitpoint)
+                                            if DEBUG_DRAW_BOX_ENTRY_HIT:
+                                                debug_box_entry_hits_to_draw.append(mapped_hitpoint)
+                                                
+                                            active_sniper_data = {
+                                                'center_x': avg_x,
+                                                'center_y': avg_y,
+                                                'hitpoint': mapped_hitpoint
+                                            }
+
+                                            # 🛠️ BUG FIX: ย้ายฟังก์ชันวาดกากบาทสีฟ้า (Calibration) เข้ามาด้วย!
+                                            calib_point = self._handle_hitpoint_calibration({
+                                                "unit_ptr": u_ptr,
+                                                "unit_label": raw_name,
+                                                "unit_key": name_key,
+                                                "distance": dist,
+                                                "zeroing": current_zeroing,
+                                                "model_enum": ballistic_profile.get("model_enum", 0),
+                                                "speed": ballistic_profile.get("speed", 0.0),
+                                                "mass": ballistic_profile.get("mass", 0.0),
+                                                "caliber": ballistic_profile.get("caliber", 0.0),
+                                                "cx": ballistic_profile.get("cx", 0.0),
+                                                "drag_k": ballistic_model.get("drag_k", 0.0),
+                                                "base_hitpoint": mapped_hitpoint,
+                                            })
+                                            if calib_point:
+                                                calibration_hit_points_to_draw.append(calib_point)
+                                                
+                                    
+                                    if DEBUG_DRAW_MUZZLE_RAY:
+                                        fire_origin_screen = world_to_screen(
+                                            view_matrix, fire_origin[0], fire_origin[1], fire_origin[2], self.screen_width, self.screen_height
+                                        )
+                                        if fire_origin_screen and fire_origin_screen[2] > 0:
+                                            debug_muzzle_rays_to_draw.append({
+                                                "sx": fire_origin_screen[0], "sy": fire_origin_screen[1], "px": spx, "py": spy,
+                                            })
+
+                                if target_vel_mag > 0.05 and math.isfinite(spx) and math.isfinite(spy):
+                                    lead_marks_to_draw.append({
+                                        'sx': avg_x,
+                                        'sy': avg_y,
+                                        'px': spx,
+                                        'py': spy,
+                                        'is_air': False,
+                                        'is_turning': False,
+                                        'style': 'ground_static',
+                                    })
 
                 except Exception as e:
                     if "NaN" not in str(e):
@@ -3034,25 +2988,6 @@ class ESPOverlay(QWidget):
                     painter.drawLine(hp_pts[0] - 6, hp_pts[1] - 6, hp_pts[0] + 6, hp_pts[1] + 6)
                     painter.drawLine(hp_pts[0] - 6, hp_pts[1] + 6, hp_pts[0] + 6, hp_pts[1] - 6)
 
-            if DEBUG_DRAW_VIRTUAL_BOX:
-                virtual_color = QColor(*COLOR_DEBUG_VIRTUAL_BOX)
-                painter.setPen(QPen(virtual_color, 2, Qt.DashDotLine))
-                for box_item in debug_virtual_boxes_to_draw:
-                    if len(box_item) == 8:
-                        # วาด 3D Wireframe (8 มุม)
-                        edges = [
-                            (0,1), (0,2), (1,3), (2,3), # ฐานล่าง
-                            (4,5), (4,6), (5,7), (6,7), # ฐานบน
-                            (0,4), (1,5), (2,6), (3,7)  # เสาแนวตั้ง
-                        ]
-                        for p1, p2 in edges:
-                            painter.drawLine(int(box_item[p1][0]), int(box_item[p1][1]), int(box_item[p2][0]), int(box_item[p2][1]))
-                    elif len(box_item) == 4:
-                        # วาดกล่อง 2D (4 ค่า) กรณี Fallback
-                        rect_pts = _screen_int_tuple(*box_item)
-                        if rect_pts:
-                            rect_x1, rect_y1, rect_x2, rect_y2 = rect_pts
-                            painter.drawRect(rect_x1, rect_y1, rect_x2 - rect_x1, rect_y2 - rect_y1)
 
             if DEBUG_DRAW_CALIBRATION_HIT:
                 calib_color = QColor(*COLOR_CALIBRATION_HIT)
