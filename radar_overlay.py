@@ -1619,9 +1619,9 @@ class ESPOverlay(QWidget):
         self.calibration_last_keys["backspace"] = backspace_now
 
         if not enter_now:
-                step = CALIBRATION_STEP_FAST_PIXELS if shift_now else CALIBRATION_STEP_PIXELS
+                step = 0.1
                 if ctrl_now:
-                    parallax_step = CAMERA_PARALLAX_FAST_STEP if shift_now else CAMERA_PARALLAX_STEP
+                    parallax_step = 0.1
                     if self._keyboard_down("left"):
                         self.camera_parallax = max(0.0, self.camera_parallax - parallax_step)
                     elif self._keyboard_down("right"):
