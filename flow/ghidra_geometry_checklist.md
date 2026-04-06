@@ -21,6 +21,8 @@ Purpose:
 - [x] Confirm that the source behind those fields exposes a dedicated transform block at `+0xcdc`.
 - [x] Confirm that the `+0xcdc` block is consumed by live gameplay code, not only helpers.
 - [x] Identify whether neighboring embedded sub-structures exist on the same source-object family.
+- [x] Cross-check whether `+0xcdc` matches known unit/source rotation-matrix offsets from local scanner data.
+- [ ] Resolve what `source[0x1a0]` / `seat.+0x2a0` actually points to.
 
 ## Gun / Barrel
 
@@ -98,6 +100,7 @@ Purpose:
     - `+0x2e8` flags
   - highest-value remaining question:
     - who consumes the parsed optic array into live runtime mount state
+    - which `unit_runtime + 0xf0[seat]` part-table entries correspond to sight/gunner/gun nodes in real tank data
   - checked and rejected as optic target:
     - `FUN_01cffff0`
     - `FUN_01678fd0`
@@ -119,27 +122,192 @@ Purpose:
   - live object family now tied to that path:
     - `unit_runtime + 0x88`
     - `unit_runtime + 0xf0`
+  - strengthened by downstream consumers:
+    - `FUN_01621390`
+    - `FUN_01620fa0`
+    - `FUN_016278d0`
+    - `FUN_01d17f90`
+    - `FUN_01d4d170`
   - caller proof:
     - `FUN_0231d5f0`
     - `FUN_00a74680`
   - concrete seat-object geometry fields now confirmed:
-    - `+0x2a0` refcounted source/object pointer candidate
-    - `+0x2a8` pointer to entry-array
-    - `+0x2ac/+0x2b0/+0x2b4` orientation angles
-    - `+0x294/+0x29c` cached position-like state
-    - `+0x2b8` entry-array count
+    - revoke the old `FUN_01ca7e90` field block as seat/object proof
+    - re-validation shows that function belongs to a projectile family, not a clean seat/view family
   - helper that populates angles:
     - `FUN_0368b750`
+  - direct `unit + 0xf0[seat]` proof:
+    - `FUN_01d17f90` loads a `0x40` transform row from `unit + 0xf0[seat]` using a ushort part selector from `record + 0x50`
+    - it composes that row with local templates from `record + 0x30` and writes outputs into `record + 0x88` / `record + 0x20`
+    - `FUN_01d4d170` then forwards the composed `record + 0x88` payload into `FUN_01d5f800`
+    - `FUN_01d4d3e0` is now confirmed as the dispatcher over the prebuilt bucket arrays at `+0xf0..+0x198`
+    - `FUN_01d4d7c0` is a separate metadata/object-entry pre-pass over the first three buckets, gated by `owner + 0x248`
+  - downstream metadata split now confirmed:
+    - `FUN_01d4c790` builds a filtered bitset/object selection set from indexed gameplay-object storage
+    - `FUN_01d4d500`, `FUN_01d4ca50`, and `FUN_01d4cd40` feed that result into the generated layer at `record + 0xa0`
+    - treat `record + 0xa0` as downstream object-entry storage, not the root part-name selector table
+    - the unresolved upstream semantic selector is still the ushort table at `record + 0x50`
+  - generic owner-update wrappers only:
+    - `FUN_014084e0`
+    - `FUN_014084f0`
+  - generic owner/runtime-management layer:
+    - `FUN_0172e3a0`
+    - `FUN_0174e060`
+    - `FUN_0174f4f0`
+    - they call `FUN_01d512d0` and `FUN_01d52210`, but the surrounding logic is flight/warp/overspeed heavy
+    - useful for owner-layer placement, not yet for naming ground part selectors
+  - owner slot/object helpers now separated from part-selector records:
+    - `FUN_01d020b0` selects objects from `(owner + 800)[slot]`
+    - `FUN_01d4de30` dispatches heavy per-slot runtime updates over those object lists
+    - both use filter-token state rooted at `owner + 0x2b8`
+    - this is useful owner-local machinery, but it is still separate from the unresolved `record + 0x50` selector table
+  - thin query wrappers only:
+    - `FUN_01d025e0`
+    - `FUN_01d02640`
+    - `FUN_01d026b0`
+    - `FUN_01d02730`
+    - all are wrappers around `FUN_01d020b0`, not constructors
+  - downstream consumers of slot/object selection:
+    - `FUN_01d1d410`
+    - `FUN_01d1d220`
+    - these consume selected objects / `owner + 0x2b8` bookkeeping, not the `0x178`-stride selector table
+  - slot/object transform-query helper:
+    - `FUN_01d00180`
+    - scans `(owner + 800)[slot]` and emits transform data from selected live objects
+  - owner registry counters/helpers:
+    - `FUN_01d5b320`
+    - `FUN_01d5b4e0`
+    - `FUN_01d5b590`
+    - these make `owner + 0x2b8` look like a slot-group registry with present/active/ready counts
+  - registry consumers only:
+    - `FUN_0167a970`
+    - `FUN_01747600`
+  - temporary filtered-list helpers only:
+    - `FUN_01d2e060`
+    - `FUN_01d2e1c0`
+    - these manipulate `0x50`-byte temporary object-list entries inside `FUN_01d55f50`
+    - not the `0x178`-stride bucket-record family
+  - registry/group identity helpers:
+    - `FUN_01d5b7f0`
+    - `FUN_01d5b770`
+    - `FUN_01d5b8c0`
+  - owner-registry pre-pass only:
+    - `FUN_01d04e20`
+    - iterates filtered owner groups via `owner + 0x2b8`
+    - dispatches object virtual `+0x120`
+    - belongs to registry/object-list machinery, not the `record + 0x50` builder
+  - strong owner update path now confirmed:
+    - `FUN_00a4b870`
+    - calls `FUN_01d04e20`, `FUN_01d52210`, and `FUN_01d4d7c0` on `*(DAT_00001090 + unit)`
+    - then iterates owner-local objects from `owner + 0x2f0` with count `owner + 0x300`
+    - still does not expose the constructor that seeds `record + 0x50`
+  - bucket post-pass wrappers now separated:
+    - `FUN_01d4cc20`
+    - full eight-bucket post-pass over `+0xf0..+0x198`
+    - `FUN_01d4d0f0`
+    - first-three-bucket counterpart over `+0xf0/+0x108/+0x120`
+    - both consume already-built records and downstream object-entry state
+  - thin wrappers above those bucket passes:
+    - `FUN_0231caf0`
+    - `FUN_0231cba0`
+    - useful for locating higher owner/render call chains, not constructors
+  - wrapper only:
+    - `FUN_014085a0`
+    - just forwards into `FUN_01d04e20`
+  - more sibling owner update modes only:
+    - `FUN_00ad82b0`
+    - `FUN_00b26a00`
+    - both follow the same pattern:
+    - optional `FUN_01d512d0`
+    - `FUN_01d52210`
+    - `FUN_01d4d7c0`
+    - then iterate owner-local objects from `owner + 0x2f0` with count `owner + 0x300`
+    - treat them as gameplay/update modes, not constructors
+  - higher gameplay callers only:
+    - `FUN_00b11250`
+    - `FUN_00b41720`
+    - both sit in heavy gameplay/aim/fire loops
+    - both also use a separate `owner + 0x1c8` record family with stride `0x300`
+    - that family is adjacent runtime state, not the unresolved `0x178`-stride bucket-record family
+  - `FUN_01d512d0` now resolved more narrowly:
+    - updates the separate `owner + 0x1c8` / count `0x1d8` / stride `0x300` side-record family
+    - drives `FUN_01d20be0`, `FUN_01d248b0`, and `FUN_01d50ca0`
+    - not the `+0xf0..+0x198` bucket builder
+  - `FUN_01d52210` now resolved more narrowly:
+    - iterates object pointers from `owner + 0x308` with count `owner + 0x318`
+    - maintains cache/object state at `owner + 0x1400..+0x1590`
+    - uses `owner + 0x2b8`, but still does not seed `+0xf0..+0x198`
+  - nearby `01d4xxxx` helpers also excluded:
+    - `FUN_01d4d850`
+    - `FUN_01d4da90`
+    - these aggregate object/group counts from owner-local object lists and object-local `+0xa8 + idx*0xa0` tables
+    - not bucket constructors
+  - higher wrapper/render path only:
+    - `FUN_0231b470`
+    - `FUN_0231cc50`
+    - `FUN_0231ccf0`
+    - these sit above `FUN_01d4cc20` and gate render/effect-style dispatch by view/state flags
+    - they are not initialization or bucket-construction paths
+  - higher gameplay wrappers above `FUN_00a4b870` only:
+    - `FUN_00bba640`
+    - `FUN_01c5a330`
+    - both still spend most of their work in side-record/object-state logic
+    - both eventually end by calling `FUN_00a4b870`
+    - they do not directly initialize `+0xf0..+0x198`
+  - side-record updater only:
+    - `FUN_01d05000`
+    - updates the `owner + 0x230/+0x240` family against the `owner + 0x1c8` side-record family
+    - not a bucket initializer
+  - bucket metadata helpers now sharper:
+    - `FUN_01d4c790`
+    - proves `record + 4/+8` are owner-local `(slot_group, object_index)` lookup fields into `owner + 800`
+    - builds temporary bitset/filter data that feeds generated object-entry state
+    - `FUN_01d4ca50`, `FUN_01d4cd40`, and `FUN_01d4d500`
+    - all refresh `record + 0xa0` as downstream generated payload
+    - `record + 0x158` and `record + 0x16c` belong to that generated-payload side
+    - do not confuse any of these fields with the unresolved semantic selector table at `record + 0x50`
+  - side-record gate helper only:
+    - `FUN_01d04b40`
+    - checks one `owner + 0x1c8 + slot*0x300` entry against owner/runtime state
+  - transform materializer, not constructor:
+    - `FUN_01d16ff0`
+    - builds a transform/output block for a selected runtime object using source transform + side-record state
+    - reused by `FUN_01d17f90` and multiple registry/gameplay paths
+  - more registry/group helpers only:
+    - `FUN_00ae8d10`
+    - `FUN_00ae8520`
+    - `FUN_00ae1d00`
+    - all reinforce that `owner + 0x2b8` is a live group/selection registry
+    - none of them initialize `+0xf0..+0x198`
   - stronger source-geometry proof:
     - `FUN_012f8fd0` exposes `object + 0xcdc` directly
     - `FUN_00b91e10` uses `+0xcdc/+0xce8/+0xcf4/+0xd00...` as a transform block to project part-table points into world-space
     - `FUN_01c887c0` reads `unit + 0xcdc/+0xce8/+0xcf4/+0xcfc` directly in gameplay code and subtracts them from live state
+  - `Toy` naming cross-check:
+    - tank datamine confirms concrete names we can now try to map onto the runtime part-table family:
+    - `gunner_dm`
+    - `optic_gun_dm`
+    - `bone_turret`
+    - `bone_gun`
+    - `bone_gun_barrel`
+    - `gun_barrel_dm`
+    - `cannon_breech_dm`
+  - highest-value remaining question:
+    - which constructor/owner populates `record + 0x50`
+    - that builder is now the best target for mapping runtime selectors onto `optic_gun_dm`, `gunner_dm`, `bone_turret`, `bone_gun`, and `bone_gun_barrel`
+  - corrected meaning from local repo cross-check:
+    - local scanner references repeatedly map nearby offsets to `rotation_matrix`
+    - so `+0xcdc` is best treated as the source object's orientation basis, not proof of optic mount by itself
+    - `0x1a0 * 8 = 0xd00`, which matches the repo's repeatedly observed source/unit world-position block
+    - strongest current inference: `source[0x1a0]/source[0x1a1]` are source world-position fields
+    - but the object that copies them in `FUN_01ca7e90` is projectile-family state, not optic proof
   - neighboring embedded sub-structure:
     - `FUN_00b91d70` exposes `object + 0x23f8` directly
     - current evidence says this is adjacent source-family state, not the primary optic-mount target
   - corrected by cleanup proof:
-    - `FUN_01d0b590` frees `+0x2a0` as a single object
-    - `FUN_01d0b590` treats `+0x2a8` as array pointer with `+0x2b8` count and stride `0x58`
+    - `FUN_01d0b590` frees `+0x2a0` as a single object in the separate `FUN_01d0bb20` `0x308`-stride record family
+    - `FUN_01d0b590` treats that record family’s `+0x2a8` as array pointer with `+0x2b8` count and stride `0x58`
+    - do not merge that layout directly with the compact projectile-family object updated by `FUN_01ca7e90`
   - helper-only paths:
     - `FUN_01d1cd80`
     - `FUN_017a5060`
