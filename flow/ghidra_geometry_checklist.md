@@ -266,6 +266,210 @@ Purpose:
     - all refresh `record + 0xa0` as downstream generated payload
     - `record + 0x158` and `record + 0x16c` belong to that generated-payload side
     - do not confuse any of these fields with the unresolved semantic selector table at `record + 0x50`
+  - `FUN_01d17f90` now gives a stronger split inside one `0x178` record:
+    - `record + 0x50[seat]` is a seat-indexed ushort part-table selector
+    - it drives row selection from `unit + 0xf0[seat]`
+    - object-backed records can still fall back to that part-table path depending on control fields around `record + 0xd8/+0x158`
+  - downstream remap helper only:
+    - `FUN_01d19930`
+    - `record + 0x40` is a per-seat destination remap table
+    - do not confuse it with either `record + 4/+8` object lookup or `record + 0x50` semantic part selection
+  - generic payload-writer cross-check only:
+    - `FUN_01c86990`
+    - uses `FUN_01d60810` on an unrelated structure family at `param_1 + 0x678`
+    - confirms `FUN_01d60810` is generic generated-payload plumbing, not bucket construction
+  - `FUN_01d4d170` now sharpens downstream field meaning:
+    - `record + 0x40[seat]` is also the dispatch/remap id passed into `FUN_01d5f800(...)`
+    - this separates `+0x40` even further from the semantic selector table at `+0x50`
+  - generic `FUN_01d5f800` caller cross-check only:
+    - `FUN_01c86730`
+    - proves `FUN_01d5f800` is shared by other structure families through `param_1 + 0x678`
+    - so `FUN_01d5f800` is downstream generic dispatch, not the bucket-record builder
+  - owner-side UI/selection consumers only:
+    - `FUN_01cc0d30`
+    - `FUN_01cc0ff0`
+    - `FUN_01cc1b40`
+    - `FUN_021ede10`
+    - all reuse owner-side transform materialization through side-record state and/or `FUN_01d16ff0`
+    - none expose the writer for `record + 0x50`
+  - owner-layout clue only:
+    - `FUN_02186860`
+    - reads `*(DAT_00001090 + unit) + 0x1148`
+    - this suggests a meaningful owner subobject/hub at `+0x1148`
+    - useful for owner layout, but still not the `record + 0x50` writer
+  - neighboring `021867xx..02186axx` cluster is descriptor/status only:
+    - `FUN_021867d0`
+    - `FUN_02186910`
+    - `FUN_021869f0`
+    - `FUN_02186af0`
+    - these fill small output blocks from unit/owner-adjacent state
+    - do not look like owner constructors or bucket-template builders
+  - direct pointer-bundle writer now confirmed on the real `0x178` path:
+    - `FUN_01d19cd0`
+    - allocates/resets coordinated arrays at `+0x10/+0x20/+0x30/+0x40/+0x50/+0x88`
+    - then resets downstream state at `+0xa0` through `FUN_01d5ec30`
+    - `FUN_01d1aa30`
+    - is the matching setup writer that fills those arrays in one pass from part-table data
+    - exact call-site proof inside `FUN_01d3a310` now shows:
+    - `01d3dc70` -> `FUN_01d1a870`
+    - `01d3dc81` -> `FUN_01d2ba20`
+    - `01d3dcd3` -> `FUN_01d1aa30`
+    - so `FUN_01d1aa30` is the real field-bundle writer for the freshly appended `0x178` record
+    - the earlier confusion came from decompiler `int *` scaling hiding the true byte offsets
+    - corrected byte interpretation inside `FUN_01d1aa30` is now:
+    - `param_2 + 4` -> `record + 0x10`
+    - `param_2 + 8` -> `record + 0x20`
+    - `param_2 + 0xc` -> `record + 0x30`
+    - `param_2 + 0x10` -> `record + 0x40`
+    - `param_2 + 0x14` -> `record + 0x50`
+    - `param_2 + 0x22` -> `record + 0x88`
+    - `param_2 + 0x28` -> `record + 0xa0`
+  - generic setup-plumbing cross-check:
+    - `FUN_01c85190`
+    - `FUN_01c86510`
+    - these use `FUN_01d5e040` and `FUN_01d617a0` in another resource/string-driven family
+    - confirms those helpers are shared downstream setup plumbing, not bucket-specific builders
+  - immediate manager above the sibling setup writer:
+    - `FUN_01d3a310`
+    - sits directly above `FUN_01d1aa30`
+    - useful as the best current example of a real setup-family chain to pattern-match against
+    - now also confirmed to dispatch other sibling setup writers:
+    - `FUN_01d1bb50`
+    - `FUN_01d31010`
+  - typed bucket-router found under that manager:
+    - `FUN_01d1a870`
+    - maps weapon/container class directly onto the local bucket-header cluster:
+    - `bombGun -> +0xf0`
+    - `rocketGun/drawRocketInBullet -> +0x108`
+    - `torpedoGun -> +0x120`
+    - `fuelTankGun -> +0x138`
+    - `boosterGun -> +0x150`
+    - `undercarriageGun -> +0x168`
+    - `airDropGun -> +0x180`
+    - `targetingPodGun -> +0x198`
+    - so the `+0xf0..+0x198` cluster in this manager object is definitely a typed bucket-header family
+  - sibling setup writers now separated more clearly:
+    - `FUN_01d1bb50`
+    - recursive container/emitter transform-array builder
+    - `FUN_01d31010`
+    - large weapon record builder with `0x60` / `0x40` / `0xc` support families
+    - neither one yet matches the unresolved `0x178` bucket-record layout directly
+  - direct `0x178` constructor-layer helper now found:
+    - `FUN_01d2ba20`
+    - called only from `FUN_01d3a310`
+    - allocates/appends one `0x178` record
+    - seeds default markers such as `+0x4 = -1`, `+0x164 = -1`, `+0x16c = -1`
+    - this is the actual bucket-record family, not a sibling analogue
+    - combined chain is now concrete:
+    - `FUN_01d1a870` -> choose typed bucket
+    - `FUN_01d2ba20` -> append `0x178` record
+    - `FUN_01d1aa30` -> populate `+0x10/+0x20/+0x30/+0x40/+0x50/+0x88/+0xa0`
+  - manager reset/reseed gate now separated too:
+    - `FUN_01d2c390`
+    - called from `FUN_01d3a310` and from teardown path `FUN_01d2d0b0`
+    - clears all typed bucket headers `+0xf0..+0x198`
+    - also resets sibling families at `+0xb8`, `+0x1c8`, `+0x1e0`, `+0x1f8`, and registry state at `+0x2b8`
+    - then reseeds fixed descriptor tables at `+0x1310` and `+0x1400`
+    - so `FUN_01d3a310` clearly rebuilds from a freshly reinitialized manager object
+  - destructor/reset wrapper for the same lifecycle:
+    - `FUN_01d2d0b0`
+    - calls `FUN_01d2c390`
+    - then tears down the remaining manager-owned `0x178` arrays through `FUN_01d2b6c0`
+  - typed bucket clear helper now sharper:
+    - `FUN_01d2c150`
+    - called only from `FUN_01d2c390`
+    - clears shallow dynamic buffers in each `0x178` record first:
+    - `+0x10/+0x20/+0x30/+0x40/+0x50/+0x88`
+    - resets flags `+0x80/+0x98`
+    - resets generated payload root at `+0xa0`
+    - then hands the entry to `FUN_01d2b6c0` for deep teardown
+  - deep per-record teardown now mapped much better:
+    - `FUN_01d2b6c0`
+    - frees structured subfamilies rooted at `+0xa0`, `+0xc8`, `+0xe0`, `+0xf8`, `+0x118`, `+0x140`, `+0x150`
+    - then frees the shallow buffers at `+0x88`, `+0x50`, `+0x40`, `+0x30`, `+0x20`, `+0x10`
+  - useful analogue from another setup family:
+    - `FUN_01cf1c70`
+    - `FUN_01cf2080`
+    - build `0x20`-stride mesh/container payload entries using `FUN_049f1830`, `FUN_049f1850`, `FUN_049f1e80`
+    - this strongly suggests `record + 0xa0` in the `0x178` record is one such generated payload family, not the semantic selector table
+  - stronger layered-build analogue now found:
+    - `FUN_01d617a0`
+    - clears generated payload with `FUN_01d5ec30`
+    - grows `0x20` payload entries
+    - uses `FUN_01d2b1b0` to grow `0x30` transform/template arrays
+    - then builds additional `0x40` and `0x48` tables
+    - this reinforces that the real `0x178` writer in `FUN_01d3a310` is likely layered the same way
+    - `FUN_01d1aa30` now gives the strongest direct analogue for the shallow semantic phase:
+    - it writes the sibling family's `uint32` remap table inline via direct `dword` stores
+    - it writes the sibling family's `ushort` selector table inline via direct `word` stores
+    - it also fills a seat-indexed object/handle table inline
+    - so inline population of shallow semantic tables is now a confirmed pattern under the same top manager `FUN_01d3a310`
+  - generic payload materializer only:
+    - `FUN_01d5f1e0`
+    - shared across many setup families
+    - useful for understanding deep payload generation, but not direct evidence for the semantic meaning of `record + 0x40/+0x50`
+  - another generic qword-array helper confirms the pattern:
+    - `FUN_01d61640`
+    - called only from `FUN_01d617a0`
+    - effectively the same qword-resize shape as `FUN_01d2b430`
+  - nearby `01d2b***` negatives now mostly exhausted:
+    - `FUN_01d2b110`
+    - small `activeTime/reloadTime` parser
+    - `FUN_01d2b160`
+    - modulo-3 state rotator
+    - `FUN_01d2b190`
+    - tiny lookup over that state
+    - `FUN_01d2b310`
+    - small-string helper under `FUN_01d31010`
+    - so there is still no dedicated nearby helper for `uint32`/`uint16` selector-table growth
+    - which makes an inline write/copy path inside `FUN_01d3a310` more likely for `+0x40/+0x50`
+  - consumer-side field typing is now explicit:
+    - `FUN_01d17f90`
+    - reads `record + 0x50` as `ushort` table indexed by `seat * 2`
+    - this is the semantic part-selector table
+    - `FUN_01d19930`
+    - reads `record + 0x40` as `uint32` table indexed by dispatch/input index
+    - this is the downstream destination/remap table
+    - so the shallow semantic split is now concrete:
+    - `+0x40` = `uint32` remap table
+    - `+0x50` = `ushort` part-selector table
+    - constructor/teardown now also show both are 16-byte descriptor pairs, not lone pointers:
+    - `+0x40/+0x48`
+    - `+0x50/+0x58`
+    - the low qword is the table base pointer used by consumers
+    - the high qword is still unresolved metadata, but moves and clears together with the pointer
+    - branch-level cut inside `FUN_01d3a310`:
+    - the visible direct stores around `01d3aaff..01d3af1b`
+    - write `RBX + 0x38/+0x40` in a sibling family indexed as `base + index * 0x48`
+    - so that branch is not the missing writer for the `0x178` `+0x40/+0x50` descriptors
+  - nearby non-target append helpers for contrast:
+    - `FUN_01d2b590`
+    - appends `0x48`-byte records only
+    - exact shape now confirmed as 9 qwords per entry with fixed-block copy/append
+    - this matches the sibling direct-store branch seen at `01d3aaff..01d3af1b`
+    - so that branch should be treated as `0x48` family logic, not the `0x178` target path
+    - `FUN_01d30880`
+    - manages a separate `0x10`-byte sibling container under `FUN_01d3a310`
+    - also not part of the `0x178` record family
+  - generic subarray growth helpers now separated too:
+    - `FUN_01d2b1b0`
+    - resizes `0x30`-stride arrays
+    - called by `FUN_01d3a310` and generic setup helper `FUN_01d617a0`
+    - `FUN_01d2b430`
+    - resizes qword (`0x8`-stride) arrays
+    - called by `FUN_01d3a310`
+    - useful because they likely build embedded subfields inside the new `0x178` record, but they are still generic plumbing rather than the semantic `record + 0x50` writer itself
+    - `FUN_01d1dbf0`
+    - builds `0x14`-stride angle/pitch lists
+  - recursive container/emitter builder only:
+    - `FUN_01d1bb50`
+    - builds dynamic `0x30` transform arrays from emitter/container metadata
+    - can recurse through nested `"container"` blks
+    - not the `0x178` semantic-table writer
+  - downstream distribution helper only:
+    - `FUN_01d1cc10`
+    - distributes quantities across an object-pointer array and calls object virtuals
+    - not part of `0x178` record construction
   - side-record gate helper only:
     - `FUN_01d04b40`
     - checks one `owner + 0x1c8 + slot*0x300` entry against owner/runtime state
