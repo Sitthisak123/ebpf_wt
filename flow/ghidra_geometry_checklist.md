@@ -324,6 +324,72 @@ Purpose:
     - `param_2 + 0x14` -> `record + 0x50`
     - `param_2 + 0x22` -> `record + 0x88`
     - `param_2 + 0x28` -> `record + 0xa0`
+    - semantic mapping inside that writer is now much sharper:
+    - `plVar36[4]` = node-index -> `ushort` selector table
+    - `plVar36[8]` = selector -> packed name table
+    - `FUN_0161ac60(param_4, seat)` = seat-specific name/remap registry accessor at `param_4 + 0x578 + seat * 0x20`
+    - `FUN_0161ad00` = builder of the corresponding runtime remap dword table
+    - `FUN_00a67bb0` = binary-search helper over the registry's sorted name table
+    - `FUN_0161c3f0` = proof that the registry maps name -> selector/id through `registry + 0x10`
+    - `FUN_01631fa0` = large builder-side consumer of the same seat registries; best current upstream target for dumping concrete registry contents
+    - it also rebuilds per-seat `"%s_dm"` tuple tables at `manager + 0x80`, storing interned name id + node index + selector/id
+    - `FUN_0162e140` = per-entry descriptor builder that explicitly handles canonical names including `emtr_`, `track`, `gun_barrel`, `hatch`, and `antenna`, and synthesizes `%s_dmg` / `%s_dstr`
+    - `FUN_01637a40` = strongest current downstream consumer of the resulting `manager + 0x658` descriptors in live event/damage handling
+    - `FUN_016297e0` and `FUN_0162a640` are additional direct consumers of `manager + 0x658`, reinforcing that this is the live runtime descriptor family
+    - `FUN_01620450` / `FUN_01620b50` = lower live-state mutators beneath that path, not tuple/name enumerators
+    - `FUN_01637770` = local hash-table helper under `FUN_01637a40`, not a tuple/name enumerator for `manager + 0x80`
+    - `FUN_00a74680` and `FUN_016fea00` are now the strongest round-trip proofs that live runtime code does `interned id -> FUN_014f6b40(name) -> FUN_0161c3f0(...) -> packed selector triple`
+    - `FUN_0169b090` is a lighter formatting helper that also falls back to `FUN_014f6b40(id)` for plain interned names
+    - `FUN_0161c7b0` is now identified as the central packed-triple applier; its strongest concrete input is `triple.word1`, which it uses as the selector/group key against rule tables at `manager + 0x118`
+    - `FUN_016f45f0`, `FUN_00a69d70`, and `FUN_016cf230` all use the same pattern: `id -> name -> triple from +0x350/+0x148 -> FUN_0161c7b0(...)`
+    - `FUN_05409550` = direct indexed accessor over the `6`-byte triple table
+    - `FUN_054095b0` = constructor-side builder for the same ecosystem, coupling interned ids with adjacent `0x130` rule records and `0x14` metadata records
+    - `FUN_015e1470` = concrete build-time user of `FUN_054095b0` for attachable `DamageParts`
+    - `FUN_01620030` consumes only `triple.word0` and resolves it through `+0x368 -> +0x548` into a live `0x40`-stride object entry, so `word0` is now best read as the live-object lookup id
+    - `FUN_0162a550` independently confirms that `triple.word0` also indexes the `0x14`-stride metadata table at `+0x3d8`, where bit `0x4` gates live bitset logic at `+0x2a8`
+    - `FUN_0162b6e0` adds a second metadata-side proof for `triple.word0`: bit `0x2` in the same `+0x3d8` `0x14`-stride record gates a nibble-packed runtime state table at `+0x5e8/+0x5f0`
+    - `FUN_0161caf0` is also effectively a `word0` consumer: it resolves a triple from `+0x408`, compares only the low `short`, and returns volume/bounds data for the matching descriptor node
+    - `FUN_00a9a770` is a useful bridge path that carries the full 6-byte triple as a local object before dispatching into both `FUN_0162a0c0(...)` and `FUN_0161c7b0(...)`
+    - `FUN_0162a0c0` is another `word0`-only consumer: it indexes a remap/lookup table at `+0x648` and gates a call to `FUN_016288b0(...)`
+    - `FUN_00a69d70` and `FUN_016f45f0` both preserve the full packed triple across several downstream helpers, but still do not read `word2` directly at caller level
+    - `FUN_01620b50` and `FUN_01620300` also turn out to be pure `word0` consumers, while `FUN_01d213f0` consumes `word0` and `word1` but still not `word2`
+    - builder-side refinement: `FUN_054095b0` seeds the adjacent `0x14` metadata family with `(interned id, metadata index)` pairs and default fields
+    - `FUN_0163db10` is now the first direct seed-site for the packed triple table: `word0 = descriptor index`, `word1 = interned damage-part id`, `word2 = upstream selector/remap id copied from manager + 0x358`
+    - `FUN_01631fa0` now explains where that `word2` family comes from semantically: it builds descriptor-index -> seat-registry selector mappings from canonical names via `FUN_014f6b40(...)` + `FUN_00a67bb0(...)`
+    - current best chain for `word2` is: canonical name/id -> seat-registry selector -> compact `ushort` table near `manager + 0x358` -> `meta + 0x08` -> packed triple `word2`
+    - this means `word2` is real builder payload, even if the hottest runtime consumers inspected so far mostly use only `word0` and `word1`
+    - `FUN_0161ad00` now closes the next runtime step: it turns the seat-registry `ushort` selector table into a `uint32` remap/state cache at `manager + 0x630` by resolving through the live holder at `manager + 0x88[seat]`
+    - `FUN_016278d0` then uses `param_5 & 0xffff` as that resolved selector/remap index against `manager + 0x88[seat]`, and forwards the resolved block into `FUN_01625d20(...)`
+    - `FUN_01625d20` is the live trace/effect applier beneath the same path, while `FUN_01621390` remains the matching updater for the `manager + 0x88[seat]` holder
+    - explicit local examples now support the namespace split:
+      - canonical `gun_barrel` -> DM part `gun_barrel_dm` -> visual node `bone_gun_barrel`
+      - canonical `gunner` -> DM part `gunner_dm`
+      - canonical `optic_gun` -> DM part `optic_gun_dm`
+      - canonical `track` -> DM parts `track_l_dm` / `track_r_dm`
+    - current working matrix from `BT-7` and `AMX-30` also supports:
+      - canonical `cannon_breech` -> DM part `cannon_breech_dm`
+      - canonical `body` -> DM part `body_dm`
+    - `FUN_0161ac60` + `FUN_00a67bb0` keep the `word2` interpretation stable: it is a sorted seat-registry selector/remap id for the canonical name, not a free-form tag
+    - strongest current group matrix:
+      - `gun_barrel` / `cannon_breech` -> gun/weapon seat selector family
+      - `gunner` / `optic_gun` -> gunner/optic seat selector family
+      - `track` -> left/right chassis selector family
+      - `body` -> hull/body selector family
+    - `FUN_0161caf0` = concrete runtime query user of `FUN_05409550` against the same `6`-byte table
+    - `FUN_0162a550`, `FUN_0162ac60`, and `FUN_016fecf0` add stronger proof that the same `+0x408` / triple-accessor path is used in runtime gating, trace/collision checks, and hit forwarding
+    - `FUN_0169d060` is the first clear bulk collector over this table: it walks mapping tables, resolves many `uint6` triples through `FUN_05409550`, extracts the middle `short`, and appends those selector/group ids into an output vector
+    - current best split of the packed `uint6` triple is: `word0 = descriptor index`, `word1 = interned damage-part id`, `word2 = upstream selector/remap id`
+    - `FUN_016fd070` is a higher-level hit / trace path that repeatedly resolves the same packed triples during live-part processing, not just at the final forwarding edge
+    - `FUN_014f6630` = one-time initializer for the global interner backing store at `DAT_099102c0`
+    - `FUN_014f6990` / `FUN_014f7710` = small interner helpers; `FUN_014f7710` proves `"body_dm"` is lazily interned as a concrete canonical name
+    - `FUN_014f72e0` = blk/config loader that interns part strings into ids, proving those ids are text-derived and not opaque constants
+    - `FUN_01bdf8d0` = clean wrapper/build proof that `FUN_01631fa0` runs immediately after `FUN_0163db10` on manager `*(param_1 + 0x41a)`
+    - `FUN_01617550` = constructor/shape-init for that manager; confirms `+0x578/+0x590` are manager-owned fields but does not seed names by itself
+    - `FUN_014f6b40` / `FUN_014f6b60` = reversible global string-interner wrappers over `DAT_099102c0`; current best path for recovering interned canonical names
+    - `FUN_01611dc0` = sole upstream source-loader under `FUN_01631fa0`; decodes names from packed blob `source + 0x40` with count at `source + 8`
+    - `FUN_03690a50` = independent lookup over that same `source + 0x40` packed-name blob layout
+    - `FUN_03690af0` = second independent lookup over the same packed-name blob family; confirms `manager + 0xf0` roots the per-seat source-object array that owns these names
+    - `FUN_0163db10` = upstream metadata builder that interns `damageModelParts.blk` names and seeds manager-owned id tables before `FUN_01631fa0`
   - generic setup-plumbing cross-check:
     - `FUN_01c85190`
     - `FUN_01c86510`
@@ -496,9 +562,17 @@ Purpose:
     - `bone_gun_barrel`
     - `gun_barrel_dm`
     - `cannon_breech_dm`
+    - new runtime-side bridge:
+    - `FUN_0162e140` explicitly handles canonical registry name `gun_barrel`
+    - then derives `gun_barrel_dmg` and `gun_barrel_dstr`
+    - strongest current practical match is:
+    - `gun_barrel` -> `bone_gun_barrel` / `gun_barrel_dm`
+    - broader canonical family now also confirmed:
+    - `track` -> likely `track_l_dm` / `track_r_dm`
+    - `emtr_` -> likely tankmodel emitter names such as `emtr_gun_flame` / `emtr_fire_dmg`
   - highest-value remaining question:
-    - which constructor/owner populates `record + 0x50`
-    - that builder is now the best target for mapping runtime selectors onto `optic_gun_dm`, `gunner_dm`, `bone_turret`, `bone_gun`, and `bone_gun_barrel`
+    - dump concrete contents of `plVar36[8]`, the sorted seat-registry name table, and the upstream packed-name blob at `*( *(manager + 0xf0)[seat] ) + 0x40`
+    - then map more canonical runtime names like `gun_barrel` onto `optic_gun_dm`, `gunner_dm`, `bone_turret`, `bone_gun`, and `bone_gun_barrel`
   - corrected meaning from local repo cross-check:
     - local scanner references repeatedly map nearby offsets to `rotation_matrix`
     - so `+0xcdc` is best treated as the source object's orientation basis, not proof of optic mount by itself
