@@ -1012,6 +1012,1016 @@ Interpretation:
   - `FUN_01d2ba20` -> append one `0x178` record
   - `FUN_01d1aa30` -> populate the shallow and deep record bundle
 
+Additional semantic mapping details now confirmed from the same decompilation:
+- selector side:
+  - `uVar31 = *(ushort *)(plVar36[4] + uVar35 * 2)`
+  - so `plVar36[4]` is a node-index -> selector mapping table
+  - `uVar35` is the emitter/node index returned from `FUN_03690af0(plVar36, param_5)`
+- selector-name side:
+  - `__s1 = (char *)((ulong)*(ushort *)(plVar36[8] + (ulong)uVar31 * 2) + plVar36[8])`
+  - so `plVar36[8]` is a string-offset table / packed name blob keyed by selector value
+  - `record + 0x50` is therefore not just numeric; its values map to concrete part/node names through this selector-name table
+- remap side:
+  - `FUN_0161ac60(param_4, seat)` returns a seat-specific registry at:
+    - `param_4 + 0x578 + seat * 0x20`
+    - gated by `param_4 + 0x590`
+  - `FUN_01d1aa30` binary-searches the sorted names from that seat registry
+  - on success it writes:
+    - `*(uint *)(*(long *)(record + 0x40) + seat * 4)` from the registry's ushort->runtime-id mapping table
+
+Interpretation:
+- the `0x178` semantic chain is now sharper:
+  - emitter/node name -> `FUN_03690af0`
+  - node index -> selector value through `plVar36[4]`
+  - selector value -> selector name through `plVar36[8]`
+  - selector name -> runtime remap id through the seat registry returned by `FUN_0161ac60`
+- this means the unresolved work is no longer “where are the tables written”
+- it is now “dump or name the selector-name table and the seat registry tables concretely”
+
+Packed selector-name table is now partially grounded by adjacent consumers:
+- `plVar36[8]` is not just an opaque blob; selector values are turned back into concrete names by:
+  - `name = (char *)((ulong)*(ushort *)(plVar36[8] + selector * 2) + plVar36[8])`
+- this is an in-place packed string blob with a `ushort` offset table at the front
+- we still do not have a raw blob dump, but we do now have a concrete decode rule for it
+
+### `FUN_0161ac60`
+
+Confirmed behavior:
+- if `param_1 + 0x590` is non-zero, returns:
+  - `param_1 + 0x578 + seat * 0x20`
+- otherwise returns a static empty singleton
+
+Interpretation:
+- this is the accessor for the seat-specific name/remap registry used by `FUN_01d1aa30`
+- it confirms the remap side is prebuilt seat metadata, not ad hoc lookup against arbitrary live objects
+
+Registry shape is now much sharper with adjacent consumers:
+- `FUN_00a67bb0(registry, name)` binary-searches:
+  - `*registry` as a sorted pointer array of names
+  - `registry + 8` as the element count
+- `FUN_0161c3f0` then uses:
+  - `*(long *)(registry + 0x10) + idx * 2`
+  - as the selector/id array matched to those names
+
+Interpretation:
+- the seat registry returned by `FUN_0161ac60` is not opaque anymore
+- its front half is at least:
+  - `+0x00` = sorted `char **` name table
+  - `+0x08` = count
+  - `+0x10` = `ushort` selector/id table aligned with the names
+
+### `FUN_01631fa0`
+
+Confirmed behavior:
+- is a large seat/damage registry builder operating over the same runtime object family
+- uses:
+  - `FUN_0161ac60(param_1, 0)`
+  - `FUN_0161ac60(param_1, 1)`
+- fills and refreshes several selector/name caches under the manager, including:
+  - `param_1 + 0x324`
+  - `param_1 + 0x32c`
+  - `param_1 + 0xbc`
+  - `param_1 + 0xc4`
+- also rebuilds a per-seat `%s_dm` tuple table at:
+  - `param_1 + 0x80`
+  - each seat contributes a `0x10`-byte header pointing at `0xc`-byte entries
+  - each entry stores:
+    - interned `"%s_dm"` name id
+    - node index from `FUN_03690af0(...)`
+    - selector/id copied from the canonical seat registry
+- binary-searches canonical names through `FUN_00a67bb0(...)`
+- iterates the seat registry names and selector ids returned by `FUN_0161ac60(...)`
+- calls `FUN_0162e140(...)` once per registry entry
+- uses both string-interner directions directly:
+  - `FUN_014f6b40(id)` to recover canonical names from existing interned ids
+  - `FUN_014f6b60(name)` to intern newly built `"%s_dm"` names
+
+Interpretation:
+- this is the strongest current builder-side proof for the seat registry path
+- even without a raw blob dump, it confirms the sorted name table and aligned `ushort` table are rebuilt and consumed as first-class metadata
+- it is now the best upstream target if we later want to dump the seat registry contents from memory
+- more importantly, it gives a second extraction surface besides the packed source blob:
+  - the builder materializes per-seat `"%s_dm"` tuples explicitly
+  - those tuples already bridge canonical seat-registry names to interned runtime ids and node indices
+- practical extraction path is now:
+  - canonical name id -> `FUN_014f6b40(...)`
+  - per-seat `"%s_dm"` tuple at `manager + 0x80`
+  - selector/id from the aligned seat registry table
+
+Direct wrapper/build proof is now available too:
+- `FUN_01bdf8d0` calls:
+  - `FUN_0163db10(0, *(param_1 + 0x41a), param_1, DamageParts, DamageEffects, MetaParts, 0, 0, 1, 0)`
+  - immediately followed by:
+  - `FUN_01631fa0(*(param_1 + 0x41a), param_1, param_2, 0, 0)`
+- so `*(param_1 + 0x41a)` is the manager object that owns the seat/damage registries consumed by `FUN_01631fa0`
+- this places the registry build step directly in the runtime build chain, not in a detached maintenance path
+
+### `FUN_01617550`
+
+Confirmed behavior:
+- is the constructor / shape-initializer for the manager object later passed as `*(param_1 + 0x41a)`
+- caller set matches the same build family:
+  - `FUN_01bdf8d0`
+  - `FUN_00a8cb60`
+  - `FUN_017429f0`
+  - `FUN_01767130`
+- initializes and zeros multiple dynamic families, including the region around:
+  - `+0x568`
+  - `+0x578`
+  - `+0x580`
+  - `+0x590`
+  - `+0x638`
+  - `+0x658`
+- explicitly leaves `+0x590` cleared during construction
+- also allocates/reset-shapes several adjacent arrays with element counts derived from `*(uint *)(manager + 0x4c)`
+
+Interpretation:
+- this is the manager constructor we were missing
+- but it is only a shape/ownership initializer, not the place where canonical registry names are seeded
+- important consequence:
+  - `+0x578/+0x590` are manager-owned fields from the start
+  - concrete name/selector contents are still populated later by the build phase, strongest at `FUN_01631fa0`
+
+### `FUN_014f6b40` / `FUN_014f6b60`
+
+Confirmed behavior:
+- `FUN_014f6b40(id)` is a thin wrapper over `FUN_05439b20(&DAT_099102c0, id)`
+- `FUN_014f6b60(name)` is a thin wrapper over `FUN_05439b80(&DAT_099102c0, name)`
+- `FUN_05439b20(...)` resolves intern-registry ids back into string pointers
+- `FUN_05439b80(...)` hashes / looks up / inserts strings into the same runtime registry
+
+Interpretation:
+- `DAT_099102c0` is the global canonical string interner used by this runtime family
+- the seat-registry build path is not trapped inside opaque local blobs anymore:
+  - interned ids are reversible through `FUN_014f6b40(...)`
+  - new canonical names are inserted through `FUN_014f6b60(...)`
+- together with `FUN_01631fa0`, this means canonical runtime names can be recovered from either:
+  - the upstream packed source blob
+  - or the already-interned ids stored in manager-owned tuple tables
+
+Related interner helpers now confirmed:
+- `FUN_014f6990()` is a thin wrapper over:
+  - `FUN_05439b10(&DAT_099102c0)`
+- `FUN_014f7710()` lazily interns and caches:
+  - `"body_dm"`
+- `FUN_0352be70(...)` is the hashed string lookup helper used under `FUN_05439b80(...)`
+
+Interpretation:
+- the interner path is now structurally closed:
+  - init / count through `FUN_014f6990`
+  - id -> name through `FUN_014f6b40`
+  - name -> id through `FUN_014f6b60`
+  - concrete example id for `"body_dm"` through `FUN_014f7710`
+
+### `FUN_014f6630`
+
+Confirmed behavior:
+- performs one-time initialization of the global interner backing store at:
+  - `DAT_099102c0`
+- zeros the whole registry state
+- seeds auxiliary pointers / metadata around:
+  - `DAT_099102c8`
+  - `DAT_09910308`
+  - `DAT_09910318`
+  - `DAT_09910358`
+  - `DAT_09910360`
+- then calls:
+  - `FUN_05439670(&DAT_099102c0, ...)`
+
+Interpretation:
+- this is the real runtime initializer for the canonical name interner
+- it confirms the zeroed data seen in the binary image is expected startup state, not missing evidence
+- practical consequence:
+  - any concrete name dump must come from runtime-filled tables or from loader/build code, not from static .data contents alone
+
+### `FUN_014f72e0`
+
+Confirmed behavior:
+- is a loader helper that reads string params from blk/config and resolves them into interned part ids
+- for each string value:
+  - tries `FUN_054082c0(...)` first
+  - falls back to `FUN_05439b80(&DAT_099102c0, name)` if needed
+- appends the resulting short ids into a caller-owned dynamic array
+
+Interpretation:
+- this is direct proof that runtime part ids are created from text names in blk/config paths
+- it strengthens the extraction story:
+  - interner ids are not opaque random numbers
+  - they are generated from concrete part strings during load/build phases
+
+### `FUN_01611dc0`
+
+Confirmed behavior:
+- is called only from `FUN_01631fa0`
+- receives:
+  - `param_1 = **(long **)(manager + 0x78)`
+  - `param_2 = &manager`
+- iterates a source metadata object with:
+  - `*(int *)(source + 8)` = entry count
+  - `*(long *)(source + 0x40)` = packed name blob / offset table base
+- decodes each source name as:
+  - `name = (char *)(*(long *)(source + 0x40) + *(ushort *)(*(long *)(source + 0x40) + idx * 2))`
+- appends per-entry mapping records into manager-owned arrays
+- resolves node indices via `FUN_03690a50(object + 0x230, name)`
+- also retries with a `"_dm"`-style suffixed variant when direct lookup fails
+
+Interpretation:
+- this is the strongest source-format proof so far
+- the sorted seat-registry names used later by `FUN_01631fa0` are derived from an upstream packed-name blob at `source + 0x40`
+- because `manager + 0x78` is byte-scaled from the `undefined2 *` decompiler type, this is actually:
+  - `manager + 0xf0`
+- `FUN_01631fa0` later also iterates:
+  - `*(long *)(*(long *)(manager + 0xf0) + seat * 8)`
+- so the upstream packed-name blob belongs to the per-seat source-object array rooted at `manager + 0xf0`
+- this means the unresolved work is no longer about unknown source layout:
+  - the raw source name format is now known
+  - what remains is dumping actual contents from that blob
+
+### `FUN_0163db10`
+
+Confirmed behavior:
+- is the heavy upstream metadata builder that runs immediately before `FUN_01631fa0`
+- uses `FUN_014f6b60(...)` on damage-part names resolved from `damageModelParts.blk`
+- grows a local table at:
+  - `*(manager + 0x350) + 0x148`
+  - with packed `6`-byte entries
+- seeds each entry with:
+  - a local slot/index
+  - the corresponding interned damage-part name id
+
+Interpretation:
+- this is the broader metadata phase that seeds the same global interner before seat-registry rebuild
+- together with `FUN_01631fa0`, it shows two complementary name surfaces:
+  - damage-model part ids interned from `damageModelParts.blk`
+  - per-seat canonical / `"%s_dm"` tuples derived from the packed source blob
+- this matters for extraction because the runtime already preserves names as interned ids in manager-owned arrays instead of relying only on one-shot packed blobs
+
+### `FUN_03690a50`
+
+Confirmed behavior:
+- takes `(source, name)`
+- scans the same packed-name blob layout used by `FUN_01611dc0`
+- uses:
+  - `*(long *)(source + 0x40)` as packed string base
+  - `*(long *)(source + 8)` as count
+- compares each decoded entry with `strcmp(...)`
+- returns the matched index or `0xffffffffffffffff`
+
+Interpretation:
+- this independently confirms the packed-name layout at `source + 0x40`
+- the upstream canonical-name source for registry building is now structurally resolved:
+  - count at `+8`
+  - packed string/offset blob at `+0x40`
+- and it confirms that both:
+  - `FUN_01611dc0`
+  - `FUN_03690af0`
+  consume the same per-seat source-object name blob family
+
+### `FUN_0161ad00`
+
+Confirmed behavior:
+- consumes the seat-specific registry returned by `FUN_0161ac60(param_1, seat)`
+- ensures an output `uint32` array at `param_1 + 0x630` sized to the registry count at `registry + 8`
+- for each registry entry:
+  - reads a `ushort` selector/id from `*(long *)(registry + 0x10) + idx * 2`
+  - looks up a runtime remap id from the live seat object at `*(param_1 + 0x88)[seat]`
+  - falls back to `FUN_015ea6c0(...)` when the selector exceeds the live table bounds
+- writes the resolved dword ids into `param_1 + 0x630`
+
+Interpretation:
+- this is the explicit builder for the runtime remap-id table that `FUN_01d1aa30` later consumes through the seat registry path
+- combined with `FUN_01d1aa30`, the semantic mapping now looks like:
+  - selector value -> selector name (`plVar36[8]`)
+  - selector name -> registry slot (`FUN_0161ac60`)
+  - registry slot / selector id -> runtime remap dword (`FUN_0161ad00`)
+
+### `FUN_0162e140`
+
+Confirmed behavior:
+- takes one registry name and one selector/id and emits a packed `0x18` descriptor into:
+  - `*(long *)(manager + 0x658) + idx * 0x18`
+- classifies several canonical names directly:
+  - `"emtr_"`
+  - `"track"`
+  - `"gun_barrel"`
+  - `"hatch"`
+  - `"antenna"`
+- resolves:
+  - node index through `FUN_03690af0(*(*(long *)(manager) + 0xf0), name)`
+  - damage selector by searching `"%s_dmg"`
+  - destroy selector by searching `"%s_dstr"`
+- stores those selectors into the descriptor alongside packed orientation/flag data
+
+Interpretation:
+- this gives the first direct semantic bridge from registry names to runtime damage selectors
+- `gun_barrel` is now concretely present in the builder path, and its derived names:
+  - `gun_barrel_dmg`
+  - `gun_barrel_dstr`
+  are generated explicitly at runtime
+- the same canonical registry family also includes:
+  - `emtr_`
+  - `track`
+  - `hatch`
+  - `antenna`
+- this strongly matches local `Toy` names such as:
+  - `bone_gun_barrel`
+  - `gun_barrel_dm`
+  - `gunner_dm`
+- practical reading:
+  - seat-registry names appear to be canonical gameplay names like `gun_barrel`
+  - tankmodel / damage-model files then expose nearby node and damage names such as `bone_gun_barrel` and `gun_barrel_dm`
+  - `track` likely bridges toward tankmodel damage names like `track_l_dm` / `track_r_dm`
+  - `emtr_` likely bridges toward effect/emitter names like `emtr_gun_flame`, `emtr_fire_dmg`, and related tankmodel emitters
+
+### `FUN_01637a40`
+
+Confirmed behavior:
+- is a live event / damage consumer over the same manager family
+- consumes descriptor entries from:
+  - `*(long *)(manager + 0x658) + idx * 0x18`
+- for each descriptor, uses:
+  - selector/id at `+0x06`
+  - runtime remap / destination-like fields at `+0x02`, `+0x0a`, `+0x0c`
+- calls:
+  - `FUN_016278d0(...)`
+  - `FUN_016288b0(...)`
+  - and updates live arrays under:
+    - `manager + 0x1c8`
+    - `manager + 0x208`
+
+Interpretation:
+- this is the first strong downstream consumer tying the `FUN_0162e140` canonical-name descriptors into live runtime event handling
+- practical consequence:
+  - the path from canonical name -> descriptor -> live damage/runtime reaction is now concrete
+  - but it still consumes the `+0x658` descriptor family, not the per-seat `"%s_dm"` tuples at `manager + 0x80`
+- so `manager + 0x80` remains a promising extraction surface, while `manager + 0x658` is the clearer live-consumer surface
+
+Additional downstream consumers now confirmed:
+- `FUN_016297e0(...)`
+  - iterates canonical registry names through `FUN_0161ac60(param_1, 1)`
+  - resolves them against the packed source blob with `FUN_03690a50(...)`
+  - writes live transforms into the seat object at `*(long *)(*(long *)(param_1 + 0x88) + 0x10)`
+  - also iterates `manager + 0x658` and dispatches through `FUN_016278d0(...)`
+- `FUN_0162a640(...)`
+  - takes a `ushort` index list
+  - resolves each index into `*(long *)(manager + 0x658) + idx * 0x18`
+  - uses descriptor fields at `+0x02`, `+0x04`, and `+0x0a`
+  - then calls `FUN_016278d0(...)`
+
+Interpretation:
+- `manager + 0x658` is now firmly established as the canonical live-consumer descriptor family for this path
+- multiple runtime consumers use it directly:
+  - `FUN_01637a40`
+  - `FUN_016297e0`
+  - `FUN_0162a640`
+- this strengthens the split:
+  - `manager + 0x80` = better extraction surface for per-seat `"%s_dm"` tuples
+  - `manager + 0x658` = better live runtime behavior surface
+
+### `FUN_01637770`
+
+Confirmed behavior:
+- is a recursive hash-table insert / growth helper
+- used from `FUN_01637a40`
+- operates on `0x18`-byte hash buckets holding:
+  - an 8-byte key
+  - a `ushort` payload field at `+0x10`
+- calls:
+  - `FUN_01637270`
+  - `FUN_01637510`
+
+Interpretation:
+- this is not a tuple/name enumerator for `manager + 0x80`
+- it is local hash infrastructure used by the live event path around `manager + 0x438`
+- so it does not provide a shortcut to dump canonical names; it only stores opaque 8-byte keys and small payloads
+
+### `FUN_00a74680`
+
+Confirmed behavior:
+- is a high-value ground/runtime consumer that reads interned names back through `FUN_014f6b40(...)`
+- for queued pending entries under:
+  - `param_1[0x42c]`
+  - count `param_1[0x42e]`
+- does:
+  - `name = FUN_014f6b40(interned_id)`
+  - `FUN_0161c3f0(manager, name, 1, 0)`
+  - then resolves the matching triple from:
+    - `*(manager + 0x350) + 0x148`
+    - using the same packed `6`-byte records seeded by `FUN_0163db10`
+  - and sends that triple into `FUN_0161c7b0(...)`
+
+Interpretation:
+- this is the strongest current proof that the runtime can round-trip:
+  - interned id -> canonical name -> selector triple -> live application
+- it also means extraction no longer depends on finding a direct consumer of `manager + 0x80`
+- any surface that yields interned ids is already enough, because `FUN_014f6b40(...)` plus the `+0x350/+0x148` table closes the loop
+
+### `FUN_016fea00`
+
+Confirmed behavior:
+- is another runtime consumer that repeatedly does:
+  - `name = FUN_014f6b40(interned_id)`
+  - `FUN_0161c3f0(manager, name, 1, 0)`
+  - then fetches the packed triple from:
+    - `*(manager + 0x350) + 0x148`
+  - and applies it via `FUN_0161c7b0(...)`
+- also walks ranges from `param_1 + 0x4270`, suggesting grouped preset/runtime mappings rather than ad hoc single events
+
+Interpretation:
+- this independently confirms the same round-trip path seen in `FUN_00a74680`
+- together they prove the reversible extraction surface is already present in live runtime code:
+  - interned id
+  - `FUN_014f6b40(...)`
+  - `FUN_0161c3f0(...)`
+  - packed selector triple from `*(manager + 0x350) + 0x148`
+
+### `FUN_0161c7b0`
+
+Confirmed behavior:
+- takes one packed selector triple and applies it across one or two seat/group ranges
+- consumes:
+  - `*(long *)(manager + 0x118)` as per-group rule tables
+  - `*(long *)(manager + 0x88)` as live seat objects
+  - `manager + 0x130` as an optional downstream callback target
+- the input triple layout is now partly concrete:
+  - `word0` / `+0x00` is the live descriptor key consumed by `FUN_01620030(...)`
+  - `word1` / `+0x02` is the selector/group key consumed directly by `FUN_0161c7b0(...)`
+  - `word2` / `+0x04` is still unresolved from this function alone
+- on the write path it sets live entries to `1.0f` and calls `FUN_015ea5d0(...)`
+- on the clear path it zeros matching live entries and may also call `FUN_015ea5d0(...)`
+- `FUN_0161c7b0(...)` never reads `word0` directly:
+  - it starts from `*(short *)(triple + 2)` and uses that value to search rule entries in `manager + 0x118`
+  - matching rule entries then provide `(start,count)` ranges into the backing `uint` list at `rule_desc + 0x20`
+- this makes `word1` the strongest current candidate for the canonical selector/group id in the packed triple family
+
+Interpretation:
+- this is the central packed-triple applier behind several higher-level runtime paths
+- it confirms the `*(manager + 0x350) + 0x148` table is not just metadata storage:
+  - its `6`-byte entries are immediately usable control triples for live runtime state
+
+Additional triple-driven callers now confirmed:
+- `FUN_016f45f0(...)`
+  - resolves `param_3` or falls back to `FUN_014f7710()` for `"body_dm"`
+  - fetches the `6`-byte triple from `*(manager + 0x350) + 0x148`
+  - then does:
+    - `FUN_014f6b40(id)`
+    - `FUN_0161c3f0(...)`
+    - `FUN_0161c7b0(...)`
+- `FUN_00a69d70(...)`
+  - same pattern for another gameplay/runtime path
+  - fetches the triple from `*(manager + 0x350) + 0x148`
+  - applies it through `FUN_0161c7b0(...)`
+- `FUN_016cf230(...)`
+  - iterates grouped part-id ranges from `param_2`
+  - repeatedly resolves ids through `FUN_014f6b40(...)`
+  - fetches triples from `*(manager + 0x350) + 0x148`
+  - applies them with `FUN_0161c7b0(...)`
+
+Interpretation:
+- the `6`-byte table at `*(manager + 0x350) + 0x148` is now the clearest bulk extraction surface
+- unlike `manager + 0x80`, it already sits at the exact intersection of:
+  - interned ids
+  - canonical names
+  - packed live-application triples
+- if we can enumerate the ids used by these callers, we can reconstruct concrete name -> triple mappings directly
+
+### `FUN_05409550`
+
+Confirmed behavior:
+- is a thin indexed accessor over the packed `6`-byte triple table
+- reads:
+  - `*(uint6 *)(*param_1 + idx * 6)`
+- uses:
+  - `param_1 + 0x08` / `*(uint *)(param_1 + 1)` as the element count
+- returns:
+  - the packed `6`-byte triple
+  - or `0xffffffffffff` when out of bounds
+
+Interpretation:
+- this closes the table shape at `*(manager + 0x350) + 0x148`
+- it is not an ad hoc blob:
+  - it is explicitly modeled as an array of `uint6` records
+
+### `FUN_054095b0`
+
+Confirmed behavior:
+- is a large builder for the same packed-triple family
+- takes a source name, hashes/looks it up, and either reuses or inserts the corresponding interned id
+- appends that `ushort` id into one compact id list
+- appends a default `0x130`-byte rule record into a second table
+- appends a default `0x14`-byte metadata record into a third table
+- returns a pair whose low half is the interned `ushort` id and whose high half is the metadata-record index
+
+Interpretation:
+- this is the strongest current constructor-side proof for the packed-triple ecosystem around:
+  - `+0x148` = `6`-byte id/triple table
+  - adjacent `0x130` rule records
+  - adjacent `0x14` metadata records
+- together with `FUN_05409550`, this means the `*(manager + 0x350)` subobject is now understood as a real managed container family, not just a passive lookup table
+
+Additional build/query users now confirmed:
+- `FUN_015e1470(...)`
+  - loads `DamageParts` from blk/config
+  - calls `FUN_054095b0(...)`
+  - stores the returned packed result into:
+    - `param_1 + 0xec/+0xee/+0xf0`
+  - then allocates and appends a new `0xa8`-stride attachable-side rule record under:
+    - `*(manager + 0x350) + 0x170`
+- `FUN_0161caf0(...)`
+  - is a query/volume helper over a linked list at `*(param_1 + 0x50) + 0x60`
+  - uses:
+    - `FUN_05409550(param_1 + 0x408, idx)`
+  - to resolve a packed selector from the `6`-byte table during runtime checks
+
+Interpretation:
+- the same container family is now proven to participate in both:
+  - build-time / attachable construction (`FUN_015e1470`)
+  - runtime query logic (`FUN_0161caf0`)
+- this further supports using the `+0x148` / adjacent tables as the best bulk extraction target
+
+More runtime-query users now confirmed:
+- `FUN_0162a550(...)`
+  - calls `FUN_05409550(param_1 + 0x408, idx)`
+  - then uses the resolved selector to gate bitset state under `param_1 + 0x2a8`
+- `FUN_0162ac60(...)`
+  - performs trace / collision-style runtime checks
+  - calls `FUN_05409550(param_2 + 0x408, *(uint *)(hit + 0x1c))`
+  - uses the resolved selector against live seat state and damageable visual-model logic
+- `FUN_016fecf0(...)`
+  - uses `FUN_05409550(*(runtime + 0x1068) + 0x408, hit_idx)` to resolve a packed triple
+  - then forwards the resulting selector triple into `FUN_016fea00(...)`
+- `FUN_0169d060(...)`
+  - is the strongest bulk-enumerator found so far for the same ecosystem
+  - walks multiple mapping layers under `param_1`
+  - resolves packed triples via:
+    - `FUN_05409550(runtime + 0x408, idx)`
+  - extracts the middle `short` from each resolved `uint6` triple
+  - appends those values into a caller-owned dynamic `int` array
+  - so this is not a one-off query:
+    - it bulk-collects live selector/group ids from the `+0x408` table
+- `FUN_016fd070(...)`
+  - is a high-level hit / trace / collision path that repeatedly resolves packed triples from the same `+0x408` table
+  - during the live-part loop it uses:
+    - `FUN_05409550(*(runtime + 0x1068) + 0x408, part_desc[0x5e])`
+  - then forwards the extracted middle selector into `FUN_016c1cf0(...)`
+  - later it also resolves the incoming `param_2[0]` id through the same triple table before calling `FUN_01620030(...)`
+
+### `FUN_01620030`
+
+Confirmed behavior:
+- takes a packed triple pointer but only consumes:
+  - `*(short *)(triple + 0x00)`
+- validates that first `short` against:
+  - `manager + 0x3e0`
+  - indirection table `manager + 0x368`
+  - final live-object table `manager + 0x548`
+- returns the live object pointer at:
+  - `*(manager + 0x548) + mapped_idx * 0x40`
+
+Interpretation:
+- this makes `word0` of the packed triple the best current candidate for:
+  - live damageable-part descriptor id
+  - or canonical visual/damage node key that resolves to a `0x40`-stride live object entry
+- together with `FUN_0161c7b0(...)` and `FUN_0169d060(...)`, the packed triple now splits cleanly into:
+  - `word0` = live-object lookup id
+  - `word1` = selector/group id
+  - `word2` = still unresolved tail field
+
+### `FUN_0162a550`
+
+Confirmed behavior:
+- resolves a packed triple through:
+  - `FUN_05409550(param_1 + 0x408, idx)`
+- then consumes only the low `short` of that triple
+- if the resolved low `short` is valid, it reads:
+  - `*(byte *)(*(long *)(param_1 + 0x3d8) + (long)word0 * 0x14 + 2)`
+- bit `0x4` in that `0x14`-stride metadata record gates whether a bitset at `param_1 + 0x2a8` is consulted
+
+Interpretation:
+- this is a second independent confirmation that `word0` is not just an opaque id:
+  - it indexes descriptor metadata at `+0x3d8`
+  - and also resolves through `FUN_01620030(...)` into live `0x40`-stride objects
+- so `word0` is now best read as the canonical live damageable-descriptor id in this triple family
+
+### `FUN_0162b6e0`
+
+Confirmed behavior:
+- resolves a packed triple through:
+  - `FUN_05409550(param_1 + 0x408, idx)`
+- then consumes only the low `short` of that triple
+- if the resolved `word0` is valid, it checks bit `0x2` in:
+  - `*(byte *)(*(long *)(param_1 + 0x3d8) + (long)word0 * 0x14 + 2)`
+- if that bit is set, it also consults a nibble-packed state table at:
+  - `param_1 + 0x5e8/+0x5f0`
+
+Interpretation:
+- together with `FUN_0162a550(...)`, this makes the `+0x3d8` `0x14`-stride metadata family tightly bound to `triple.word0`
+- so `word0` is now confirmed to participate in:
+  - live object lookup
+  - descriptor metadata lookup
+  - runtime gating / state suppression checks
+
+### `FUN_0161caf0`
+
+Confirmed behavior:
+- walks a linked list under:
+  - `*(long *)(*(long *)(param_1 + 0x50) + 0x60)`
+- for each node it resolves a packed triple through:
+  - `FUN_05409550(param_1 + 0x408, *(ushort *)(node + 0xbc))`
+- then compares only the low `short` of that triple against `*param_2`
+- on match, it computes and returns volume / bounds data from that same node
+
+Interpretation:
+- this is another independent consumer where only `word0` matters
+- so the packed triple's low word is also the lookup key into the volume/query path, not just the live-object path
+
+Current refinement:
+- across `FUN_01620030`, `FUN_0162a550`, `FUN_0162b6e0`, and `FUN_0161caf0`:
+  - `word0` is consistently the canonical descriptor id
+- across `FUN_0161c7b0`, `FUN_0169d060`, and `FUN_016fd070`:
+  - `word1` is consistently the selector/group id
+- `word2` still has no direct consumer in the strongest currently analyzed runtime paths
+
+### `FUN_00a9a770`
+
+Confirmed behavior:
+- resolves an interned id through the packed triple table at:
+  - `*(runtime + 0x350) + 0x148`
+- materializes the full 6-byte triple twice into a local stack buffer
+- first sends that stack triple into:
+  - `FUN_0162a0c0(runtime, &triple)`
+- then sends the same stack triple into:
+  - `FUN_0161c7b0(runtime, &triple, enable, !enable)`
+
+Interpretation:
+- this is a useful bridge because it proves there is at least one runtime path that carries the full packed triple as a local object, not just extracted `word0` or `word1`
+- however, the first helper it feeds still only consumes `word0`
+
+### `FUN_0162a0c0`
+
+Confirmed behavior:
+- consumes only:
+  - `*param_2` / `triple.word0`
+- checks:
+  - `*(short *)(*(long *)(runtime + 0x648) + word0 * 2) != -1`
+- and then calls:
+  - `FUN_016288b0()`
+
+Interpretation:
+- this is yet another independent `word0` consumer
+- it ties `word0` to an additional remap/lookup table at `runtime + 0x648`
+- but still does not reveal a direct use of `word2`
+
+### `FUN_00a69d70`
+
+Confirmed behavior:
+- resolves an interned id into a full packed triple from:
+  - `*(runtime + 0x350) + 0x148`
+- carries the full `6`-byte triple in locals:
+  - `local_2e/local_2c/local_2a`
+- then passes that full triple into:
+  - `FUN_01620b50(runtime, &triple, short_timer, 0)`
+  - `FUN_0162a0c0(runtime, &triple, 0)`
+  - `FUN_0161c7b0(runtime, &triple, 0, 1)`
+  - `FUN_01d213f0(param_1, param_2[0x212], &triple)`
+- the caller itself only directly inspects descriptor metadata via `+0x3d8`, not `word2`
+
+Interpretation:
+- this is another bridge path showing the full packed triple is preserved across several downstream helpers
+- but it still does not provide a direct caller-side consumer for `word2`
+- it does narrow the next target:
+  - if `word2` matters, `FUN_01620b50(...)` or `FUN_01d213f0(...)` are now stronger candidates than this caller
+
+### `FUN_016f45f0`
+
+Confirmed behavior:
+- resolves an interned id into a full packed triple from:
+  - `*(runtime + 0x350) + 0x148`
+- carries that full triple in locals:
+  - `local_2e/local_2c/local_2a`
+- then passes it into:
+  - `FUN_01620b50(runtime, &triple, timer, 0)`
+  - `FUN_01620300(runtime, &triple)`
+  - `FUN_0161c7b0(runtime, &triple, 0, 1)` and `FUN_0161c7b0(runtime, &triple, 2, 3)`
+  - `FUN_01d213f0(param_1, *(DAT_00001090 + unit), &triple)`
+- the caller also does:
+  - `FUN_014f6b40(id)`
+  - `FUN_0161c3f0(...)`
+  before the `FUN_0161c7b0(...)` writes
+
+Interpretation:
+- like `FUN_00a69d70(...)`, this is a strong full-triple bridge path
+- but it still never reads `word2` directly at caller level
+- current best hypothesis is now stronger:
+  - if `word2` has semantic meaning, it is most likely consumed in downstream helpers such as `FUN_01620b50(...)`, `FUN_01620300(...)`, or `FUN_01d213f0(...)`
+
+### `FUN_01620b50`
+
+Confirmed behavior:
+- consumes only:
+  - `*param_2` / `triple.word0`
+- compares that `word0` against the first `short` field of the `0x14`-stride metadata record at:
+  - `*(long *)(runtime + 0x3d8) + word0 * 0x14`
+- if the current short differs from `param_3`, it forwards to:
+  - `FUN_01620450(runtime, triple, param_3)`
+  - and sets `*(byte *)(runtime + 0x6b8) = 1`
+
+Interpretation:
+- this is another pure `word0` consumer
+- so one more of the strongest downstream helpers still ignores `word2`
+
+### `FUN_01620300`
+
+Confirmed behavior:
+- consumes only:
+  - `*param_2` / `triple.word0`
+- uses that low `short` to read a nibble-packed state value from:
+  - `runtime + 0x5e8/+0x5f0`
+
+Interpretation:
+- this reinforces the current split:
+  - `word0` drives descriptor-state lookup
+  - `word1` drives selector/group behavior
+- no evidence here for `word2`
+
+### `FUN_01d213f0`
+
+Confirmed behavior:
+- consumes:
+  - `*param_3` / `triple.word0`
+  - `param_3[1]` / `triple.word1`
+- it uses `word0` to clear matching `short` lists embedded in the `0x300`-stride side-record family at:
+  - `+0x1ec/+0x1f0`
+  - `+0x22c/+0x230`
+  - `+0x24c/+0x250`
+- it then uses `word1` directly in the downstream object loop:
+  - compares `*(int *)(obj + 0x1fc)` and `*(int *)(obj + 0x23c)` against `(int)param_3[1]`
+- there is still no direct read of:
+  - `param_3[2]` / `triple.word2`
+
+Interpretation:
+- this is the strongest downstream confirmation so far that the packed triple's meaningful live payload is concentrated in:
+  - `word0` = descriptor id
+  - `word1` = selector/group id
+- `word2` remains unused even in one of the main helpers that receives the full triple from both `FUN_00a69d70(...)` and `FUN_016f45f0(...)`
+
+### builder-side refinement from `FUN_054095b0`
+
+Confirmed behavior:
+- `FUN_054095b0(...)` still does not write the packed `6`-byte triple table directly
+- but it very clearly builds the adjacent container families that feed the same ecosystem:
+  - appends a compact `ushort` id into the id list at `param_2`
+  - appends a default `0x130` rule record into the table at `param_2 + 0x10`
+  - appends a default `0x14` metadata record into the table at `param_3`
+- the appended `0x14` metadata record is initialized with:
+  - first `ushort` = interned id returned by the name lookup/insert
+  - second `short` = metadata-record index
+  - remaining fields seeded to defaults like `0x000a`, `0xffff`, and `-1.0f`
+- the function returns:
+  - low `ushort` = interned id
+  - high `ushort` = metadata-record index
+
+Interpretation:
+- this further tightens the builder-side link between:
+  - canonical interned ids
+  - the `0x14` descriptor metadata family
+  - the broader packed-triple / rule-record ecosystem
+- but it still does not reveal the first direct seed of `triple.word2`
+- after this pass, the best remaining upstream candidate for `word2` seeding is no longer `FUN_054095b0(...)` itself, but the larger manager builder:
+  - `FUN_0163db10(...)`
+
+### `FUN_0163db10`
+
+Confirmed behavior:
+- is the first direct builder now identified for the packed `6`-byte triple table at:
+  - `*(manager + 0x350) + 0x148`
+- it resizes that table to match the current descriptor count and initializes new entries to `0xffff`
+- it also rebuilds the adjacent `0x14` metadata family at:
+  - `manager + 0x3d8`
+- for each descriptor index `idx`, it seeds metadata as:
+  - `*(short *)(meta + 0x04) = idx`
+  - `*(short *)(meta + 0x08) = *(short *)(manager + 0x358 + idx * 2)`
+  - `*(short *)(meta + 0x06) = FUN_014f6b60(name_from_damageModelParts_blk)`
+- once that interned part-id is valid, it writes the triple entry directly:
+  - `*(uint32 *)(triple + 0x00) = *(uint32 *)(meta + 0x04)`
+  - `*(ushort *)(triple + 0x04) = *(ushort *)(meta + 0x08)`
+- in `ushort` terms this means:
+  - `triple.word0 = *(short *)(meta + 0x04) = descriptor index`
+  - `triple.word1 = *(short *)(meta + 0x06) = interned damage-part id`
+  - `triple.word2 = *(short *)(meta + 0x08) = upstream selector/remap id from manager + 0x358`
+
+Interpretation:
+- this is the first concrete seed-site for all three packed-triple words
+- it forces a refinement of the earlier semantics:
+  - `word0` is not just a generic live-object lookup id; it is the descriptor index that later drives live-object lookup, metadata lookup, and gating
+  - `word1` is the interned damage-part id produced from `damageModelParts.blk` names
+  - `word2` is not spare in the builder at all; it is the upstream selector/remap id copied from the compact `ushort` table at `manager + 0x358`
+- downstream runtime consumers still mostly use:
+  - `word0` for descriptor/object/metadata lookups
+  - `word1` for part-id / group-style behavior
+- but the builder proves `word2` is a real seeded field, even if few hot consumers have used it in the paths checked so far
+
+### `FUN_01631fa0` refinement for `manager + 0x358`
+
+Confirmed behavior:
+- `FUN_01631fa0(...)` is the upstream builder that prepares the compact selector tables consumed later by `FUN_0163db10(...)`
+- it allocates and clears a temporary `ushort` table at:
+  - `manager + 0x324`
+- then, for each active descriptor record in `manager + 0x1ec`:
+  - reads the interned canonical name id from `*(short *)(record + 0x06)`
+  - resolves that id back to a string through `FUN_014f6b40(...)`
+  - binary-searches the seat registry with `FUN_00a67bb0(...)`
+  - stores the resulting seat-registry selector into:
+    - `*(ushort *)(*(long *)(manager + 0x324) + descriptor_index * 2)`
+- later in the same function it materializes per-seat `%s_dm` tuple tables at `manager + 0x80`
+  - tuple field `+0x04` is copied from the seat-registry selector array
+
+Interpretation:
+- this narrows `manager + 0x358` from a vague compact `ushort` array to a selector/remap table in the same semantic family as the temporary builder table at `manager + 0x324`
+- together with `FUN_0163db10(...)`, the current best chain is:
+  - canonical name/id -> seat-registry selector via `FUN_01631fa0`
+  - compact selector table near `manager + 0x358`
+  - `meta + 0x08`
+  - `triple.word2`
+- so `word2` is best read as the seat-registry-derived selector/remap id, not a generic spare field
+
+### `FUN_01521a70` / `FUN_015ea070`
+
+Confirmed behavior:
+- these helpers are broad container builders/resizers for the adjacent setup families used by `FUN_0163db10(...)`
+- they resize:
+  - compact `ushort` arrays
+  - `0x130` descriptor records
+  - another `ushort` array
+  - `uint32` tables
+  - `0x14` metadata records
+- but they do not themselves reveal new semantics for `word2`
+
+Interpretation:
+- they support the same build chain structurally
+- but the semantic source of `word2` is better explained by `FUN_01631fa0(...)` plus the direct write in `FUN_0163db10(...)`
+
+### explicit canonical -> Toy examples from local data
+
+Confirmed local examples:
+- `config/damagemodelparts.blkx` exposes canonical damage-part classes such as:
+  - `body`
+  - `gun_barrel`
+  - `cannon_breech`
+  - `track`
+  - `gunner`
+  - `optic`
+  - `optic_gun`
+- `config/damagemodel.blkx` and tankmodel files then expose nearby DM/node names in a different namespace layer:
+  - `gun_barrel_dm`
+  - `optic_gun_dm`
+  - `gunner_dm`
+  - `bone_gun_barrel`
+  - `bone_gun`
+  - `bone_turret`
+- concrete example from `fr_amx_30_1972.blkx`:
+  - weapon emitter = `bone_gun_barrel`
+  - `barrelDP = "gun_barrel_dm"`
+  - turret nodes:
+    - `head = "bone_turret"`
+    - `gun = "bone_gun"`
+    - `barrel = "bone_gun_barrel"`
+  - crew binding:
+    - `gunnerDm = "gunner_dm"`
+
+Interpretation:
+- current best explicit mapping examples are:
+  - canonical `gun_barrel`
+    - -> DM part `gun_barrel_dm`
+    - -> visual node `bone_gun_barrel`
+  - canonical `gunner`
+    - -> DM part `gunner_dm`
+  - canonical `optic_gun`
+    - -> DM part `optic_gun_dm`
+  - canonical `track`
+    - -> DM parts `track_l_dm` / `track_r_dm`
+- so `word1` should be read as an interned canonical damage-part id, while `Toy` often exposes a neighboring but not identical DM/node name
+
+Working matrix from local tank examples (`ussr_bt_7_1937`, `fr_amx_30_1972`):
+
+| canonical / `word1` family | DM / repair name layer | tankmodel binding layer |
+| --- | --- | --- |
+| `body` | `body_dm` | hull/body aggregate, unit-level body bindings |
+| `gun_barrel` | `gun_barrel_dm` | `barrelDP = "gun_barrel_dm"`, `emitter = "bone_gun_barrel"`, turret `barrel = "bone_gun_barrel"` |
+| `cannon_breech` | `cannon_breech_dm` | `breechDP = "cannon_breech_dm"` |
+| `gunner` | `gunner_dm` | crew `dmPart = "gunner_dm"`, weapon/turret `gunnerDm = "gunner_dm"` |
+| `optic_gun` | `optic_gun_dm` | optic damage-part blocks under tankmodel / damage model |
+| `track` | `track_l_dm`, `track_r_dm` | left/right track node sets and repair groups |
+
+Interpretation:
+- this matrix matches the reverse-engineered namespace split:
+  - `word1` = canonical damage-part class/id
+  - DM layer = `*_dm` / repair / hit part names
+  - tankmodel layer = bone/node and weapon binding names
+- so the practical mapping task is no longer “what kind of field is `word1`?”:
+  - it is now “which canonical class expands to which DM/node variants for the current vehicle?”
+
+Seat-registry confirmation for `word2`:
+- `FUN_0161ac60(manager, seat)` returns the per-seat registry at:
+  - `manager + 0x578 + seat * 0x20`
+- `FUN_00a67bb0(registry, name)` binary-searches the sorted name table inside that registry
+- combined with `FUN_01631fa0(...)`, this keeps the current `word2` reading stable:
+  - `word2` = selector/remap id obtained from the sorted seat registry for the canonical name
+- `FUN_0161ad00(manager, seat)` now makes the runtime side concrete:
+  - it walks the aligned `ushort` selector table at `registry + 0x10`
+  - resolves each selector against the live seat holder at `manager + 0x88[seat]`
+  - and materializes the resulting `uint32` remap/state cache at `manager + 0x630`
+- `FUN_016278d0(...)` is a concrete downstream user of that family:
+  - it takes `param_5 & 0xffff` as the resolved selector/remap index
+  - uses that low `ushort` against the live holder at `manager + 0x88[seat]`
+  - and forwards the resolved transform/state into `FUN_01625d20(...)`
+- `FUN_01625d20(...)` is therefore the live trace/effect applier below the same selector/remap path
+- `FUN_01621390(...)` remains the matching updater for the `manager + 0x88[seat]` holder
+- practical runtime chain now:
+  - canonical name
+  - -> seat-registry selector
+  - -> compact selector table near `manager + 0x358`
+  - -> packed triple `word2`
+  - -> runtime `uint32` remap cache at `manager + 0x630` (`FUN_0161ad00`)
+  - -> low-16 slot lookup in `manager + 0x88[seat]` (`FUN_016278d0`)
+
+Practical working matrix for the strongest current groups:
+
+| canonical / `word1` | likely `word2` selector family | DM / repair names seen in Toy | tankmodel / node bindings seen in Toy |
+| --- | --- | --- | --- |
+| `gun_barrel` | gun/weapon seat selector family, typically on `gunner0` weapon chains | `gun_barrel_dm`, `gun_barrel_01_dm`... | `barrelDP`, `emitter = bone_gun_barrel`, turret `barrel = bone_gun_barrel` |
+| `cannon_breech` | same gun/weapon seat family as barrel | `cannon_breech_dm`, `cannon_breech_01_dm`... | `breechDP = cannon_breech_dm` |
+| `gunner` | crew/seat selector family on gunner-related seats | `gunner_dm`, `gunner_01_dm`, ... | crew `dmPart = gunner_dm`, weapon `gunnerDm = gunner_dm` |
+| `optic_gun` | sight/optic selector family near gunner sight bindings | `optic_gun_dm`, `optic_gun_01_dm` | optic damage blocks; likely tied to gunner sight/optic records |
+| `track` | left/right chassis selector family, likely split by side | `track_l_dm`, `track_r_dm`, `track_l_01_dm`, `track_r_01_dm` | left/right track node groups and repair blocks |
+| `body` | hull/body selector family | `body_dm` | hull/body aggregate bindings |
+
+Interpretation:
+- the `+0x408` / packed-triple accessor path is now confirmed in:
+  - build-time setup
+  - runtime query/volume logic
+  - bulk selector/group enumeration
+  - trace/collision filtering
+  - hit/impact forwarding
+- so this container family is not peripheral bookkeeping:
+  - it is central to live damageable-part selection
+
+### `FUN_0169b090`
+
+Confirmed behavior:
+- is a formatting helper for interned ids and special encoded part names
+- if the high-bit/encoding path is not taken, it simply returns:
+  - `FUN_014f6b40(id)`
+
+Interpretation:
+- this is a lightweight confirmation that interned ids in this runtime family are expected to be rendered back into human-readable names
+- useful as a secondary proof of the reversible name path, but less directly tied to the damage registry than:
+  - `FUN_00a74680`
+  - `FUN_016fea00`
+
+### `FUN_01620450` / `FUN_01620b50`
+
+Confirmed behavior:
+- `FUN_01620b50(...)` is a thin change-gate around `FUN_01620450(...)`
+- `FUN_01620450(...)` updates one live damage/health slot in:
+  - `*(long *)(manager + 0x3d8) + slot * 0x14`
+- triggers downstream callbacks when the value changes
+
+Interpretation:
+- these are live state mutators layered below the registry / descriptor builders
+- they do not enumerate canonical names or consume the per-seat `"%s_dm"` tuple table directly
+- useful mainly as proof that the registry/descriptor families already feed concrete mutable runtime state
+
+### `FUN_0161c3f0`
+
+Confirmed behavior:
+- uses `FUN_0161ac60(param_1, seat)` to get a seat registry
+- uses `FUN_00a67bb0(registry, param_2)` to find a name within that registry
+- on success, reads:
+  - `*(ushort *)(*(long *)(registry + 0x10) + idx * 2)`
+  - as the selector/id corresponding to that name
+- then applies that selector/id back into the live seat object at:
+  - `*(param_1 + 0x88)[seat]`
+
+Interpretation:
+- this is strong proof that the seat registry is the canonical name -> selector map for each seat
+- and that the selector values written into `record + 0x50` are not anonymous ids:
+  - they are looked up and manipulated by name through this registry
+
+### `FUN_00a67bb0`
+
+Confirmed behavior:
+- takes `(registry, name)`
+- binary-searches `*(char ***)registry` with count `*(int64 *)(registry + 8)`
+- returns the matching slot index or `0xffffffff`
+
+Interpretation:
+- this closes the front-end shape of the seat registry:
+  - `+0x00` = sorted name table
+  - `+0x08` = count
+- together with `FUN_0161c3f0`, we now know the next aligned field too:
+  - `+0x10` = selector/id table
+
 ### `FUN_01d5ec30`
 
 Confirmed behavior:

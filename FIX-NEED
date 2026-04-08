@@ -3,3 +3,4 @@
 
 sinperMode: Bind Hitpoint/Leadmark/EnemyBox
 Del NAME_PREFIXES
+Dup Unit on Dead(has change: Unit Profiles)
