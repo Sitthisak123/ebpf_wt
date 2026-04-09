@@ -1,5 +1,5 @@
 *venv
-*cache*
+
 
 GEMINI.md
 GhidrAssistMCP
@@ -8,4 +8,5 @@ gemini*.log
 dumps
 .gemini
 datamine/
+__pycache__
 

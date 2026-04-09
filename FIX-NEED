@@ -4,3 +4,50 @@
 sinperMode: Bind Hitpoint/Leadmark/EnemyBox
 Del NAME_PREFIXES
 Dup Unit on Dead(has change: Unit Profiles)
+
+"xda-7@xda7-hq-linux:/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt$ sudo venv/bin/python radar_overlay.py 
+[sudo] password for xda-7:         
+[!] Persistence warning: ballistic ignored due to build fingerprint mismatch
+[*] 💾 AUTO-SAVED! Ballistic persistence: layout=layout_old_guess base=0x2058 speed=0x2050 mass=0x205c cal=0x2060 cx=0x2064 maxDist=0x2068 vrX=0x207c vrY=0x2080 source=radar_overlay_auto_ballistic tool=radar_overlay conf=0.68
+[!] Persistence warning: bbox ignored due to build fingerprint mismatch
+[*] 📐 Loaded Vertical Baseline Config
+    path=config/vertical_baseline_table.json | buckets=3 | profiles=7
+    source=hitpoint_calibration_autobuild | tool=vertical_baseline_config_builder
+
+=======================================================
+🚀 [SYSTEM BOOT] กำลังสแกนหา Offsets ด้วย AI สถิติ...
+=======================================================
+[*] 🔍 1/5 ค้นหา CGame Base (DAT_MANAGER)...
+  [+] BINGO! CGame = 0x9760d18 (live=480)
+[*] 🔍 2/5 ค้นหา My Unit (DAT_CONTROLLED)...
+  [+] ✅ BINGO! My Unit = 0x9917328
+[*] 🔍 3/5 ค้นหาโครงสร้างตัวถัง (Struct Offsets)...
+  [+] ✅ BINGO! UNIT_X = 0xd00
+  [!] Persistence warning: bbox fallback is active
+  [+] 📦 FALLBACK BBOX! BBMIN = 0x238
+  [+] 📦 FALLBACK BBOX! BBMAX = 0x244
+  [+] 💾 AUTO-SAVED! BBMIN = 0x238 BBMAX = 0x244
+[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...
+  [+] ✅ BINGO! INFO = 0xfe8 (โหวต 148 เสียง)
+  [+] ✅ BINGO! TEAM = 0xfd8 (โหวต 22 เสียง)
+  [+] ✅ BINGO! STATE = 0xf58 (โหวต 191 เสียง)
+  [+] ✅ BINGO! RELOAD = 0xab0 (RELOADING = 0x994) (โหวต 2 เสียง)
+  [+] ✅ BINGO! AIR_VEL = 0x318 (โหวต 1 เสียง)
+  [+] ✅ BINGO! AIR_MOVEMENT = 0x18 (โหวต 1 เสียง)
+  [+] ✅ BINGO! GROUND_SMART = 0x1ef8 (โหวต 16 เสียง)
+[*] 🔍 8/8 ค้นหา Visual System (Triple-Chain DNA)...
+  [+] ✅ DNA MATCH! CAMERA_PTR = 0x670
+  [+] ✅ DNA MATCH! Found Chain: 0x1c0 -> 0x101
+  [+] ✅ BINGO! VIEW_MATRIX = 0x1d0
+  [!] Persistence warning: view matrix ignored due to build fingerprint mismatch
+  [!] Persistence warning: view matrix ignored due to build fingerprint mismatch
+  [+] 💾 AUTO-SAVED! CAMERA_PTR = 0x670 VIEW_MATRIX = 0x1d0
+  [+] ✅ KEEP CGame = 0x9760d18 (live=480) | reject refined live=0
+=======================================================
+
+QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
+[DEBUG] อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป
+[DEBUG] อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป
+[DEBUG] อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป
+"
+
