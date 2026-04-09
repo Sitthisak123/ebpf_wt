@@ -1920,6 +1920,30 @@ Interpretation:
   - tankmodel layer = bone/node and weapon binding names
 - so the practical mapping task is no longer “what kind of field is `word1`?”:
   - it is now “which canonical class expands to which DM/node variants for the current vehicle?”
+- strongest explicit current one-to-one mappings:
+  - `gun_barrel`
+    - has direct runtime string proof as `"gun_barrel"`
+    - canonical class in `damageModelParts.blk`
+    - DM layer in `damagemodel.blk`: `gun_barrel_dm`, `gun_barrel_01_dm`, ...
+    - tankmodel layer in `BT-7` / `AMX-30`: `barrelDP = "gun_barrel_dm"`, `emitter = "bone_gun_barrel"`, turret `barrel = "bone_gun_barrel"`
+  - `cannon_breech`
+    - canonical class in `damageModelParts.blk`
+    - DM layer: `cannon_breech_dm`, `cannon_breech_01_dm`, ...
+    - tankmodel binding through `breechDP = "cannon_breech_dm"`
+  - `gunner`
+    - canonical class/templates in `damageModelParts.blk`
+    - DM layer: `gunner_dm`, `gunner_01_dm`, ...
+    - tankmodel bindings through crew `dmPart = "gunner_dm"` and weapon/turret `gunnerDm = "gunner_dm"`
+  - `optic_gun`
+    - canonical class in `damageModelParts.blk`
+    - DM layer: `optic_gun_dm`, `optic_gun_01_dm`
+    - tankmodel layer appears in optic/sight damage blocks
+  - `track`
+    - canonical family expands into split left/right DM names
+    - local examples consistently expose `track_l_dm` / `track_r_dm`
+  - `body`
+    - canonical family maps to `body_dm`
+    - related runtime interner proof already exists through lazy intern of `"body_dm"`
 
 Seat-registry confirmation for `word2`:
 - `FUN_0161ac60(manager, seat)` returns the per-seat registry at:
@@ -1935,7 +1959,26 @@ Seat-registry confirmation for `word2`:
   - it takes `param_5 & 0xffff` as the resolved selector/remap index
   - uses that low `ushort` against the live holder at `manager + 0x88[seat]`
   - and forwards the resolved transform/state into `FUN_01625d20(...)`
-- `FUN_01625d20(...)` is therefore the live trace/effect applier below the same selector/remap path
+- `FUN_01625d20(...)` is therefore the live trace/effect applier below the same selector/remap path:
+  - it is only called by `FUN_016278d0(...)` and `FUN_0162aac0(...)`
+  - it first checks the seat-holder-side active list for the incoming selector/remap `ushort`
+  - builds the actual collision / effect candidate through `FUN_0161d4e0(...)`
+  - commits/enqueues it through `FUN_019240c0(...)` + `FUN_01925700(...)`
+  - and mirrors the committed result back into the live seat holder through `FUN_0161b220(...)`
+- `FUN_0162aac0(...)` is now identified as the bulk-dispatch sibling of `FUN_016278d0(...)`, not a separate destination family:
+  - it is only called by `FUN_00a96e40(...)`
+  - starts by clearing/preparing selector state through `FUN_0162a8a0(...)`
+  - iterates a descriptor list whose entries index `manager + 0x658`
+  - resolves live object transforms from the seat-0 holder at `manager + 0x88[0]`
+  - then forwards each selected descriptor into the same `FUN_01625d20(...)` commit path
+- `FUN_0162a8a0(...)` is the matching pre-clear helper for that bulk path:
+  - it walks the same `manager + 0x658` descriptors
+  - zeroes the corresponding live holder slots in `manager + 0x88[0/1]`
+  - and also clears mirrored state through the optional `+0x130` fallback store
+- `FUN_019240c0(...)` is the queue allocator/commit stage beneath `FUN_01625d20(...)`:
+  - it copies the full `0x3b0` event/effect candidate into the global queue under `DAT_09915e20`
+  - returns the queue slot index
+  - and `FUN_01925700(...)` then attaches the holder/object identity and selector metadata to that slot
 - `FUN_01621390(...)` remains the matching updater for the `manager + 0x88[seat]` holder
 - practical runtime chain now:
   - canonical name
@@ -1943,7 +1986,81 @@ Seat-registry confirmation for `word2`:
   - -> compact selector table near `manager + 0x358`
   - -> packed triple `word2`
   - -> runtime `uint32` remap cache at `manager + 0x630` (`FUN_0161ad00`)
-  - -> low-16 slot lookup in `manager + 0x88[seat]` (`FUN_016278d0`)
+  - -> either single-dispatch lookup in `manager + 0x88[seat]` (`FUN_016278d0`) or bulk descriptor dispatch via `manager + 0x658` + `manager + 0x88[0]` (`FUN_0162aac0`)
+  - -> collision / effect candidate build (`FUN_0161d4e0`)
+  - -> event/commit queue (`FUN_019240c0` / `FUN_01925700`)
+  - -> live holder state writeback (`FUN_0161b220`)
+
+Current step closure:
+- the destination side of `word2` is now closed:
+  - it lands in one live event/effect commit family through either the single-dispatch caller `FUN_016278d0(...)` or the bulk-dispatch sibling `FUN_0162aac0(...)`
+- the strongest current canonical one-to-one mappings are also closed enough to use:
+  - `gun_barrel`
+  - `cannon_breech`
+  - `gunner`
+  - `optic_gun`
+  - `track`
+  - `body`
+- remaining work after this step is no longer destination tracing:
+  - it is bulk extraction/reporting of selector families per canonical class for concrete vehicles
+
+Concrete per-vehicle extraction now started with `fr_amx_30_1972`:
+
+| canonical / `word1` | selector-family reading | explicit DM names in vehicle data | explicit binding / trigger data in vehicle data |
+| --- | --- | --- | --- |
+| `gun_barrel` | gun / weapon selector family | `gun_barrel_dm`, `gun_barrel_01_dm`, `gun_barrel_02_dm`, ... | main weapon `trigger = "gunner0"`, `barrelDP = "gun_barrel_dm"`, `emitter = "bone_gun_barrel"`, turret `barrel = "bone_gun_barrel"`; coaxial path `trigger = "gunner1"`, `barrelDP = "gun_barrel_01_dm"`, `emitter = "bone_gun_barrel_01"` |
+| `cannon_breech` | same gun / weapon selector family as barrel | `cannon_breech_dm`, `cannon_breech_01_dm`, ... | main weapon `breechDP = "cannon_breech_dm"` |
+| `gunner` | gunner / crew selector family | `gunner_dm`, `gunner_01_dm`, `gunner_02_dm`, `gunner_03_dm` | `tank_crew.gunner.dmPart = "gunner_dm"`; turret weapon blocks use `gunnerDm = "gunner_dm"` |
+| `optic_gun` | gunner / optic selector family | `optic_gun_dm`, `optic_gun_01_dm` | sight / optic damage blocks present in local DM data; canonical family still aligns with gunner sight path |
+| `track` | left / right chassis selector family | `track_l_dm`, `track_r_dm`, `track_l_01_dm`, `track_r_01_dm` | wheel damage links collapse into `track_l_dm` / `track_r_dm` through `onKill` mappings |
+| `body` | hull / body selector family | `body_top_dm`, `body_front_dm`, `body_side_dm`, `body_back_dm`, `body_bottom_dm` and aggregate `body_dm` family | body-side meta groups aggregate many hull pieces; runtime canonical body family should sit above these DM names |
+
+Interpretation for the AMX-30 pass:
+- this is now enough to treat `fr_amx_30_1972` as a concrete reporting example for the current reverse model
+- `gun_barrel` and `cannon_breech` are the strongest explicit gunner-seat mappings
+- `gunner` and `optic_gun` remain the strongest crew / sight mappings
+- `track` and `body` show the expected chassis / hull split underneath the same canonical -> DM expansion model
+
+Cross-check against `ussr_bt_7_1937`:
+- the same canonical invariants repeat cleanly:
+  - `gun_barrel` -> `gun_barrel_dm` + turret `barrel = "bone_gun_barrel"` + weapon `emitter = "bone_gun_barrel"`
+  - `cannon_breech` -> `cannon_breech_dm`
+  - `gunner` -> `gunner_dm`
+  - `optic_gun` -> `optic_gun_dm`
+  - `track` -> `track_l_dm` / `track_r_dm`
+- the main variation between vehicles is not the canonical family itself, but the expansion shape:
+  - count of suffixed DM entries like `gun_barrel_01_dm`, `gun_barrel_02_dm`, ...
+  - whether secondary weapons share the same gunner family or fan out into additional trigger groups
+  - exact node/bone names for secondary barrels such as `bone_gun_barrel_01`
+- this makes the current split stronger:
+  - canonical class / `word1` is invariant enough across vehicles
+  - `word2` still selects the vehicle-local runtime selector/remap family
+  - DM/node bindings are the vehicle-specific expansion layer beneath that canonical class
+
+Current invariant vs vehicle-specific split:
+
+| layer | appears invariant across `BT-7` and `AMX-30` | appears vehicle-specific |
+| --- | --- | --- |
+| canonical / `word1` | `gun_barrel`, `cannon_breech`, `gunner`, `optic_gun`, `track`, `body` | additional optional classes and exact family population |
+| `word2` family reading | gun/weapon, gunner/optic, chassis/track, hull/body selector families | exact selector population and per-seat distribution |
+| DM layer | base names like `gun_barrel_dm`, `cannon_breech_dm`, `gunner_dm`, `track_l_dm`, `track_r_dm` | number of suffixed entries such as `_01_dm`, `_02_dm`, ... |
+| node/binding layer | gun/turret/body roles stay structurally similar | exact bones, extra emitters, secondary weapon bindings |
+
+Final reporting table for the current pass:
+
+| canonical / `word1` | runtime `word2` family | common invariant DM names | vehicle-specific examples |
+| --- | --- | --- | --- |
+| `gun_barrel` | gun / weapon selector family | `gun_barrel_dm` | `BT-7`: main gun `trigger = "gunner0"`, `emitter = "bone_gun_barrel"`; `AMX-30`: main gun `gunner0`, coaxial `gunner1`, with `gun_barrel_01_dm` and `bone_gun_barrel_01` expansions |
+| `cannon_breech` | gun / weapon selector family | `cannon_breech_dm` | `BT-7`: `breechDP = "cannon_breech_dm"`; `AMX-30`: same main-gun binding plus extra suffixed breech parts |
+| `gunner` | gunner / crew selector family | `gunner_dm` | `BT-7`: crew damage family only; `AMX-30`: `tank_crew.gunner.dmPart = "gunner_dm"` and turret `gunnerDm = "gunner_dm"` |
+| `optic_gun` | gunner / optic selector family | `optic_gun_dm` | `BT-7`: optic block plus turret optics; `AMX-30`: optic damage family present with `optic_gun_01_dm` expansion |
+| `track` | left / right chassis selector family | `track_l_dm`, `track_r_dm` | `BT-7`: base left/right tracks only; `AMX-30`: adds `track_l_01_dm` / `track_r_01_dm` and wheel `onKill` collapse into track parts |
+| `body` | hull / body selector family | `body_dm` family | `BT-7`: hull/body aggregate family; `AMX-30`: body-side DM pieces like `body_top_dm`, `body_front_dm`, `body_side_dm`, `body_back_dm`, `body_bottom_dm` |
+
+Use for `DynamicHitPoint`:
+- treat `word1` as the cross-vehicle canonical class
+- treat `word2` as the vehicle-local runtime selector/remap family for that class
+- treat DM names and node/binding names as the expansion layer to report per vehicle
 
 Practical working matrix for the strongest current groups:
 
