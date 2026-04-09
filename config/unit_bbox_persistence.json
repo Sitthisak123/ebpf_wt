@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-04-08T16:59:27.564181",
+  "updated_at": "2026-04-09T12:21:45.060882",
   "bbmin_off": 568,
   "bbmax_off": 580,
   "source": "scanner_auto_bbox",
@@ -7,7 +7,7 @@
   "confidence": 0.72,
   "build_fingerprint": {
     "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
-    "size": 156051896,
-    "mtime_ns": 1775516186000000000
+    "size": 156043736,
+    "mtime_ns": 1775627846000000000
   }
 }
