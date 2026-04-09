@@ -192,9 +192,10 @@ def _can_overwrite_persistence(path, new_confidence):
 class MemoryScanner:
     def __init__(self, pid):
         self.pid = pid
-        self.mem_fd = os.open(f"/proc/{pid}/mem", os.O_RDONLY)
         self.closed = False
         self.last_error = ""
+        self.mem_fd = -1
+        self.mem_fd = os.open(f"/proc/{pid}/mem", os.O_RDONLY)
 
     def read_mem(self, address, size):
         if self.closed:
@@ -233,7 +234,8 @@ class MemoryScanner:
         if self.closed:
             return
         try:
-            os.close(self.mem_fd)
+            if isinstance(self.mem_fd, int) and self.mem_fd >= 0:
+                os.close(self.mem_fd)
         except Exception:
             pass
         self.closed = True

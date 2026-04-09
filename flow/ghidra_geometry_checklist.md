@@ -360,7 +360,20 @@ Purpose:
     - this means `word2` is real builder payload, even if the hottest runtime consumers inspected so far mostly use only `word0` and `word1`
     - `FUN_0161ad00` now closes the next runtime step: it turns the seat-registry `ushort` selector table into a `uint32` remap/state cache at `manager + 0x630` by resolving through the live holder at `manager + 0x88[seat]`
     - `FUN_016278d0` then uses `param_5 & 0xffff` as that resolved selector/remap index against `manager + 0x88[seat]`, and forwards the resolved block into `FUN_01625d20(...)`
-    - `FUN_01625d20` is the live trace/effect applier beneath the same path, while `FUN_01621390` remains the matching updater for the `manager + 0x88[seat]` holder
+    - `FUN_01625d20` is the live trace/effect applier beneath the same path:
+      - caller set is only `FUN_016278d0` and `FUN_0162aac0`
+      - it builds the collision/effect candidate via `FUN_0161d4e0`
+      - commits it via `FUN_019240c0` / `FUN_01925700`
+      - and writes the result back into the same seat holder via `FUN_0161b220`
+    - `FUN_0162aac0` is the bulk-dispatch sibling of `FUN_016278d0`, not a separate destination family:
+      - only caller is `FUN_00a96e40`
+      - clears selector state first through `FUN_0162a8a0`
+      - iterates descriptor indices from `manager + 0x658`
+      - resolves live transforms from `manager + 0x88[0]`
+      - and still lands in the same `FUN_01625d20` commit path
+    - `FUN_0162a8a0` is the pre-clear helper for that bulk path, zeroing the matching live slots in `manager + 0x88[0/1]` plus optional `+0x130` mirrored storage
+    - `FUN_019240c0` is the queue allocator beneath `FUN_01625d20`, copying the full candidate into the global event/effect queue before `FUN_01925700` attaches holder identity and selector metadata
+    - `FUN_01621390` remains the matching updater for the `manager + 0x88[seat]` holder
     - explicit local examples now support the namespace split:
       - canonical `gun_barrel` -> DM part `gun_barrel_dm` -> visual node `bone_gun_barrel`
       - canonical `gunner` -> DM part `gunner_dm`
@@ -369,6 +382,13 @@ Purpose:
     - current working matrix from `BT-7` and `AMX-30` also supports:
       - canonical `cannon_breech` -> DM part `cannon_breech_dm`
       - canonical `body` -> DM part `body_dm`
+    - strongest explicit current one-to-one mappings:
+      - `gun_barrel` -> runtime string `"gun_barrel"` -> `gun_barrel_dm` -> `bone_gun_barrel`
+      - `cannon_breech` -> `cannon_breech_dm`
+      - `gunner` -> `gunner_dm`
+      - `optic_gun` -> `optic_gun_dm`
+      - `track` -> `track_l_dm` / `track_r_dm`
+      - `body` -> `body_dm`
     - `FUN_0161ac60` + `FUN_00a67bb0` keep the `word2` interpretation stable: it is a sorted seat-registry selector/remap id for the canonical name, not a free-form tag
     - strongest current group matrix:
       - `gun_barrel` / `cannon_breech` -> gun/weapon seat selector family
@@ -377,6 +397,33 @@ Purpose:
       - `body` -> hull/body selector family
     - `FUN_0161caf0` = concrete runtime query user of `FUN_05409550` against the same `6`-byte table
     - `FUN_0162a550`, `FUN_0162ac60`, and `FUN_016fecf0` add stronger proof that the same `+0x408` / triple-accessor path is used in runtime gating, trace/collision checks, and hit forwarding
+    - current step is effectively closed:
+      - destination side of `word2` lands in one live event/effect commit family
+      - remaining work is bulk vehicle-specific selector extraction, not more destination tracing
+    - first concrete vehicle-level reporting pass is now usable for `fr_amx_30_1972`:
+      - `gun_barrel` -> `gun_barrel_dm` / `gun_barrel_01_dm` ... -> `trigger = gunner0/gunner1`, `barrelDP`, `emitter`, turret `barrel`
+      - `cannon_breech` -> `cannon_breech_dm` -> main weapon `breechDP`
+      - `gunner` -> `gunner_dm` ... -> `tank_crew.gunner.dmPart`, turret `gunnerDm`
+      - `optic_gun` -> `optic_gun_dm` ... -> optic / sight damage blocks
+      - `track` -> `track_l_dm` / `track_r_dm` -> wheel `onKill` collapse into track parts
+      - `body` -> body-side DM pieces / aggregate body family
+    - `ussr_bt_7_1937` now confirms the same canonical invariants:
+      - `gun_barrel` -> `gun_barrel_dm` + `bone_gun_barrel`
+      - `cannon_breech` -> `cannon_breech_dm`
+      - `gunner` -> `gunner_dm`
+      - `optic_gun` -> `optic_gun_dm`
+      - `track` -> `track_l_dm` / `track_r_dm`
+    - current split is therefore:
+      - canonical class / `word1` is largely invariant across vehicles
+      - `word2` chooses the vehicle-local selector/remap family
+      - DM/node names are the per-vehicle expansion layer
+    - final reporting table for the current pass:
+      - `gun_barrel` -> gun/weapon family -> invariant `gun_barrel_dm` -> vehicle-specific weapon triggers / barrel bones
+      - `cannon_breech` -> gun/weapon family -> invariant `cannon_breech_dm` -> vehicle-specific breech expansions
+      - `gunner` -> gunner/crew family -> invariant `gunner_dm` -> vehicle-specific crew/turret bindings
+      - `optic_gun` -> gunner/optic family -> invariant `optic_gun_dm` -> vehicle-specific optic expansions
+      - `track` -> left/right chassis family -> invariant `track_l_dm` / `track_r_dm` -> vehicle-specific extra track/wheel collapse rules
+      - `body` -> hull/body family -> invariant `body_dm` family -> vehicle-specific body-side DM pieces
     - `FUN_0169d060` is the first clear bulk collector over this table: it walks mapping tables, resolves many `uint6` triples through `FUN_05409550`, extracts the middle `short`, and appends those selector/group ids into an output vector
     - current best split of the packed `uint6` triple is: `word0 = descriptor index`, `word1 = interned damage-part id`, `word2 = upstream selector/remap id`
     - `FUN_016fd070` is a higher-level hit / trace path that repeatedly resolves the same packed triples during live-part processing, not just at the final forwarding edge
