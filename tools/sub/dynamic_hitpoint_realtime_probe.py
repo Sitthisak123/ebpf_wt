@@ -305,6 +305,7 @@ def dump_triples(scanner, manager, limit):
     data_ptr = read_u64(scanner, base + 0x00)
     count_u32 = read_u32(scanner, base + 0x08)
     cap_u32 = read_u32(scanner, base + 0x0C)
+    live_rows = 0
     print(
         f"[triples @ manager+0x408] base={hex0(base)} data={hex0(data_ptr)} "
         f"count_u32={count_u32} cap_u32={cap_u32}"
@@ -316,22 +317,39 @@ def dump_triples(scanner, manager, limit):
             for idx in range(0, min(len(raw) // 6, want)):
                 off = idx * 6
                 word0, word1, word2 = struct.unpack_from("<HHH", raw, off)
+                if (word0, word1, word2) != (0xFFFF, 0xFFFF, 0xFFFF):
+                    live_rows += 1
                 print(
                     f"  triple[{idx:02d}] word0={word0:5d} word1={word1:5d} word2={word2:5d} "
                     f"| hex=({word0:#06x}, {word1:#06x}, {word2:#06x})"
                 )
-            return
+            return {
+                "data_ptr": data_ptr,
+                "count": count_u32,
+                "cap": cap_u32,
+                "live_rows": live_rows,
+            }
 
     sub = read_u64(scanner, manager + 0x350)
     if not sub:
         print("[-] fallback manager+0x350 -> subobject = 0")
-        return
+        return {
+            "data_ptr": None,
+            "count": count_u32,
+            "cap": cap_u32,
+            "live_rows": 0,
+        }
 
     data_ptr = read_u64(scanner, sub + 0x148)
     count = read_u32(scanner, sub + 0x150)
     print(f"[triples fallback @ *(manager+0x350)+0x148] sub={hex0(sub)} data={hex0(data_ptr)} count={count}")
     if not data_ptr or not count:
-        return
+        return {
+            "data_ptr": data_ptr,
+            "count": count,
+            "cap": None,
+            "live_rows": 0,
+        }
 
     want = min(int(count), int(limit))
     raw = scanner.read_mem(data_ptr, want * 6)
@@ -346,6 +364,14 @@ def dump_triples(scanner, manager, limit):
             f"  triple[{idx:02d}] word0={word0:5d} word1={word1:5d} word2={word2:5d} "
             f"| hex=({word0:#06x}, {word1:#06x}, {word2:#06x})"
         )
+        if (word0, word1, word2) != (0xFFFF, 0xFFFF, 0xFFFF):
+            live_rows += 1
+    return {
+        "data_ptr": data_ptr,
+        "count": count,
+        "cap": None,
+        "live_rows": live_rows,
+    }
 
 
 def dump_alt_triple_container(scanner, manager, limit):
@@ -409,9 +435,17 @@ def dump_registry(scanner, manager, seat, limit):
             aux_str = aux_raw.split(b'\\x00')[0].decode('utf-8', errors='ignore')
             print(f"  aux_cstr={aux_str!r}")
     if not entries_ptr or not count_u32:
-        return
+        return {
+            "entries_ptr": entries_ptr,
+            "count": count_u32,
+            "cap": cap_u32,
+            "decoded_names": 0,
+            "value_u16_seen": [],
+        }
 
     want = min(int(count_u32), int(limit))
+    decoded_names = 0
+    value_u16_seen = []
     for idx in range(want):
         entry = entries_ptr + idx * 0x10
         entry_raw = scanner.read_mem(entry, 0x10) or b""
@@ -426,6 +460,10 @@ def dump_registry(scanner, manager, seat, limit):
             f"value_u32={value_u32} low_u16={value_u16} hi_u16={value_hi_u16} raw={entry_raw.hex()}"
         )
         if nameish:
+            if nameish.get("indirect") or nameish.get("direct") or nameish.get("indirect_utf16_printable") or nameish.get("direct_utf16_printable"):
+                decoded_names += 1
+            if value_u16 is not None:
+                value_u16_seen.append(value_u16)
             print(
                 f"    stringish direct={nameish.get('direct')!r} "
                 f"direct_utf16={nameish.get('direct_utf16')!r} "
@@ -444,6 +482,13 @@ def dump_registry(scanner, manager, seat, limit):
                         f"{hex0(cand['ptr'])}:ascii={cand.get('ascii')!r},utf16={cand.get('utf16')!r}"
                     )
                 print(f"    nested_candidates={parts}")
+    return {
+        "entries_ptr": entries_ptr,
+        "count": count_u32,
+        "cap": cap_u32,
+        "decoded_names": decoded_names,
+        "value_u16_seen": value_u16_seen,
+    }
 
 
 def dump_remap_cache(scanner, manager, limit):
@@ -458,7 +503,11 @@ def dump_remap_cache(scanner, manager, limit):
         elif 0 < count_b <= 0x10000:
             count = count_b
     if not data_ptr or not count:
-        return
+        return {
+            "data_ptr": data_ptr,
+            "count": count,
+            "all_one_f32": False,
+        }
     want = min(int(count), int(limit))
     raw = scanner.read_mem(data_ptr, want * 4)
     if not raw:
@@ -468,6 +517,12 @@ def dump_remap_cache(scanner, manager, limit):
     values_f32 = [struct.unpack_from("<f", raw, i * 4)[0] for i in range(len(raw) // 4)]
     print(f"  preview_u32={values_u32}")
     print(f"  preview_f32={values_f32}")
+    all_one_f32 = bool(values_f32) and all(abs(v - 1.0) < 1e-6 for v in values_f32)
+    return {
+        "data_ptr": data_ptr,
+        "count": count,
+        "all_one_f32": all_one_f32,
+    }
 
 
 def dump_holder(scanner, manager, seat, limit):
@@ -478,7 +533,13 @@ def dump_holder(scanner, manager, seat, limit):
         f"seat_holder={hex0(seat_holder)}"
     )
     if not seat_holder:
-        return
+        return {
+            "holder_vec": holder_vec,
+            "seat_holder": seat_holder,
+            "count": 0,
+            "anchor": None,
+            "all_one_tail": False,
+        }
 
     data_ptr = read_u64(scanner, seat_holder + 0x10)
     count = read_u32(scanner, seat_holder + 0x18)
@@ -488,7 +549,13 @@ def dump_holder(scanner, manager, seat, limit):
         f"anchor/world={hex0(anchor)} stride_matrix=0x78 state_tail=count*0x78"
     )
     if not data_ptr or not count:
-        return
+        return {
+            "holder_vec": holder_vec,
+            "seat_holder": seat_holder,
+            "count": count or 0,
+            "anchor": anchor,
+            "all_one_tail": False,
+        }
 
     tail_ptr = data_ptr + int(count) * 0x78
     want = min(int(count), int(limit))
@@ -498,6 +565,55 @@ def dump_holder(scanner, manager, seat, limit):
         return
     values = [struct.unpack_from("<I", raw, i * 4)[0] for i in range(len(raw) // 4)]
     print(f"  state_tail_preview={values}")
+    all_one_tail = bool(values) and all(v == 1065353216 for v in values)
+    return {
+        "holder_vec": holder_vec,
+        "seat_holder": seat_holder,
+        "count": count,
+        "anchor": anchor,
+        "all_one_tail": all_one_tail,
+    }
+
+
+def print_readiness_summary(seat, triples_info, registry_info, remap_info, holder_info):
+    triple_live = int((triples_info or {}).get("live_rows") or 0)
+    registry_count = int((registry_info or {}).get("count") or 0)
+    decoded_names = int((registry_info or {}).get("decoded_names") or 0)
+    remap_count = int((remap_info or {}).get("count") or 0)
+    holder_count = int((holder_info or {}).get("count") or 0)
+    all_one_tail = bool((holder_info or {}).get("all_one_tail"))
+    all_one_f32 = bool((remap_info or {}).get("all_one_f32"))
+
+    ready_score = 0
+    if triple_live > 0:
+        ready_score += 2
+    if holder_count > 0:
+        ready_score += 2
+    if registry_count > 0:
+        ready_score += 1
+    if decoded_names > 0:
+        ready_score += 1
+    if remap_count > 0:
+        ready_score += 1
+    if all_one_tail:
+        ready_score -= 1
+    if all_one_f32:
+        ready_score -= 1
+
+    if ready_score >= 4:
+        verdict = "READY"
+    elif ready_score >= 2:
+        verdict = "PARTIAL"
+    else:
+        verdict = "LOADING/WEAK"
+
+    print()
+    print(
+        f"[readiness seat={seat}] verdict={verdict} score={ready_score} "
+        f"triple_live={triple_live} holder_count={holder_count} registry_count={registry_count} "
+        f"decoded_names={decoded_names} remap_count={remap_count} "
+        f"holder_tail_all_1={all_one_tail} remap_all_1={all_one_f32}"
+    )
 
 
 def parse_args():
@@ -554,17 +670,18 @@ def main():
                     f"reg_count={shape.get('reg_count')} remap_count={shape.get('remap_count')} "
                     f"holder_vec={hex0(shape.get('holder_vec'))} desc_vec={hex0(shape.get('desc_vec'))}"
                 )
-            dump_triples(scanner, manager, args.triple_limit)
+            triples_info = dump_triples(scanner, manager, args.triple_limit)
             print()
             dump_alt_triple_container(scanner, manager, args.triple_limit)
             print()
             dump_selector_container(scanner, manager)
             print()
-            dump_registry(scanner, manager, args.seat, args.registry_limit)
+            registry_info = dump_registry(scanner, manager, args.seat, args.registry_limit)
             print()
-            dump_remap_cache(scanner, manager, args.remap_limit)
+            remap_info = dump_remap_cache(scanner, manager, args.remap_limit)
             print()
-            dump_holder(scanner, manager, args.seat, args.holder_limit)
+            holder_info = dump_holder(scanner, manager, args.seat, args.holder_limit)
+            print_readiness_summary(args.seat, triples_info, registry_info, remap_info, holder_info)
             if args.watch_ms <= 0:
                 break
             time.sleep(max(args.watch_ms, 1) / 1000.0)
