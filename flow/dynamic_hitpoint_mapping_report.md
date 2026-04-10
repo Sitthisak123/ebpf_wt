@@ -176,6 +176,19 @@ Working live interpretation after the first MemRead pass:
 - first concrete live correlation is now:
   - one live state gave seat-registry visible low value = `98`, holder count = `98`, and hot triple `word2 = 98`
   - a later live state gave seat-registry visible low value = `91` and holder count = `91`
+  - a direct histogram pass on the hot triple table then showed `registry low_u16 = 91` occurs in `triple.word2` exactly once in that state
+  - the concrete matched row in that state is now pinned:
+    - `idx = 57`
+    - `word0 = 30`
+    - `word1 = 3855`
+    - `word2 = 91`
+  - the corresponding descriptor metadata row at `*(manager + 0x3d8) + word0 * 0x14` was also read live:
+    - raw = `ffff0e001e000f0f5b000000000080bf000080bf`
+    - `+0x02` flags field = `0x000e`
+    - `+0x04` mirrors `word0 = 30`
+    - `+0x06` mirrors `word1 = 3855`
+    - `+0x08` mirrors `word2 = 91`
+    - trailing floats currently read as `-1.0f`, `-1.0f`
   - this strongly suggests the visible registry low field tracks the same selector/remap axis as the live triple / holder path, but that axis is runtime-state-dependent
 - `+0x630` semantics: likely state/cache layer, not final raw-remap-id proof yet
 - seat handling is mixed:
