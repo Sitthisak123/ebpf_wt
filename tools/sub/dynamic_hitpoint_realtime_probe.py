@@ -1,4 +1,5 @@
 import argparse
+import collections
 import os
 import struct
 import sys
@@ -306,28 +307,40 @@ def dump_triples(scanner, manager, limit):
     count_u32 = read_u32(scanner, base + 0x08)
     cap_u32 = read_u32(scanner, base + 0x0C)
     live_rows = 0
+    word2_hist = collections.Counter()
+    rows = []
     print(
         f"[triples @ manager+0x408] base={hex0(base)} data={hex0(data_ptr)} "
         f"count_u32={count_u32} cap_u32={cap_u32}"
     )
     if data_ptr and count_u32:
-        want = min(int(count_u32), int(limit))
-        raw = scanner.read_mem(data_ptr, want * 6)
+        total = int(count_u32)
+        want = min(total, int(limit))
+        raw = scanner.read_mem(data_ptr, total * 6)
         if raw:
-            for idx in range(0, min(len(raw) // 6, want)):
+            total_rows = min(len(raw) // 6, total)
+            for idx in range(total_rows):
                 off = idx * 6
                 word0, word1, word2 = struct.unpack_from("<HHH", raw, off)
+                rows.append((idx, word0, word1, word2))
                 if (word0, word1, word2) != (0xFFFF, 0xFFFF, 0xFFFF):
                     live_rows += 1
-                print(
-                    f"  triple[{idx:02d}] word0={word0:5d} word1={word1:5d} word2={word2:5d} "
-                    f"| hex=({word0:#06x}, {word1:#06x}, {word2:#06x})"
-                )
+                    word2_hist[word2] += 1
+                if idx < want:
+                    print(
+                        f"  triple[{idx:02d}] word0={word0:5d} word1={word1:5d} word2={word2:5d} "
+                        f"| hex=({word0:#06x}, {word1:#06x}, {word2:#06x})"
+                    )
+            if word2_hist:
+                top = ", ".join(f"{k}:{v}" for k, v in word2_hist.most_common(12))
+                print(f"  word2_hist_top={top}")
             return {
                 "data_ptr": data_ptr,
                 "count": count_u32,
                 "cap": cap_u32,
                 "live_rows": live_rows,
+                "word2_hist": dict(word2_hist),
+                "rows": rows,
             }
 
     sub = read_u64(scanner, manager + 0x350)
@@ -338,6 +351,8 @@ def dump_triples(scanner, manager, limit):
             "count": count_u32,
             "cap": cap_u32,
             "live_rows": 0,
+            "word2_hist": {},
+            "rows": [],
         }
 
     data_ptr = read_u64(scanner, sub + 0x148)
@@ -349,6 +364,8 @@ def dump_triples(scanner, manager, limit):
             "count": count,
             "cap": None,
             "live_rows": 0,
+            "word2_hist": {},
+            "rows": [],
         }
 
     want = min(int(count), int(limit))
@@ -371,6 +388,8 @@ def dump_triples(scanner, manager, limit):
         "count": count,
         "cap": None,
         "live_rows": live_rows,
+        "word2_hist": {},
+        "rows": [],
     }
 
 
@@ -575,6 +594,31 @@ def dump_holder(scanner, manager, seat, limit):
     }
 
 
+def dump_target_descriptor_context(scanner, manager, rows, target_word2_values):
+    if not rows or not target_word2_values:
+        return
+    meta_ptr = read_u64(scanner, manager + 0x3D8)
+    lookup_ptr = read_u64(scanner, manager + 0x648)
+    print()
+    print(f"[descriptor-context] meta_ptr={hex0(meta_ptr)} lookup_ptr={hex0(lookup_ptr)}")
+    shown = 0
+    for idx, w0, w1, w2 in rows:
+        if w2 not in target_word2_values:
+            continue
+        rec_addr = (meta_ptr + w0 * 0x14) if meta_ptr else None
+        rec_raw = scanner.read_mem(rec_addr, 0x14) if rec_addr else None
+        flag_byte = read_u16(scanner, rec_addr + 2) if rec_addr else None
+        lookup_val = read_u32(scanner, lookup_ptr + w0 * 4) if lookup_ptr else None
+        print(
+            f"  target idx={idx} word0={w0} word1={w1} word2={w2} "
+            f"meta_rec={hex0(rec_addr)} flags16={flag_byte} lookup_u32={lookup_val} "
+            f"raw={(rec_raw.hex() if rec_raw else None)}"
+        )
+        shown += 1
+        if shown >= 8:
+            break
+
+
 def print_readiness_summary(seat, triples_info, registry_info, remap_info, holder_info):
     triple_live = int((triples_info or {}).get("live_rows") or 0)
     registry_count = int((registry_info or {}).get("count") or 0)
@@ -614,6 +658,19 @@ def print_readiness_summary(seat, triples_info, registry_info, remap_info, holde
         f"decoded_names={decoded_names} remap_count={remap_count} "
         f"holder_tail_all_1={all_one_tail} remap_all_1={all_one_f32}"
     )
+    registry_values = sorted(set((registry_info or {}).get("value_u16_seen") or []))
+    word2_hist = (triples_info or {}).get("word2_hist") or {}
+    if registry_values:
+        matches = ", ".join(f"{val}:{word2_hist.get(val, 0)}" for val in registry_values)
+        print(f"[correlation seat={seat}] registry_low_u16 -> triple_word2_count :: {matches}")
+        rows = (triples_info or {}).get("rows") or []
+        for val in registry_values:
+            matched = [(idx, w0, w1, w2) for (idx, w0, w1, w2) in rows if w2 == val]
+            if matched:
+                preview = ", ".join(
+                    f"idx={idx}/w0={w0}/w1={w1}/w2={w2}" for idx, w0, w1, w2 in matched[:8]
+                )
+                print(f"[word2-target seat={seat}] target={val} rows: {preview}")
 
 
 def parse_args():
@@ -682,6 +739,12 @@ def main():
             print()
             holder_info = dump_holder(scanner, manager, args.seat, args.holder_limit)
             print_readiness_summary(args.seat, triples_info, registry_info, remap_info, holder_info)
+            dump_target_descriptor_context(
+                scanner,
+                manager,
+                (triples_info or {}).get("rows") or [],
+                sorted(set((registry_info or {}).get("value_u16_seen") or [])),
+            )
             if args.watch_ms <= 0:
                 break
             time.sleep(max(args.watch_ms, 1) / 1000.0)
