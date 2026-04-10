@@ -129,6 +129,33 @@ Latest real-time probe results:
 - `manager + 0x88[0]` holder view is live and coherent:
   - valid holder pointer
   - current count `98`
+- cross-seat live probing now shows at least three runtime seat shapes:
+  - `seat 0`:
+    - can expose an active registry tree with `count = 2`
+    - visible low selector value has been observed as both `98` and `91` in different live states
+    - holder count has been observed as both `98` and `91` in different live states
+    - recursive string-object decode surfaces `@root`, `antenna`, `bone_antenna_01`, `bone_gun`
+  - `seat 1`:
+    - registry currently empty (`count = 0`)
+    - remap cache empty
+    - holder exists with count `69`, but current tail preview is zeroed
+  - `seat 2 / 3`:
+    - share a compact live triple set with `count = 169`
+    - visible `word2` examples include `48`, `10`, `83`, `82`, `50`
+    - remap/state count-like field at `+0x644` is `91`
+    - registry header shape differs from seat 0 and currently decodes as a more compact / unresolved layout rather than the string-object tree seen on seat 0
+
+This means the current best live reading is no longer "one registry layout for every seat":
+
+- `seat 0` currently exposes a richer grouped-name tree
+- `seat 1` can be structurally present but inactive
+- `seat 2 / 3` likely sit on a different compact selector surface that still feeds the same packed-triple path
+- and re-tests show this is state-dependent, not just seat-index-dependent:
+  - in a later session/state, `seat 0` moved onto the same `count = 169` triple family as `seat 2`
+  - but still kept the richer grouped-name tree decode at `+0x578`
+  - so the safest current model is:
+    - `manager + 0x408` = stable hot triple surface
+    - `manager + 0x578 + seat * 0x20` = per-seat surface whose concrete layout can vary with live state
 
 Working live interpretation after the first MemRead pass:
 
@@ -147,11 +174,13 @@ Working live interpretation after the first MemRead pass:
     - not a final canonical-name table
     - but a grouped runtime object/name tree that still preserves useful node names for selector verification
 - first concrete live correlation is now:
-  - seat-registry visible low value = `98`
-  - live holder count = `98`
-  - first observed hot triple also carries `word2 = 98`
-  - this strongly suggests the visible registry low field is already on the same selector/remap axis as the live triple path
+  - one live state gave seat-registry visible low value = `98`, holder count = `98`, and hot triple `word2 = 98`
+  - a later live state gave seat-registry visible low value = `91` and holder count = `91`
+  - this strongly suggests the visible registry low field tracks the same selector/remap axis as the live triple / holder path, but that axis is runtime-state-dependent
 - `+0x630` semantics: likely state/cache layer, not final raw-remap-id proof yet
+- seat handling is mixed:
+  - not every seat exposes the same registry shape at `+0x578`
+  - so per-seat probing is required before assuming a single flat decode strategy
 
 ## Current Status
 
