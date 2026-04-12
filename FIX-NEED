@@ -51,3 +51,5 @@ QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
 [DEBUG] อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป
 "
 
+-UNIT_FAMILY: No Light Tank
+-Show Ground Leadmark in Sniper Only
