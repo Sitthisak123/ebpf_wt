@@ -6,8 +6,8 @@ import os
 import json
 import traceback
 import mss
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtCore import QRect
+from PyQt5.QtGui import QImage, QPixmap, QPolygon
+from PyQt5.QtCore import QRect, QPoint
 
 try:
     import keyboard
@@ -1082,47 +1082,119 @@ def _resolve_is_air_now(default_is_air, family_name, profile_tag, profile_path):
 
 
 def _draw_unit_class_icon(painter, center_x, center_y, unit_family, size):
-    half = max(5, int(size * 0.5))
     is_air = unit_family in (
         UNIT_FAMILY_AIR_FIGHTER,
         UNIT_FAMILY_AIR_BOMBER,
         UNIT_FAMILY_AIR_ATTACKER,
         UNIT_FAMILY_AIR_HELICOPTER,
     )
+
     color = QColor(*(COLOR_CLASS_ICON_AIR if is_air else COLOR_CLASS_ICON_GROUND))
-    painter.setPen(QPen(color, 2))
-    painter.setBrush(Qt.NoBrush)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(color)
+
+    half = max(5, int(size * 0.5))
+    # สัดส่วนสมมาตร: Track H = Turret H = Body H และ Track W = Turret W
+    u_h = max(2, int(half * 0.8))   # ความสูง 1 ส่วน (ใช้กับ ป้อมปืน, ตัวรถ, สายพาน)
+    t_w = max(4, int(half * 1))     # ความกว้างของป้อมปืน (และสายพาน 1 ข้าง)
+    
+    inner_hw = int(t_w / 1.5)       # ระยะขอบในของสายพาน (ช่องว่างใต้ท้องรถ)
+    turret_hw = int(t_w / 1.5)      # ครึ่งหนึ่งของความกว้างป้อมปืน
+    body_hw = int(t_w * 1.5)        # ครึ่งหนึ่งของตัวรถ (กว้างพอดีสำหรับ ป้อมปืน + สายพาน)
+    
+    y0 = int(center_y - u_h * 1.5)  # ยอดป้อมปืน (Turret Top)
+    y1 = int(center_y - u_h * 0.5)  # ฐานป้อมปืน / หลังคารถ (Body Top)
+    y2 = int(center_y + u_h * 0.5)  # ท้องรถ (Body Bottom / Track Top)
+    y3 = int(center_y + u_h * 1.5)  # ฐานสายพาน (Track Bottom)
 
     if unit_family == UNIT_FAMILY_GROUND_MEDIUM_TANK:
-        painter.drawRect(int(center_x - half), int(center_y - 2), int(half * 2), 5)
-        painter.drawRect(int(center_x - 4), int(center_y - 7), 8, 4)
-        painter.drawLine(int(center_x + 4), int(center_y - 5), int(center_x + half + 5), int(center_y - 5))
-        painter.drawLine(int(center_x - half), int(center_y + 4), int(center_x + half), int(center_y + 4))
+        # Medium Tank: ทรงแบน (ไม่มีป้อมบนสุด) 8 จุด
+        poly = QPolygon([
+            QPoint(int(center_x - body_hw), y1),  
+            QPoint(int(center_x + body_hw), y1),  
+            QPoint(int(center_x + body_hw), y3),  
+            QPoint(int(center_x + inner_hw), y3), 
+            QPoint(int(center_x + inner_hw), y2), 
+            QPoint(int(center_x - inner_hw), y2), 
+            QPoint(int(center_x - inner_hw), y3), 
+            QPoint(int(center_x - body_hw), y3)   
+        ])
+        painter.drawPolygon(poly)
         return
-
+    
     if unit_family == UNIT_FAMILY_GROUND_HEAVY_TANK:
-        painter.drawRect(int(center_x - half), int(center_y - 3), int(half * 2), 7)
-        painter.drawRect(int(center_x - 5), int(center_y - 10), 10, 5)
-        painter.drawLine(int(center_x + 5), int(center_y - 8), int(center_x + half + 6), int(center_y - 8))
-        painter.drawLine(int(center_x - half + 1), int(center_y + 5), int(center_x + half - 1), int(center_y + 5))
-        painter.drawLine(int(center_x - half + 3), int(center_y + 8), int(center_x + half - 3), int(center_y + 8))
+        # Heavy Tank: มีป้อมปืนตรงกลาง 12 จุด
+        poly = QPolygon([
+            QPoint(int(center_x - turret_hw), y0),  
+            QPoint(int(center_x + turret_hw), y0),  
+            QPoint(int(center_x + turret_hw), y1),  
+            QPoint(int(center_x + body_hw), y1),    
+            QPoint(int(center_x + body_hw), y3),    
+            QPoint(int(center_x + turret_hw), y3),  
+            QPoint(int(center_x + turret_hw), y2),  
+            QPoint(int(center_x - turret_hw), y2),  
+            QPoint(int(center_x - turret_hw), y3),  
+            QPoint(int(center_x - body_hw), y3),    
+            QPoint(int(center_x - body_hw), y1),    
+            QPoint(int(center_x - turret_hw), y1)   
+        ])
+        painter.drawPolygon(poly)
         return
-
+    
     if unit_family == UNIT_FAMILY_GROUND_SPAA:
-        painter.drawRect(int(center_x - half), int(center_y - 3), int(half * 2), 6)
-        painter.drawRect(int(center_x - 4), int(center_y - 8), 8, 5)
-        painter.drawLine(int(center_x + 2), int(center_y - 7), int(center_x + half + 2), int(center_y - 10))
-        painter.drawLine(int(center_x - 2), int(center_y - 7), int(center_x - half - 2), int(center_y - 10))
-        painter.drawLine(int(center_x), int(center_y - 12), int(center_x), int(center_y - 4))
+        # SPAA: ย่อส่วนความกว้าง "ทั้งหมด" ลง 30% (สัดส่วนเดิมเป๊ะ แต่แคบลง)
+        spaa_t_w = max(2, int(t_w * 0.70))
+        spaa_turret_hw = int(spaa_t_w / 1.5)
+        spaa_body_hw = int(spaa_t_w * 1.5)
+        
+        # ความกว้างเสา (หดลงตามสัดส่วนใหม่ แล้วลดอีก 30% ตามสั่ง)
+        orig_pillar_w = spaa_body_hw - spaa_turret_hw
+        new_pillar_w = max(2, int(orig_pillar_w * 0.7))
+        
+        left_center_x = center_x - int((spaa_body_hw + spaa_turret_hw) / 2)
+        right_center_x = center_x + int((spaa_body_hw + spaa_turret_hw) / 2)
+        
+        pillar_y = y0
+        pillar_h = y1 - y0 + 2
+        radius = int(new_pillar_w / 2)
+        
+        # 1. วาดเสากลม
+        painter.drawRoundedRect(int(left_center_x - radius), pillar_y, new_pillar_w, pillar_h, radius, radius)
+        painter.drawRoundedRect(int(right_center_x - radius), pillar_y, new_pillar_w, pillar_h, radius, radius)
+        
+        # 2. วาดฐานตัวรถ (กว้างพอดีกับเสา)
+        painter.drawRect(int(center_x - spaa_body_hw), y1, spaa_body_hw * 2, y2 - y1)
         return
-
+    
     if unit_family == UNIT_FAMILY_GROUND_TANK_DESTROYER:
-        painter.drawLine(int(center_x - half), int(center_y + 3), int(center_x + half), int(center_y + 3))
-        painter.drawLine(int(center_x - half), int(center_y + 3), int(center_x - 2), int(center_y - 6))
-        painter.drawLine(int(center_x - 2), int(center_y - 6), int(center_x + half), int(center_y - 3))
-        painter.drawLine(int(center_x + 1), int(center_y - 5), int(center_x + half + 6), int(center_y - 7))
+        # TD: ทรงลิ่มหักมุม (Angled Casemate) พร้อมระบบควบคุม Tilt Ratio
+        lx = int(center_x - body_hw)
+        beam_w = int(body_hw * 0.65)         # ความหนาแกนคงที่ 65% 
+        
+        # 🚀 อัตราส่วนความเอียง (Tilt Ratio)
+        # เพิ่มค่า = เอียงลาดเป็นทรงสปอร์ตมากขึ้น / ลดค่า = ตั้งชันขึ้น
+        tilt_ratio = 1.2 
+        
+        # คำนวณระยะร่นไปทางขวาของยอดป้อม ตามความสูง (y1 - y0) คูณด้วยอัตราส่วน
+        tilt_shift = int((y1 - y0) * tilt_ratio)
+        
+        rx = lx + int(body_hw * 1.5)         # ปลายฐานล่าง
+        tx_left = lx + tilt_shift            # ยอดป้อมซ้ายสุด (ถูกดันไปทางขวาตามอัตราส่วน)
+        tx_right = tx_left + beam_w          # ยอดป้อมขวาสุด (ขนานกับเส้นซ้าย 100%)
+        ix = lx + beam_w                     # มุมหักด้านในของฐานล่าง
+        
+        poly = QPolygon([
+            QPoint(lx, y2),        # 1. ฐานซ้ายล่าง
+            QPoint(rx, y2),        # 2. ฐานขวาล่าง
+            QPoint(rx, y1),        # 3. ฐานขวาบน
+            QPoint(ix, y1),        # 4. มุมหักเข้าด้านใน
+            QPoint(tx_right, y0),  # 5. ยอดป้อมขวาสุด
+            QPoint(tx_left, y0),   # 6. ยอดป้อมซ้ายสุด
+            QPoint(lx, y1)         # 7. ฐานซ้ายบน (เส้นตั้งฉาก)
+        ])
+        painter.drawPolygon(poly)
         return
-
+    
     if unit_family == UNIT_FAMILY_SHIP_BOAT:
         painter.drawLine(int(center_x - half), int(center_y + 2), int(center_x + half), int(center_y + 2))
         painter.drawLine(int(center_x - half + 4), int(center_y + 2), int(center_x - 1), int(center_y - 4))
@@ -2861,10 +2933,11 @@ class ESPOverlay(QWidget):
                         _draw_unit_class_icon(
                             painter,
                             int(avg_x),
-                            int(icon_y),
+                            int(icon_y - 10),
                             unit_family,
                             CLASS_ICON_SIZE,
                         )
+                    painter.setPen(QColor(*COLOR_TEXT_AIR) if display_is_air else QColor(*COLOR_TEXT_GROUND))
                     painter.drawText(int(avg_x - text_w/2), text_y, display_text)
 
                     if has_reload_bar:
