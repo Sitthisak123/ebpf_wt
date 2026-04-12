@@ -301,6 +301,48 @@ def print_header(title):
     print("=" * 72)
 
 
+def _round_vec3(values, ndigits=4):
+    if not values:
+        return None
+    return [round(float(v), ndigits) for v in values]
+
+
+def dump_barrel_bridge(scanner, my_unit):
+    if not is_valid_ptr(my_unit):
+        return None
+    box = mul.get_unit_3d_box_data(scanner, my_unit, False)
+    if not box:
+        print("[barrel-bridge] box=None")
+        return None
+    unit_pos, _bmin, _bmax, rot = box
+    barrel = mul.get_weapon_barrel(scanner, my_unit, unit_pos, rot)
+    if not barrel:
+        print("[barrel-bridge] barrel=None")
+        return {
+            "unit_pos": unit_pos,
+            "barrel_base": None,
+            "barrel_tip": None,
+            "dir": None,
+        }
+    base, tip = barrel
+    direction = (
+        float(tip[0] - base[0]),
+        float(tip[1] - base[1]),
+        float(tip[2] - base[2]),
+    )
+    print(
+        f"[barrel-bridge] unit_pos={_round_vec3(unit_pos)} "
+        f"barrel_base={_round_vec3(base)} barrel_tip={_round_vec3(tip)} "
+        f"dir={_round_vec3(direction)}"
+    )
+    return {
+        "unit_pos": unit_pos,
+        "barrel_base": base,
+        "barrel_tip": tip,
+        "dir": direction,
+    }
+
+
 def dump_triples(scanner, manager, limit):
     base = manager + 0x408
     data_ptr = read_u64(scanner, base + 0x00)
@@ -510,6 +552,54 @@ def dump_registry(scanner, manager, seat, limit):
     }
 
 
+def inspect_registry_brief(scanner, manager, seat, sample_entries=2):
+    reg = manager + 0x578 + (seat * 0x20)
+    entries_ptr = read_u64(scanner, reg + 0x00)
+    count_u32 = read_u32(scanner, reg + 0x10) or 0
+    values = []
+    names = []
+    if not entries_ptr or count_u32 <= 0:
+        return {
+            "seat": seat,
+            "count": count_u32,
+            "values": values,
+            "names": names,
+        }
+
+    want = min(int(count_u32), int(sample_entries))
+    for idx in range(want):
+        entry = entries_ptr + idx * 0x10
+        name_ptr = read_u64(scanner, entry + 0x00)
+        value_u16 = read_u16(scanner, entry + 0x08)
+        if value_u16 is not None:
+            values.append(value_u16)
+        if name_ptr:
+            nameish = decode_stringish(scanner, name_ptr)
+            picked = None
+            for cand in nameish.get("nested_candidates", []):
+                if cand.get("ascii"):
+                    picked = cand["ascii"]
+                    break
+                if cand.get("utf16"):
+                    picked = cand["utf16"]
+                    break
+            if not picked:
+                picked = (
+                    nameish.get("indirect")
+                    or nameish.get("indirect_utf16_printable")
+                    or nameish.get("direct")
+                    or nameish.get("direct_utf16_printable")
+                )
+            if picked:
+                names.append(picked)
+    return {
+        "seat": seat,
+        "count": count_u32,
+        "values": values,
+        "names": names,
+    }
+
+
 def dump_remap_cache(scanner, manager, limit):
     data_ptr = read_u64(scanner, manager + 0x630)
     count_a = read_u32(scanner, manager + 0x640)
@@ -614,9 +704,196 @@ def dump_target_descriptor_context(scanner, manager, rows, target_word2_values):
             f"meta_rec={hex0(rec_addr)} flags16={flag_byte} lookup_u32={lookup_val} "
             f"raw={(rec_raw.hex() if rec_raw else None)}"
         )
+        if rec_addr:
+            print("    neighborhood:")
+            for delta in range(-2, 3):
+                n_w0 = w0 + delta
+                if n_w0 < 0:
+                    continue
+                n_addr = meta_ptr + n_w0 * 0x14
+                n_raw = scanner.read_mem(n_addr, 0x14) or b""
+                if len(n_raw) < 0x0A:
+                    continue
+                n_flags = struct.unpack_from("<H", n_raw, 0x02)[0]
+                n_word0 = struct.unpack_from("<H", n_raw, 0x04)[0]
+                n_word1 = struct.unpack_from("<H", n_raw, 0x06)[0]
+                n_word2 = struct.unpack_from("<H", n_raw, 0x08)[0]
+                print(
+                    f"      w0={n_w0:3d} delta={delta:+d} flags={n_flags:#06x} "
+                    f"m_word0={n_word0:5d} m_word1={n_word1:5d} m_word2={n_word2:5d} raw={n_raw.hex()}"
+                )
         shown += 1
         if shown >= 8:
             break
+
+
+def dump_word2_block(scanner, manager, rows, target_word2_values):
+    if not rows or not target_word2_values:
+        return
+    vals = sorted(set(target_word2_values))
+    if not vals:
+        return
+    lo = max(0, min(vals) - 2)
+    hi = max(vals) + 2
+    matched = [(idx, w0, w1, w2) for (idx, w0, w1, w2) in rows if lo <= w2 <= hi]
+    if not matched:
+        return
+    print()
+    print(f"[word2-block] range={lo}..{hi} matched_rows={len(matched)}")
+    for idx, w0, w1, w2 in matched[:24]:
+        print(f"  idx={idx:3d} word0={w0:5d} word1={w1:5d} word2={w2:5d}")
+
+
+def dump_contiguous_families(rows, min_len=3, max_groups=16):
+    live_rows = [(idx, w0, w1, w2) for (idx, w0, w1, w2) in rows if (w0, w1, w2) != (0xFFFF, 0xFFFF, 0xFFFF)]
+    if not live_rows:
+        return
+    groups = []
+    current = [live_rows[0]]
+    for row in live_rows[1:]:
+        p_idx, p_w0, p_w1, p_w2 = current[-1]
+        idx, w0, w1, w2 = row
+        if idx == p_idx + 1 and w0 == p_w0 + 1 and w1 == p_w1 + 1 and w2 == p_w2 + 1:
+            current.append(row)
+        else:
+            if len(current) >= min_len:
+                groups.append(current)
+            current = [row]
+    if len(current) >= min_len:
+        groups.append(current)
+    if not groups:
+        return
+    groups.sort(key=len, reverse=True)
+    print()
+    print(f"[contiguous-families] groups>={min_len} count={len(groups)}")
+    for group in groups[:max_groups]:
+        start = group[0]
+        end = group[-1]
+        print(
+            f"  len={len(group):2d} "
+            f"idx={start[0]}..{end[0]} "
+            f"word0={start[1]}..{end[1]} "
+            f"word1={start[2]}..{end[2]} "
+            f"word2={start[3]}..{end[3]}"
+        )
+    return groups
+
+
+def dump_auto_family_scan(scanner, manager, groups, max_groups):
+    if not groups or max_groups <= 0:
+        return
+    print()
+    print(f"[auto-family-scan] top_groups={min(len(groups), max_groups)}")
+    for group in groups[:max_groups]:
+        start = group[0]
+        end = group[-1]
+        dump_explicit_word2_range(scanner, manager, group, start[3], end[3], max_rows=32)
+
+
+def dump_target_superfamily(scanner, manager, rows, target_word2_values):
+    if not rows or not target_word2_values:
+        return
+    live_rows = [(idx, w0, w1, w2) for (idx, w0, w1, w2) in rows if (w0, w1, w2) != (0xFFFF, 0xFFFF, 0xFFFF)]
+    if not live_rows:
+        return
+    groups = []
+    current = [live_rows[0]]
+    for row in live_rows[1:]:
+        p_idx, p_w0, p_w1, p_w2 = current[-1]
+        idx, w0, w1, w2 = row
+        if idx == p_idx + 1 and w0 == p_w0 + 1 and w1 == p_w1 + 1 and w2 == p_w2 + 1:
+            current.append(row)
+        else:
+            groups.append(current)
+            current = [row]
+    groups.append(current)
+
+    target_vals = set(target_word2_values)
+    picked = None
+    for group in groups:
+        g_word2 = {row[3] for row in group}
+        if target_vals & g_word2:
+            picked = group
+            break
+    if not picked:
+        return
+
+    meta_ptr = read_u64(scanner, manager + 0x3D8)
+    print()
+    start = picked[0]
+    end = picked[-1]
+    print(
+        f"[target-superfamily] len={len(picked)} "
+        f"idx={start[0]}..{end[0]} word0={start[1]}..{end[1]} "
+        f"word1={start[2]}..{end[2]} word2={start[3]}..{end[3]}"
+    )
+    for idx, w0, w1, w2 in picked[:32]:
+        rec_addr = (meta_ptr + w0 * 0x14) if meta_ptr else None
+        flags = read_u16(scanner, rec_addr + 2) if rec_addr else None
+        print(
+            f"  idx={idx:3d} word0={w0:5d} word1={w1:5d} word2={w2:5d} "
+            f"flags={flags if flags is not None else 'None'} meta_rec={hex0(rec_addr)}"
+        )
+
+
+def dump_explicit_word2_range(scanner, manager, rows, lo, hi, max_rows=48):
+    if not rows:
+        return
+    matched = [(idx, w0, w1, w2) for (idx, w0, w1, w2) in rows if lo <= w2 <= hi]
+    print()
+    print(f"[explicit-word2-range] range={lo}..{hi} matched_rows={len(matched)}")
+    if not matched:
+        return
+    meta_ptr = read_u64(scanner, manager + 0x3D8)
+    lookup_ptr = read_u64(scanner, manager + 0x648)
+    lookup_hist = collections.Counter()
+    for idx, w0, w1, w2 in matched[:max_rows]:
+        rec_addr = (meta_ptr + w0 * 0x14) if meta_ptr else None
+        flags = read_u16(scanner, rec_addr + 2) if rec_addr else None
+        lookup_u32 = read_u32(scanner, lookup_ptr + w0 * 4) if lookup_ptr else None
+        if lookup_u32 is not None:
+            lookup_hist[lookup_u32] += 1
+        print(
+            f"  idx={idx:3d} word0={w0:5d} word1={w1:5d} word2={w2:5d} "
+            f"flags={flags if flags is not None else 'None'} "
+            f"lookup_u32={lookup_u32 if lookup_u32 is not None else 'None'} "
+            f"meta_rec={hex0(rec_addr)}"
+        )
+    flags_hist = collections.Counter()
+    for _, w0, _, _ in matched:
+        rec_addr = (meta_ptr + w0 * 0x14) if meta_ptr else None
+        flags = read_u16(scanner, rec_addr + 2) if rec_addr else None
+        flags_hist[flags] += 1
+    start = matched[0]
+    end = matched[-1]
+    print(
+        f"  summary: idx={start[0]}..{end[0]} word0={start[1]}..{end[1]} "
+        f"word1={start[2]}..{end[2]} word2={start[3]}..{end[3]} "
+        f"flags_hist={dict(flags_hist)} lookup_hist={dict(lookup_hist)}"
+    )
+
+
+def dump_seat_scan(scanner, manager, rows, seat_max):
+    if seat_max <= 0:
+        return
+    hist = collections.Counter()
+    for _, _, _, w2 in rows:
+        if w2 != 0xFFFF:
+            hist[w2] += 1
+    print()
+    print(f"[seat-scan] seats=0..{seat_max - 1}")
+    for seat in range(seat_max):
+        info = inspect_registry_brief(scanner, manager, seat)
+        holder_vec = read_u64(scanner, manager + 0x88)
+        seat_holder = read_u64(scanner, holder_vec + seat * 8) if holder_vec else None
+        holder_count = read_u32(scanner, seat_holder + 0x18) if seat_holder else 0
+        value_hits = [f"{val}:{hist.get(val, 0)}" for val in sorted(set(info["values"])) if val is not None]
+        names = ", ".join(info["names"][:4]) if info["names"] else "-"
+        hits = ", ".join(value_hits) if value_hits else "-"
+        print(
+            f"  seat={seat} reg_count={info['count']} holder_count={holder_count or 0} "
+            f"values=[{hits}] names=[{names}]"
+        )
 
 
 def print_readiness_summary(seat, triples_info, registry_info, remap_info, holder_info):
@@ -685,11 +962,29 @@ def parse_args():
     parser.add_argument("--remap-limit", type=int, default=12, help="Preview remap cache count")
     parser.add_argument("--holder-limit", type=int, default=12, help="Preview holder state count")
     parser.add_argument("--watch-ms", type=int, default=0, help="Refresh interval in milliseconds; 0 = one-shot")
+    parser.add_argument("--word2-range", help="Optional explicit word2 range, e.g. 457:481")
+    parser.add_argument("--scan-seats", type=int, default=0, help="Briefly scan seats 0..N-1 for registry/holder correlation")
+    parser.add_argument("--auto-family-scan", type=int, default=0, help="Automatically dump top N contiguous families")
     return parser.parse_args()
+
+
+def parse_word2_range(text):
+    if not text or ":" not in text:
+        return None
+    left, right = text.split(":", 1)
+    try:
+        lo = int(left, 0)
+        hi = int(right, 0)
+    except Exception:
+        return None
+    if lo > hi:
+        lo, hi = hi, lo
+    return lo, hi
 
 
 def main():
     args = parse_args()
+    explicit_word2_range = parse_word2_range(args.word2_range)
 
     pid = get_game_pid()
     if not pid:
@@ -720,6 +1015,12 @@ def main():
             )
             if resolved.get("my_unit"):
                 print(f"my_unit={hex0(resolved.get('my_unit'))}")
+                dna = mul.get_unit_detailed_dna(scanner, resolved.get("my_unit")) or {}
+                print(
+                    f"unit_key={dna.get('name_key', 'None')} short_name={dna.get('short_name', 'None')} "
+                    f"family={dna.get('family', 'None')} nation_id={dna.get('nation_id', -1)}"
+                )
+                dump_barrel_bridge(scanner, resolved.get("my_unit"))
             shape = resolved.get("shape") or {}
             if shape:
                 print(
@@ -745,6 +1046,36 @@ def main():
                 (triples_info or {}).get("rows") or [],
                 sorted(set((registry_info or {}).get("value_u16_seen") or [])),
             )
+            dump_word2_block(
+                scanner,
+                manager,
+                (triples_info or {}).get("rows") or [],
+                sorted(set((registry_info or {}).get("value_u16_seen") or [])),
+            )
+            groups = dump_contiguous_families((triples_info or {}).get("rows") or [])
+            dump_target_superfamily(
+                scanner,
+                manager,
+                (triples_info or {}).get("rows") or [],
+                sorted(set((registry_info or {}).get("value_u16_seen") or [])),
+            )
+            if explicit_word2_range:
+                dump_explicit_word2_range(
+                    scanner,
+                    manager,
+                    (triples_info or {}).get("rows") or [],
+                    explicit_word2_range[0],
+                    explicit_word2_range[1],
+                )
+            if args.auto_family_scan > 0:
+                dump_auto_family_scan(scanner, manager, groups or [], args.auto_family_scan)
+            if args.scan_seats > 0:
+                dump_seat_scan(
+                    scanner,
+                    manager,
+                    (triples_info or {}).get("rows") or [],
+                    args.scan_seats,
+                )
             if args.watch_ms <= 0:
                 break
             time.sleep(max(args.watch_ms, 1) / 1000.0)
