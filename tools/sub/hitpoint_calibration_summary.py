@@ -1,12 +1,18 @@
 import argparse
 import json
 import os
+import sys
 from collections import defaultdict
 from datetime import datetime
 from glob import glob
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from src.utils.ammo_family import resolve_ammo_family
+
 DUMPS_DIR = os.path.join(PROJECT_ROOT, "dumps")
 
 
@@ -57,13 +63,7 @@ def _distance_bucket(distance, step):
 
 
 def _ammo_bucket(rec):
-    speed = float(rec.get("speed", 0.0) or 0.0)
-    caliber = float(rec.get("caliber", 0.0) or 0.0)
-    if speed >= 1200.0 and caliber <= 0.05:
-        return "apfsds_like"
-    if caliber >= 0.09:
-        return "he_fullcal_like"
-    return "other"
+    return resolve_ammo_family(rec)["bucket"]
 
 
 def _mean(values):
