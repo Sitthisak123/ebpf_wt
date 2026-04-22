@@ -1,11 +1,11 @@
 {
-  "updated_at": "2026-04-05T18:17:49",
-  "source": "hitpoint_calibration_autobuild",
-  "updated_by_tool": "vertical_baseline_config_builder",
-  "source_input": "/media/xda-7/01DCAE7727D82450/My Projects/Python/ebpf_wt/dumps/hitpoint_calibration_samples.deduped_20260405_155551.jsonl",
-  "records_kept": 59,
+  "updated_at": "2026-04-22T18:35:37",
+  "source": "hitpoint_calibration_autobuild_merged_with_back",
+  "updated_by_tool": "manual_merge_from_vertical_baseline_table_back",
+  "source_input": "merged: current vertical_baseline_table.json + vertical_baseline_table_back.json",
+  "records_kept": 99,
   "records_dropped": 0,
-  "distance_step": 200.0,
+  "distance_step": 50.0,
   "min_points": 2,
   "dedupe": {
     "distance_eps": 3.0,
@@ -56,6 +56,94 @@
           [
             1173.928,
             -20.833
+          ]
+        ]
+      },
+      "ussr_bmp_2|speed=1120.000|caliber=0.018000|parallax=-4.500": {
+        "my_unit_key": "ussr_bmp_2",
+        "speed": 1120.0,
+        "caliber": 0.018,
+        "camera_parallax": -4.5,
+        "mass": 0.0,
+        "bullet_type_idx": -1,
+        "cannon_size": 0.0,
+        "ammo_family": "other",
+        "curve": [
+          [
+            49.113,
+            -0.1
+          ],
+          [
+            99.775,
+            -0.6
+          ],
+          [
+            149.633,
+            -0.755
+          ],
+          [
+            199.186,
+            -1.2
+          ],
+          [
+            249.405,
+            -1.376
+          ],
+          [
+            299.739,
+            -1.873
+          ],
+          [
+            349.202,
+            -2.465
+          ],
+          [
+            399.918,
+            -3.75
+          ],
+          [
+            499.734,
+            -2.97
+          ],
+          [
+            549.749,
+            -6.214
+          ],
+          [
+            599.156,
+            -7.5
+          ],
+          [
+            649.084,
+            -6.061
+          ],
+          [
+            699.735,
+            -5.519
+          ],
+          [
+            749.851,
+            -4.471
+          ],
+          [
+            799.744,
+            -6.15
+          ],
+          [
+            848.988,
+            -7.641
+          ],
+          [
+            899.747,
+            -7.992
+          ],
+          [
+            949.846,
+            -7.245
+          ],
+          [
+            979.461,
+            -8.781
           ]
         ]
       }
@@ -195,27 +283,27 @@
         "curve": [
           [
             100.0,
-            4.200
+            4.2
           ],
           [
             200.0,
-            5.100
+            5.1
           ],
           [
             400.0,
-            3.950
+            3.95
           ],
           [
             600.0,
-            1.500
+            1.5
           ],
           [
             800.0,
-            -1.550
+            -1.55
           ],
           [
             1200.0,
-            -3.750
+            -3.75
           ]
         ]
       },
@@ -310,6 +398,98 @@
           [
             1194.983,
             -9.833
+          ]
+        ]
+      },
+      "ussr_bmp_2|speed=970.000|caliber=0.030000|parallax=-4.500": {
+        "my_unit_key": "ussr_bmp_2",
+        "speed": 970.0,
+        "caliber": 0.03,
+        "camera_parallax": -4.5,
+        "mass": 0.0,
+        "bullet_type_idx": -1,
+        "cannon_size": 0.0,
+        "ammo_family": "other",
+        "curve": [
+          [
+            49.121,
+            0.0
+          ],
+          [
+            99.782,
+            -0.1
+          ],
+          [
+            149.636,
+            -0.555
+          ],
+          [
+            199.189,
+            -0.7
+          ],
+          [
+            249.407,
+            -0.176
+          ],
+          [
+            299.742,
+            -1.073
+          ],
+          [
+            349.204,
+            -1.765
+          ],
+          [
+            399.921,
+            -1.45
+          ],
+          [
+            449.673,
+            -2.228
+          ],
+          [
+            499.181,
+            -0.96
+          ],
+          [
+            549.751,
+            -5.214
+          ],
+          [
+            599.158,
+            -5.7
+          ],
+          [
+            649.087,
+            -4.361
+          ],
+          [
+            699.737,
+            -1.319
+          ],
+          [
+            749.853,
+            -3.871
+          ],
+          [
+            799.747,
+            -4.15
+          ],
+          [
+            848.991,
+            -3.241
+          ],
+          [
+            899.749,
+            -4.392
+          ],
+          [
+            949.849,
+            -3.345
+          ],
+          [
+            979.463,
+            -2.881
           ]
         ]
       }

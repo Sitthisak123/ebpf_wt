@@ -24,6 +24,7 @@ from PyQt5.QtGui import QPainter, QPen, QColor, QFont
 from src.utils.scanner import *
 from src.utils.mul import *
 from src.utils.debug import *
+from src.utils.ammo_family import resolve_ammo_family
 
 
 def _console_supports_sticky_dashboard():
@@ -41,7 +42,7 @@ COLOR_BOX_MY_UNIT       = (80, 220, 255, 220)
 COLOR_TEXT_GROUND       = (255, 196, 20, 200)    
 COLOR_TEXT_AIR          = (255, 196, 20, 230)   
 COLOR_RELOAD_BG         = (0, 0, 0, 180)        
-COLOR_RELOAD_READY      = (255, 0, 0, 200)      
+COLOR_RELOAD_READY      = (255, 255, 255, 255)      
 COLOR_RELOAD_LOADING    = (255, 165, 0, 200)    
 COLOR_PREDICTION        = (255, 255, 255, 255)    
 COLOR_PREDICTION_GROUND_STATIC = (64, 220, 255, 120)
@@ -127,6 +128,7 @@ GROUND_USE_SIMPLE_SCREEN_BOX = False    # เปลี่ยนเป็น Fals
 AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น False
 
 DRAW_BASE_HITPOINT = True
+BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = False
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
@@ -143,6 +145,24 @@ VERTICAL_BASELINE_CONFIG_PATH = os.path.join("config", "vertical_baseline_table.
 VERTICAL_BASELINE_RUNTIME_SOURCE = "default"
 DEFAULT_VERTICAL_BASELINE_TABLE = {}
 VERTICAL_BASELINE_TABLE = json.loads(json.dumps(DEFAULT_VERTICAL_BASELINE_TABLE))
+VERTICAL_BASELINE_LAST_MATCH = {
+    "bucket": "",
+    "profile_key": "",
+    "entry_unit_key": "",
+    "entry_speed": 0.0,
+    "entry_caliber": 0.0,
+    "entry_mass": 0.0,
+    "entry_parallax": 0.0,
+    "entry_cannon_size": 0.0,
+    "ballistic_speed": 0.0,
+    "ballistic_caliber": 0.0,
+    "ballistic_mass": 0.0,
+    "ballistic_cannon_size": 0.0,
+    "family": "",
+    "reason": "",
+    "distance": 0.0,
+    "value": 0.0,
+}
 DYNAMIC_PARALLAX_SCALE = 1
 DYNAMIC_WORLDSPACE_ENABLE = True
 
@@ -752,13 +772,7 @@ def _get_hitpoint_parallax_debug_terms(target_box_rect, my_rot=None, view_matrix
 
 
 def _vertical_baseline_ammo_bucket(profile):
-    speed = float((profile or {}).get("speed", 0.0) or 0.0)
-    caliber = float((profile or {}).get("caliber", 0.0) or 0.0)
-    if speed >= 1200.0 and caliber <= 0.05:
-        return "apfsds_like"
-    if caliber >= 0.09:
-        return "he_fullcal_like"
-    return "other"
+    return resolve_ammo_family(profile)["bucket"]
 
 
 def _interpolate_vertical_curve(points, distance_to_target):
@@ -782,15 +796,39 @@ def _interpolate_vertical_curve(points, distance_to_target):
 def _normalize_vertical_baseline_entry(entry):
     if isinstance(entry, dict):
         return {
+            "my_unit_key": str(entry.get("my_unit_key", "") or ""),
             "speed": float(entry.get("speed", 0.0) or 0.0),
             "caliber": float(entry.get("caliber", 0.0) or 0.0),
+            "mass": float(entry.get("mass", 0.0) or 0.0),
+            "bullet_type_idx": int(entry.get("bullet_type_idx", -1) or -1),
+            "camera_parallax": float(entry.get("camera_parallax", 0.0) or 0.0),
+            "cannon_size": float(entry.get("cannon_size", 0.0) or 0.0),
+            "ammo_family": str(entry.get("ammo_family", "") or ""),
             "curve": entry.get("curve", []) or [],
         }
     return {
+        "my_unit_key": "",
         "speed": 0.0,
         "caliber": 0.0,
+        "mass": 0.0,
+        "bullet_type_idx": -1,
+        "camera_parallax": 0.0,
+        "cannon_size": 0.0,
+        "ammo_family": "",
         "curve": entry or [],
     }
+
+
+def _vertical_baseline_entry_matches_unit(entry_key, entry, my_unit_key):
+    my_unit_key = str(my_unit_key or "")
+    if not my_unit_key:
+        return False
+    if str(entry_key) == my_unit_key:
+        return True
+    entry_unit_key = str((entry or {}).get("my_unit_key", "") or "")
+    if entry_unit_key == my_unit_key:
+        return True
+    return str(entry_key).startswith(f"{my_unit_key}|")
 
 
 def _choose_vertical_baseline_entry(my_unit_key, ballistic_profile):
@@ -808,21 +846,42 @@ def _choose_vertical_baseline_entry(my_unit_key, ballistic_profile):
     if my_unit_key in bucket_table:
         return ammo_bucket, my_unit_key, _normalize_vertical_baseline_entry(bucket_table[my_unit_key])
 
-    candidates = list(iter_candidates(ammo_bucket))
+    exact_unit_candidates = []
+    for entry_key, raw_entry in bucket_table.items():
+        entry = _normalize_vertical_baseline_entry(raw_entry)
+        if _vertical_baseline_entry_matches_unit(entry_key, entry, my_unit_key):
+            exact_unit_candidates.append((ammo_bucket, entry_key, entry))
+    if exact_unit_candidates:
+        candidates = exact_unit_candidates
+    else:
+        candidates = list(iter_candidates(ammo_bucket))
+
     if not candidates:
         for bucket_name in VERTICAL_BASELINE_TABLE.keys():
-            candidates.extend(iter_candidates(bucket_name))
+            for entry_key, raw_entry in (VERTICAL_BASELINE_TABLE.get(bucket_name, {}) or {}).items():
+                entry = _normalize_vertical_baseline_entry(raw_entry)
+                if _vertical_baseline_entry_matches_unit(entry_key, entry, my_unit_key):
+                    candidates.append((bucket_name, entry_key, entry))
+        if not candidates:
+            for bucket_name in VERTICAL_BASELINE_TABLE.keys():
+                candidates.extend(iter_candidates(bucket_name))
     if not candidates:
-        return ammo_bucket, "", {"speed": 0.0, "caliber": 0.0, "curve": []}
+        return ammo_bucket, "", {"speed": 0.0, "caliber": 0.0, "mass": 0.0, "bullet_type_idx": -1, "curve": []}
 
     best = None
     best_score = None
     for bucket_name, unit_key, entry in candidates:
         ref_speed = float(entry.get("speed", 0.0) or 0.0)
         ref_caliber = float(entry.get("caliber", 0.0) or 0.0)
+        ref_mass = float(entry.get("mass", 0.0) or 0.0)
+        ref_bullet_type = int(entry.get("bullet_type_idx", -1) or -1)
         speed_term = abs(speed - ref_speed) / max(max(speed, ref_speed, 1.0), 1.0)
         caliber_term = abs(caliber - ref_caliber) / max(max(caliber, ref_caliber, 0.001), 0.001)
-        score = speed_term + (caliber_term * 2.0)
+        mass = float((ballistic_profile or {}).get("mass", 0.0) or 0.0)
+        bullet_type_idx = int((ballistic_profile or {}).get("bullet_type_idx", -1) or -1)
+        mass_term = abs(mass - ref_mass) / max(max(mass, ref_mass, 0.001), 0.001) if (mass > 0.0 and ref_mass > 0.0) else 0.0
+        bullet_type_term = 0.0 if (bullet_type_idx >= 0 and ref_bullet_type >= 0 and bullet_type_idx == ref_bullet_type) else 0.25
+        score = speed_term + (caliber_term * 2.0) + mass_term + bullet_type_term
         if best_score is None or score < best_score:
             best_score = score
             best = (bucket_name, unit_key, entry)
@@ -830,11 +889,32 @@ def _choose_vertical_baseline_entry(my_unit_key, ballistic_profile):
 
 
 def _get_auto_vertical_baseline(my_unit_key, ballistic_profile, distance_to_target):
+    global VERTICAL_BASELINE_LAST_MATCH
     if not VERTICAL_BASELINE_AUTO_ENABLE:
         return 0.0
     _bucket_name, _matched_unit_key, entry = _choose_vertical_baseline_entry(my_unit_key or "", ballistic_profile)
     curve = entry.get("curve", []) if isinstance(entry, dict) else []
-    return _interpolate_vertical_curve(curve, distance_to_target) if curve else 0.0
+    value = _interpolate_vertical_curve(curve, distance_to_target) if curve else 0.0
+    family_info = resolve_ammo_family(ballistic_profile or {})
+    VERTICAL_BASELINE_LAST_MATCH = {
+        "bucket": str(_bucket_name or ""),
+        "profile_key": str(_matched_unit_key or ""),
+        "entry_unit_key": str((entry or {}).get("my_unit_key", "") or ""),
+        "entry_speed": float((entry or {}).get("speed", 0.0) or 0.0),
+        "entry_caliber": float((entry or {}).get("caliber", 0.0) or 0.0),
+        "entry_mass": float((entry or {}).get("mass", 0.0) or 0.0),
+        "entry_parallax": float((entry or {}).get("camera_parallax", 0.0) or 0.0),
+        "entry_cannon_size": float((entry or {}).get("cannon_size", 0.0) or 0.0),
+        "ballistic_speed": float((ballistic_profile or {}).get("speed", 0.0) or 0.0),
+        "ballistic_caliber": float((ballistic_profile or {}).get("caliber", 0.0) or 0.0),
+        "ballistic_mass": float((ballistic_profile or {}).get("mass", 0.0) or 0.0),
+        "ballistic_cannon_size": float((ballistic_profile or {}).get("cannon_size", 0.0) or 0.0),
+        "family": str(family_info.get("family", "") or ""),
+        "reason": str(family_info.get("reason", "") or ""),
+        "distance": float(distance_to_target or 0.0),
+        "value": float(value or 0.0),
+    }
+    return value
 
 
 _load_vertical_baseline_config()
@@ -1587,6 +1667,7 @@ def _read_ballistic_profile(scanner, cgame_base):
         "weapon_ptr": 0,
         "bullet_type_idx": -1,
         "model_enum": 0,
+        "bullet_type_idx": -1,
         "speed": 1000.0,
         "mass": 0.0,
         "caliber": 0.0,
@@ -1680,6 +1761,7 @@ def _read_ballistic_profile(scanner, cgame_base):
         "weapon_ptr": weapon_ptr,
         "bullet_type_idx": bullet_type_idx,
         "model_enum": model_enum,
+        "bullet_type_idx": bullet_type_idx,
         "speed": speed,
         "mass": mass,
         "caliber": caliber,
@@ -2068,8 +2150,12 @@ class ESPOverlay(QWidget):
                 "distance": context.get("distance", 0.0),
                 "model_enum": context.get("model_enum", 0),
                 "speed": context.get("speed", 0.0),
+                "mass": context.get("mass", 0.0),
                 "caliber": context.get("caliber", 0.0),
+                "bullet_type_idx": context.get("bullet_type_idx", -1),
                 "camera_parallax": round(self.camera_parallax, 3),
+                "ammo_bucket": resolve_ammo_family(context).get("bucket", "other"),
+                "ammo_family": resolve_ammo_family(context).get("family", "other"),
                 "auto_vertical_baseline": round(auto_vertical_baseline, 3),
                 "vertical_correction": round(self.vertical_correction, 3),
                 "effective_vertical_correction": round(auto_vertical_baseline + self.vertical_correction, 3),
@@ -3420,6 +3506,9 @@ class ESPOverlay(QWidget):
                                                     "fallback_box_source": "unit_bbox",
                                                     "baseline_source": VERTICAL_BASELINE_RUNTIME_SOURCE,
                                                     "baseline_value": float(auto_vertical_baseline),
+                                                    "baseline_bucket": VERTICAL_BASELINE_LAST_MATCH.get("bucket", ""),
+                                                    "baseline_family": VERTICAL_BASELINE_LAST_MATCH.get("family", ""),
+                                                    "baseline_profile_key": VERTICAL_BASELINE_LAST_MATCH.get("profile_key", ""),
                                                     "dynamic_geometry_used": bool(my_dynamic_geometry),
                                                     "dynamic_worldspace_used": bool(dynamic_world_offset) and bool(dynamic_static_screen and dynamic_static_screen[2] > 0),
                                                     "dynamic_parallax_scale": float(DYNAMIC_PARALLAX_SCALE),
@@ -3482,6 +3571,7 @@ class ESPOverlay(QWidget):
                                                 "speed": ballistic_profile.get("speed", 0.0),
                                                 "mass": ballistic_profile.get("mass", 0.0),
                                                 "caliber": ballistic_profile.get("caliber", 0.0),
+                                                "bullet_type_idx": ballistic_profile.get("bullet_type_idx", -1),
                                                 "cx": ballistic_profile.get("cx", 0.0),
                                                 "drag_k": ballistic_model.get("drag_k", 0.0),
                                                 "dynamic_geometry_used": bool(my_dynamic_geometry),
@@ -3594,10 +3684,17 @@ class ESPOverlay(QWidget):
                     if not hp_pts:
                         continue
                     hit_color = QColor(*COLOR_BOX_HITPOINT)
-                    painter.setPen(QPen(hit_color, 3))
-                    painter.drawEllipse(hp_pts[0] - 7, hp_pts[1] - 7, 14, 14)
-                    painter.drawLine(hp_pts[0] - 10, hp_pts[1], hp_pts[0] + 10, hp_pts[1])
-                    painter.drawLine(hp_pts[0], hp_pts[1] - 10, hp_pts[0], hp_pts[1] + 10)
+                    
+                    # 🎯 คำนวณขนาดของกากบาท X (ฐานคือ 3 pixel และกำหนดขนาดขั้นต่ำสุดไว้ที่ 2)
+                    x_size = max(2, int(3 * BASE_HITPOINT_SIZE_MULT))
+                    
+                    # 🎯 คำนวณความหนาของเส้นปากกาให้สมดุลกับขนาด (ค่าเริ่มต้นหนา 2)
+                    pen_width = max(1, int(2 * BASE_HITPOINT_SIZE_MULT))
+                    painter.setPen(QPen(hit_color, pen_width))
+                    
+                    # วาดเป็นรูปกากบาท X แบบเฉียง (คมขึ้น เล็งจุดอ่อนง่ายขึ้น)
+                    painter.drawLine(hp_pts[0] - x_size, hp_pts[1] - x_size, hp_pts[0] + x_size, hp_pts[1] + x_size)
+                    painter.drawLine(hp_pts[0] - x_size, hp_pts[1] + x_size, hp_pts[0] + x_size, hp_pts[1] - x_size)
 
             if DEBUG_COMPARE_DYNAMIC_GEOMETRY:
                 for item in dynamic_compare_points_to_draw:
@@ -3690,6 +3787,15 @@ class ESPOverlay(QWidget):
                     f"Parallax {display_parallax:.1f}{' [LOCK]' if LOCK_CAMERA_PARALLAX else ''} | "
                     f"Enter: Save"
                 )
+                vb = VERTICAL_BASELINE_LAST_MATCH or {}
+                painter.drawText(
+                    20,
+                    165 if not DEBUG_COMPARE_DYNAMIC_GEOMETRY else 290,
+                    f"[VB] bucket={vb.get('bucket', '')} family={vb.get('family', '')} "
+                    f"profile={str(vb.get('profile_key', ''))[:72]} | "
+                    f"live s={vb.get('ballistic_speed', 0.0):.0f} c={vb.get('ballistic_caliber', 0.0):.3f} m={vb.get('ballistic_mass', 0.0):.3f} | "
+                    f"entry s={vb.get('entry_speed', 0.0):.0f} c={vb.get('entry_caliber', 0.0):.3f} m={vb.get('entry_mass', 0.0):.3f}"
+                )
 
             if DEBUG_COMPARE_DYNAMIC_GEOMETRY and dynamic_compare_debug:
                 painter.setPen(QColor(*COLOR_DYNAMIC_COMPARE_HIT))
@@ -3697,7 +3803,8 @@ class ESPOverlay(QWidget):
                     20,
                     165,
                     f"[CMP] {self._get_compare_visibility_mode().upper()} | "
-                    f"VB:{dynamic_compare_debug['baseline_source']} {dynamic_compare_debug['baseline_value']:.2f} | "
+                    f"VB:{dynamic_compare_debug['baseline_source']}:{dynamic_compare_debug.get('baseline_bucket', '')}/{dynamic_compare_debug.get('baseline_family', '')} "
+                    f"{dynamic_compare_debug['baseline_value']:.2f} | "
                     f"DG:{'ON' if dynamic_compare_debug['dynamic_geometry_used'] else 'OFF'} | "
                     f"WS:{'ON' if dynamic_compare_debug.get('dynamic_worldspace_used') else 'OFF'} | "
                     f"Scale:{dynamic_compare_debug['dynamic_parallax_scale']:.2f}"
@@ -3737,6 +3844,11 @@ class ESPOverlay(QWidget):
                     f"[CMP-WS] Off({world_off[0]:.3f}, {world_off[1]:.3f}, {world_off[2]:.3f}) | "
                     f"ScreenΔ ({dynamic_compare_debug.get('dynamic_screen_dx', 0.0):.3f}, "
                     f"{dynamic_compare_debug.get('dynamic_screen_dy', 0.0):.3f})"
+                )
+                painter.drawText(
+                    20,
+                    290,
+                    f"[CMP-VB] profile={str(dynamic_compare_debug.get('baseline_profile_key', ''))[:96]}"
                 )
             elif DEBUG_COMPARE_DYNAMIC_GEOMETRY:
                 painter.setPen(QColor(*COLOR_DYNAMIC_COMPARE_HIT))
