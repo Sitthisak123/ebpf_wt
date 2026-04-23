@@ -210,3 +210,17 @@ Success criteria:
 - If true sight origin cannot be resolved, stay with mixed mode:
   - dynamic where geometry is trustworthy
   - config fallback where geometry is incomplete
+
+### Velocity Jitter Findings
+
+- Ground lead jitter propagated into air leadmark because solver subtracts `my_vel` for all targets.
+- Root cause was not only ground smoothing; some ground fallback readers decoded vertical-only noise such as `(0, -0.61, 0)`.
+- Applied fixes:
+  - reject ground velocity candidates with near-zero planar `XZ` speed but large `Y` speed
+  - use planar `XZ` magnitude for ground source selection
+  - add ground sticky/hysteresis for `idle/move`
+  - filter short-frame ground `pos_vel`
+  - avoid `blended` mode when `pos_vel` is effectively zero
+  - throttle repeated `VEL READ FAIL` / `VEL FALLBACK HIT` logs
+  - score multiple valid ground specs and prefer `GROUND_PRIMARY` when planar behavior is stronger / cleaner than fallbacks
+- Result after first pass: ground-induced leadmark jitter reduced by roughly `90%+` in live testing.

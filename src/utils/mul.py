@@ -1,6 +1,7 @@
 import struct
 import math
 import os
+import time
 
 try:
     from src.utils.debug import dprint
@@ -105,6 +106,8 @@ LAST_VIEW_MATRIX = None
 LAST_VIEW_PROJECTION_MODE = None
 FORCED_VIEW_PROFILE = None
 UNIT_FILTER_CACHE = {}
+VELOCITY_SPEC_CACHE = {}
+VELOCITY_LOG_CACHE = {}
 
 PLAYABLE_AIR_TAGS = {
     "exp_fighter",
@@ -478,6 +481,15 @@ def _iter_velocity_specs(profile_name):
     return specs
 
 
+def _throttled_velocity_log(key, msg, interval=2.0):
+    now = time.time()
+    last_t = VELOCITY_LOG_CACHE.get(key, 0.0)
+    if (now - last_t) < interval:
+        return
+    VELOCITY_LOG_CACHE[key] = now
+    dprint(msg, force=False)
+
+
 def _debug_velocity_failure(reason, u_ptr, spec, raw_ptr=None, base_ptr=None, data=None, decoded=None):
     decoded_str = "None"
     if decoded is not None:
@@ -485,7 +497,8 @@ def _debug_velocity_failure(reason, u_ptr, spec, raw_ptr=None, base_ptr=None, da
     raw_ptr_hex = _format_bytes_hex(raw_ptr, 8)
     data_hex = _format_bytes_hex(data, spec["size"])
     base_ptr_str = hex(base_ptr) if isinstance(base_ptr, int) and base_ptr > 0 else str(base_ptr)
-    dprint(
+    _throttled_velocity_log(
+        ("fail", u_ptr, spec["label"], reason),
         "VEL READ FAIL"
         f" | type={spec['label']}"
         f" | unit={hex(u_ptr)}"
@@ -497,7 +510,7 @@ def _debug_velocity_failure(reason, u_ptr, spec, raw_ptr=None, base_ptr=None, da
         f" | raw_vel=[{data_hex}]"
         f" | decoded={decoded_str}"
         f" | reason={reason}",
-        force=False,
+        interval=3.0,
     )
 
 
@@ -541,7 +554,66 @@ def _try_read_velocity(scanner, u_ptr, spec):
     if speed > spec["max_speed"]:
         return None, ("decoded implausible speed", raw_ptr, base_ptr, data, decoded)
 
+    if spec["label"].startswith("GROUND"):
+        planar_speed = math.hypot(decoded[0], decoded[2])
+        vertical_speed = abs(decoded[1])
+        # Ground motion fields occasionally decode as pure Y-only suspension / local-axis noise.
+        # These values destabilize both ground lead and air lead (via my_vel subtraction), so reject them.
+        if planar_speed <= 0.05 and vertical_speed >= 0.20:
+            return None, ("decoded ground vertical-only noise", raw_ptr, base_ptr, data, decoded)
+
     return decoded, None
+
+
+def _velocity_spec_score(profile_name, spec, result, u_ptr):
+    score = 0.0
+    cached_label = VELOCITY_SPEC_CACHE.get((profile_name, u_ptr))
+    if spec["label"] == cached_label:
+        score += 18.0
+    if spec["label"].endswith("PRIMARY"):
+        score += 24.0
+
+    if profile_name == "ground":
+        planar_speed = math.hypot(result[0], result[2])
+        vertical_speed = abs(result[1])
+        score += min(planar_speed, 40.0)
+        score -= (vertical_speed * 8.0)
+        if planar_speed >= 0.15:
+            score += 12.0
+        if planar_speed >= 0.40:
+            score += 10.0
+        if vertical_speed <= 0.08:
+            score += 8.0
+        elif vertical_speed >= max(0.2, planar_speed * 0.6):
+            score -= 12.0
+    else:
+        speed = math.sqrt(result[0] ** 2 + result[1] ** 2 + result[2] ** 2)
+        score += min(speed / 20.0, 18.0)
+
+    return score
+
+
+def _ordered_velocity_specs(profile_name, u_ptr):
+    specs = _iter_velocity_specs(profile_name)
+    cached_label = VELOCITY_SPEC_CACHE.get((profile_name, u_ptr))
+    if not cached_label:
+        return specs
+
+    preferred = None
+    others = []
+    for spec in specs:
+        if spec["label"] == cached_label:
+            preferred = spec
+        else:
+            others.append(spec)
+
+    if preferred is None or preferred["label"].endswith("PRIMARY"):
+        return specs
+
+    primary = specs[0]
+    ordered = [primary, preferred]
+    ordered.extend(spec for spec in others if spec is not primary)
+    return ordered
 
 
 def _read_velocity_by_profile(scanner, u_ptr, profile_name):
@@ -551,30 +623,52 @@ def _read_velocity_by_profile(scanner, u_ptr, profile_name):
     profile = VELOCITY_PROFILES[profile_name]
     requested_label = profile["requested_label"]
     attempts = []
+    successes = []
 
-    for idx, spec in enumerate(_iter_velocity_specs(profile_name)):
+    for idx, spec in enumerate(_ordered_velocity_specs(profile_name, u_ptr)):
         result, failure = _try_read_velocity(scanner, u_ptr, spec)
         if result is not None:
-            if idx > 0:
-                dprint(
-                    "VEL FALLBACK HIT"
-                    f" | requested_type={requested_label}"
-                    f" | unit={hex(u_ptr)}"
-                    f" | using={spec['label']}"
-                    f" | mov_off={hex(spec['mov_off'])}"
-                    f" | vel_off={hex(spec['vel_off'])}"
-                    f" | fmt={spec['fmt']}"
-                    f" | decoded=({result[0]:.4f}, {result[1]:.4f}, {result[2]:.4f})",
-                    force=False,
-                )
-            return result
+            successes.append((spec, result, idx))
+            continue
         attempts.append((spec, failure))
+
+    if successes:
+        if profile_name == "ground":
+            scored = sorted(
+                (
+                    (_velocity_spec_score(profile_name, spec, result, u_ptr), spec, result, idx)
+                    for spec, result, idx in successes
+                ),
+                key=lambda item: item[0],
+                reverse=True,
+            )
+            _score, chosen_spec, chosen_result, chosen_idx = scored[0]
+        else:
+            chosen_spec, chosen_result, chosen_idx = successes[0]
+
+        previous_label = VELOCITY_SPEC_CACHE.get((profile_name, u_ptr))
+        VELOCITY_SPEC_CACHE[(profile_name, u_ptr)] = chosen_spec["label"]
+        if chosen_idx > 0 and previous_label != chosen_spec["label"]:
+            _throttled_velocity_log(
+                ("fallback", requested_label, u_ptr, chosen_spec["label"]),
+                "VEL FALLBACK HIT"
+                f" | requested_type={requested_label}"
+                f" | unit={hex(u_ptr)}"
+                f" | using={chosen_spec['label']}"
+                f" | mov_off={hex(chosen_spec['mov_off'])}"
+                f" | vel_off={hex(chosen_spec['vel_off'])}"
+                f" | fmt={chosen_spec['fmt']}"
+                f" | decoded=({chosen_result[0]:.4f}, {chosen_result[1]:.4f}, {chosen_result[2]:.4f})",
+                interval=1.5,
+            )
+        return chosen_result
 
     if attempts:
         spec, failure = attempts[0]
         reason, raw_ptr, base_ptr, data, decoded = failure
         _debug_velocity_failure(reason, u_ptr, spec, raw_ptr=raw_ptr, base_ptr=base_ptr, data=data, decoded=decoded)
-        dprint(
+        _throttled_velocity_log(
+            ("exhausted", requested_label, u_ptr),
             "VEL FALLBACKS EXHAUSTED"
             f" | requested_type={requested_label}"
             f" | unit={hex(u_ptr)}"
@@ -583,7 +677,7 @@ def _read_velocity_by_profile(scanner, u_ptr, profile_name):
                 f"{s['label']}@{hex(s['mov_off'])}/{hex(s['vel_off'])}:{s['fmt']}:{f[0]}"
                 for s, f in attempts
             ),
-            force=False,
+            interval=3.0,
         )
     return (0.0, 0.0, 0.0)
 
