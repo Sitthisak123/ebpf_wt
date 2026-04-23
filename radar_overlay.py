@@ -58,7 +58,7 @@ COLOR_THREAD_ALERT2     = (255, 180, 0, 255)
 COLOR_AXIS_X            = (255, 64, 64, 255)
 COLOR_AXIS_Y            = (64, 255, 64, 255)
 COLOR_AXIS_Z            = (64, 160, 255, 255)
-COLOR_BOX_HITPOINT      = (255, 40, 40, 230)
+COLOR_BOX_HITPOINT      = (255, 255, 255, 255)
 COLOR_DYNAMIC_COMPARE_HIT = (80, 255, 255, 235)
 COLOR_FALLBACK_COMPARE_HIT = (255, 120, 40, 235)
 COLOR_DEBUG_MUZZLE_RAY  = (80, 255, 120, 220)
@@ -68,6 +68,8 @@ COLOR_CLASS_ICON_GROUND = (255, 215, 96, 235)
 COLOR_CLASS_ICON_AIR    = (120, 220, 255, 235)
 
 BULLET_GRAVITY       = 9.80665   
+
+DRAW_GROUND_STATIC_LEADMARK = False
 
 DEBUG_DRAW_LOCAL_AXES = False
 DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = False
@@ -119,7 +121,9 @@ CLASS_ICON_DEBUG_TEXT_GAP = 12
 DRAW_UNIT_FAMILY_OVERLAY_DEBUG = False
 UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
 
-DEBUG_DRAW_MUZZLE_RAY = False
+DEBUG_VELOCITY = False
+
+DEBUG_DRAW_MUZZLE_RAY = True
 DEBUG_DRAW_BOX_ENTRY_HIT = False
 DEBUG_COMPARE_DYNAMIC_GEOMETRY = False
 
@@ -1932,6 +1936,7 @@ class ESPOverlay(QWidget):
         self.current_fps = 0.0
         self.cached_matrix_offset = 0x1C0
         self.last_velocity_meta = {}
+        self.live_velocity_debug = None
         self.last_cgame_base = 0
         
         # 🤖 AI Auto-Calibration for Maneuvers (6 Threads)
@@ -2185,23 +2190,45 @@ class ESPOverlay(QWidget):
                 dy = pos[1] - cached['pos'][1]
                 dz = pos[2] - cached['pos'][2]
                 pos_vel = (dx / dt, dy / dt, dz / dt)
+                if not is_air:
+                    prev_pos_filtered = prev_meta.get("pos_vel_filtered")
+                    planar_pos_vel = (pos_vel[0], 0.0, pos_vel[2])
+                    if prev_pos_filtered and len(prev_pos_filtered) == 3:
+                        pos_vel = (
+                            (prev_pos_filtered[0] * 0.82) + (planar_pos_vel[0] * 0.18),
+                            0.0,
+                            (prev_pos_filtered[2] * 0.82) + (planar_pos_vel[2] * 0.18),
+                        )
+                    else:
+                        pos_vel = planar_pos_vel
 
         chosen_vel = raw_vel
         source = "raw"
 
-        raw_mag = math.sqrt(raw_vel[0]**2 + raw_vel[1]**2 + raw_vel[2]**2)
-        pos_mag = math.sqrt(pos_vel[0]**2 + pos_vel[1]**2 + pos_vel[2]**2) if pos_vel else 0.0
+        if is_air:
+            raw_mag = math.sqrt(raw_vel[0]**2 + raw_vel[1]**2 + raw_vel[2]**2)
+            pos_mag = math.sqrt(pos_vel[0]**2 + pos_vel[1]**2 + pos_vel[2]**2) if pos_vel else 0.0
+        else:
+            # Ground lead should react to planar movement only. Suspension / axis-layout noise on Y
+            # was leaking into source selection, then getting zeroed afterwards, which caused flapping.
+            raw_mag = math.hypot(raw_vel[0], raw_vel[2])
+            pos_mag = math.hypot(pos_vel[0], pos_vel[2]) if pos_vel else 0.0
         max_jump = 90.0 if is_air else 12.0
         min_air_speed = 35.0 if is_air else 0.0
 
         if pos_vel:
-            diff_mag = math.sqrt(
-                (raw_vel[0] - pos_vel[0])**2 +
-                (raw_vel[1] - pos_vel[1])**2 +
-                (raw_vel[2] - pos_vel[2])**2
-            )
-            raw_nonzero_axes = sum(1 for v in raw_vel if abs(v) > 0.05)
-            pos_nonzero_axes = sum(1 for v in pos_vel if abs(v) > 0.05)
+            if is_air:
+                diff_mag = math.sqrt(
+                    (raw_vel[0] - pos_vel[0])**2 +
+                    (raw_vel[1] - pos_vel[1])**2 +
+                    (raw_vel[2] - pos_vel[2])**2
+                )
+                raw_nonzero_axes = sum(1 for v in raw_vel if abs(v) > 0.05)
+                pos_nonzero_axes = sum(1 for v in pos_vel if abs(v) > 0.05)
+            else:
+                diff_mag = math.hypot(raw_vel[0] - pos_vel[0], raw_vel[2] - pos_vel[2])
+                raw_nonzero_axes = sum(1 for v in (raw_vel[0], raw_vel[2]) if abs(v) > 0.05)
+                pos_nonzero_axes = sum(1 for v in (pos_vel[0], pos_vel[2]) if abs(v) > 0.05)
 
             if raw_mag <= 0.001 and pos_mag > 0.001:
                 chosen_vel = pos_vel
@@ -2223,7 +2250,7 @@ class ESPOverlay(QWidget):
             elif is_air and raw_mag < min_air_speed and pos_mag >= min_air_speed:
                 chosen_vel = pos_vel
                 source = "pos_air_floor"
-            elif raw_mag > 0.001:
+            elif raw_mag > 0.001 and pos_mag > 0.05:
                 chosen_vel = (
                     (raw_vel[0] * 0.65) + (pos_vel[0] * 0.35),
                     (raw_vel[1] * 0.65) + (pos_vel[1] * 0.35),
@@ -2232,11 +2259,34 @@ class ESPOverlay(QWidget):
                 source = "blended"
 
         if not is_air:
+            prev_vel = cached.get('vel') if cached else None
+            prev_source = prev_meta.get("source", "")
+
+            if prev_vel and pos_vel and pos_mag > 0.5 and source in ("raw", "blended"):
+                prev_planar = math.hypot(prev_vel[0], prev_vel[2])
+                chosen_delta = math.hypot(chosen_vel[0] - prev_vel[0], chosen_vel[2] - prev_vel[2])
+                pos_delta = math.hypot(pos_vel[0] - prev_vel[0], pos_vel[2] - prev_vel[2])
+                if prev_source.startswith("pos_") and prev_planar > 0.1 and pos_delta <= (chosen_delta + 0.75):
+                    chosen_vel = pos_vel
+                    source = "pos_ground_sticky"
+
             # Ground units often have tiny noisy vectors around zero.
             idle_speed_enter = 0.22  # m/s (~0.8 km/h)
             idle_speed_exit = 0.38
-            idle_speed = idle_speed_exit if prev_meta.get("source") == "ground_idle" else idle_speed_enter
-            if raw_mag <= idle_speed and (pos_vel is None or pos_mag <= idle_speed):
+            prev_motion_state = prev_meta.get("ground_motion_state", "")
+            idle_speed = idle_speed_exit if prev_motion_state == "idle" else idle_speed_enter
+            chosen_planar_mag = math.hypot(chosen_vel[0], chosen_vel[2])
+            can_enter_idle = (
+                raw_mag <= idle_speed_enter
+                and (pos_vel is None or pos_mag <= idle_speed_enter)
+                and chosen_planar_mag <= idle_speed_enter
+            )
+            can_stay_idle = (
+                raw_mag <= idle_speed_exit
+                and (pos_vel is None or pos_mag <= idle_speed_exit)
+                and chosen_planar_mag <= idle_speed_exit
+            )
+            if can_enter_idle or (prev_motion_state == "idle" and can_stay_idle):
                 chosen_vel = (0.0, 0.0, 0.0)
                 source = "ground_idle"
             else:
@@ -2246,11 +2296,10 @@ class ESPOverlay(QWidget):
 
             # Ground world velocity is derived from noisy local raw fields + short-frame position deltas.
             # Smooth the final vector to prevent source flapping and visible jitter on moving vehicles.
-            prev_vel = cached.get('vel') if cached else None
             if prev_vel and len(prev_vel) == 3 and source != "ground_idle":
                 prev_mag = math.sqrt(prev_vel[0]**2 + prev_vel[1]**2 + prev_vel[2]**2)
                 if prev_mag > 0.0 or raw_mag > idle_speed_exit or pos_mag > idle_speed_exit:
-                    smoothing = 0.78 if source.startswith("pos_") else 0.68
+                    smoothing = 0.84 if source.startswith("pos_") else 0.72
                     chosen_vel = tuple(
                         (prev_vel[i] * smoothing) + (chosen_vel[i] * (1.0 - smoothing))
                         for i in range(3)
@@ -2269,8 +2318,14 @@ class ESPOverlay(QWidget):
             'raw_vel': raw_vel,
             'raw_mag': raw_mag,
             'pos_vel': pos_vel,
+            'pos_vel_filtered': pos_vel if (pos_vel and not is_air) else None,
             'pos_mag': pos_mag,
             'chosen_vel': chosen_vel,
+            'ground_motion_state': (
+                "idle"
+                if ((not is_air) and source == "ground_idle")
+                else ("move" if not is_air else "")
+            ),
         }
 
         if source not in ("raw", "ground_idle") and u_ptr != 0:
@@ -2316,6 +2371,7 @@ class ESPOverlay(QWidget):
         calibration_hit_points_to_draw = []
         dynamic_compare_points_to_draw = []
         dynamic_compare_debug = None
+        self.live_velocity_debug = None
         
         active_flight_data = None 
         active_target_ptr = 0
@@ -3215,6 +3271,7 @@ class ESPOverlay(QWidget):
                         vel_source = vel_meta.get('source', 'raw')
                         raw_mag = vel_meta.get('raw_mag', 0.0) * 3.6
                         pos_mag = vel_meta.get('pos_mag', 0.0) * 3.6
+                        chosen_mag = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                         info_ptr = 0
                         mov_ptr = 0
                         mov_off = OFF_AIR_MOVEMENT if physics_is_air else OFF_GROUND_MOVEMENT
@@ -3234,8 +3291,27 @@ class ESPOverlay(QWidget):
                         my_vel_meta = self.last_velocity_meta.get(my_unit, {})
                         my_vel_source = my_vel_meta.get('source', 'raw')
                         my_speed = math.sqrt(my_vx**2 + my_vy**2 + my_vz**2) * 3.6
+                        my_raw_mag = my_vel_meta.get('raw_mag', 0.0) * 3.6
+                        my_pos_mag = my_vel_meta.get('pos_mag', 0.0) * 3.6
                         target_speed = math.sqrt(vx**2 + vy**2 + vz**2) * 3.6
                         accel_mag = math.sqrt(ax**2 + ay**2 + az**2)
+
+                        self.live_velocity_debug = {
+                            "my": {
+                                "source": my_vel_source,
+                                "raw_kmh": my_raw_mag,
+                                "pos_kmh": my_pos_mag,
+                                "chosen_kmh": my_speed,
+                                "vec": (my_vx, my_vy, my_vz),
+                            },
+                            "target": {
+                                "source": vel_source,
+                                "raw_kmh": raw_mag,
+                                "pos_kmh": pos_mag,
+                                "chosen_kmh": chosen_mag,
+                                "vec": (vx, vy, vz),
+                            },
+                        }
                         
                         out =  "================================================================\n"
                         out += f"📊 WTM TACTICAL DASHBOARD | FPS: {int(self.current_fps):<3} | Units: {len(valid_targets):<2}\n"
@@ -3594,28 +3670,29 @@ class ESPOverlay(QWidget):
                                             })
 
                                 # 🎯 THE PERFECT STATIC LEADMARK SYNC
-                                if target_vel_mag > 0.05 and math.isfinite(spx) and math.isfinite(spy):
-                                    draw_spx = spx
-                                    draw_sx = avg_x
-                                    draw_sy = avg_y
-                                    
-                                    if target_box_rect and target_anchor_screen:
-                                        center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
-                                        center_y = (target_box_rect[1] + target_box_rect[3]) * 0.5
-                                        draw_sx = center_x
-                                        draw_sy = center_y
-                                        # หักลบความคลาดเคลื่อน 3D Perspective ให้จุดปลายแกน X ตรงกับ Bounding Box
-                                        draw_spx = center_x + (spx - target_anchor_screen[0])
+                                if DRAW_GROUND_STATIC_LEADMARK:
+                                    if target_vel_mag > 0.05 and math.isfinite(spx) and math.isfinite(spy):
+                                        draw_spx = spx
+                                        draw_sx = avg_x
+                                        draw_sy = avg_y
+                                        
+                                        if target_box_rect and target_anchor_screen:
+                                            center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                            center_y = (target_box_rect[1] + target_box_rect[3]) * 0.5
+                                            draw_sx = center_x
+                                            draw_sy = center_y
+                                            # หักลบความคลาดเคลื่อน 3D Perspective ให้จุดปลายแกน X ตรงกับ Bounding Box
+                                            draw_spx = center_x + (spx - target_anchor_screen[0])
 
-                                    lead_marks_to_draw.append({
-                                        'sx': draw_sx,
-                                        'sy': draw_sy,
-                                        'px': draw_spx,
-                                        'py': spy,
-                                        'is_air': False,
-                                        'is_turning': False,
-                                        'style': 'ground_static',
-                                    })
+                                        lead_marks_to_draw.append({
+                                            'sx': draw_sx,
+                                            'sy': draw_sy,
+                                            'px': draw_spx,
+                                            'py': spy,
+                                            'is_air': False,
+                                            'is_turning': False,
+                                            'style': 'ground_static',
+                                        })
 
                 except Exception as e:
                     if "NaN" not in str(e):
@@ -3796,6 +3873,34 @@ class ESPOverlay(QWidget):
                     f"live s={vb.get('ballistic_speed', 0.0):.0f} c={vb.get('ballistic_caliber', 0.0):.3f} m={vb.get('ballistic_mass', 0.0):.3f} | "
                     f"entry s={vb.get('entry_speed', 0.0):.0f} c={vb.get('entry_caliber', 0.0):.3f} m={vb.get('entry_mass', 0.0):.3f}"
                 )
+
+            vel_dbg = self.live_velocity_debug or {}
+            if vel_dbg:
+                painter.setPen(QColor(*COLOR_CALIBRATION_HIT))
+                vel_dbg = self.live_velocity_debug or {}
+                my_dbg = vel_dbg.get("my") or {}
+                tg_dbg = vel_dbg.get("target") or {}
+                if DEBUG_COMPARE_DYNAMIC_GEOMETRY:
+                    vel_dbg_y0 = 315
+                elif DEBUG_DRAW_CALIBRATION_HIT:
+                    vel_dbg_y0 = 190
+                else:
+                    vel_dbg_y0 = 140
+                if DEBUG_VELOCITY:
+                    painter.drawText(
+                        20,
+                        vel_dbg_y0,
+                        f"[VEL-MY] src={my_dbg.get('source', '')} | "
+                        f"raw={my_dbg.get('raw_kmh', 0.0):.1f} pos={my_dbg.get('pos_kmh', 0.0):.1f} chosen={my_dbg.get('chosen_kmh', 0.0):.1f} km/h | "
+                        f"v=({(my_dbg.get('vec') or (0.0, 0.0, 0.0))[0]:.2f}, {(my_dbg.get('vec') or (0.0, 0.0, 0.0))[1]:.2f}, {(my_dbg.get('vec') or (0.0, 0.0, 0.0))[2]:.2f})"
+                    )
+                    painter.drawText(
+                        20,
+                        vel_dbg_y0 + 25,
+                        f"[VEL-TG] src={tg_dbg.get('source', '')} | "
+                        f"raw={tg_dbg.get('raw_kmh', 0.0):.1f} pos={tg_dbg.get('pos_kmh', 0.0):.1f} chosen={tg_dbg.get('chosen_kmh', 0.0):.1f} km/h | "
+                        f"v=({(tg_dbg.get('vec') or (0.0, 0.0, 0.0))[0]:.2f}, {(tg_dbg.get('vec') or (0.0, 0.0, 0.0))[1]:.2f}, {(tg_dbg.get('vec') or (0.0, 0.0, 0.0))[2]:.2f})"
+                    )
 
             if DEBUG_COMPARE_DYNAMIC_GEOMETRY and dynamic_compare_debug:
                 painter.setPen(QColor(*COLOR_DYNAMIC_COMPARE_HIT))
