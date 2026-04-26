@@ -34,6 +34,97 @@ def _console_supports_sticky_dashboard():
     except Exception:
         return False
 
+
+def _unit_family_from_code(code):
+    code = str(code or "").strip().upper()
+    mapping = {
+        "LT": UNIT_FAMILY_GROUND_LIGHT_TANK,
+        "MT": UNIT_FAMILY_GROUND_MEDIUM_TANK,
+        "HT": UNIT_FAMILY_GROUND_HEAVY_TANK,
+        "TD": UNIT_FAMILY_GROUND_TANK_DESTROYER,
+        "AA": UNIT_FAMILY_GROUND_SPAA,
+        "BT": UNIT_FAMILY_SHIP_BOAT,
+        "FF": UNIT_FAMILY_SHIP_FRIGATE,
+        "DD": UNIT_FAMILY_SHIP_DESTROYER,
+        "CA": UNIT_FAMILY_SHIP_CRUISER,
+        "BB": UNIT_FAMILY_SHIP_BATTLESHIP,
+        "FG": UNIT_FAMILY_AIR_FIGHTER,
+        "BM": UNIT_FAMILY_AIR_BOMBER,
+        "AT": UNIT_FAMILY_AIR_ATTACKER,
+        "HC": UNIT_FAMILY_AIR_HELICOPTER,
+    }
+    return mapping.get(code, UNIT_FAMILY_UNKNOWN)
+
+
+def _match_pragmatic_unit_family_code(family_tag, token):
+    family_tag = str(family_tag or "").lower()
+    token = str(token or "").lower()
+
+    if family_tag == "exp_tank":
+        light_patterns = (
+            "pt_76",
+            "pzkpfw_ii",
+            "m22_",
+            "m24_",
+            "m41",
+            "amx_13",
+            "asu_57",
+            "asu_85",
+            "bmp_",
+            "brdm",
+            "btr_",
+            "pt-76",
+        )
+        heavy_patterns = (
+            "tiger_ii",
+            "tiger ii",
+            "is_",
+            "is-",
+            "js_",
+            "js-",
+            "kv_",
+            "kv-",
+            "churchill",
+            "t26e5",
+            "t29",
+            "t30",
+            "t32",
+            "m103",
+            "conqueror",
+        )
+        td_patterns = (
+            "panzerjager",
+            "jagd",
+            "su_85",
+            "su-85",
+            "su_100",
+            "su-100",
+            "asu_57",
+            "asu-57",
+            "asu_85",
+            "asu-85",
+        )
+        aa_patterns = (
+            "sdkfz_6_2",
+            "zsu_",
+            "wirbelwind",
+            "ostwind",
+            "coelian",
+            "spaa",
+        )
+
+        if any(p in token for p in aa_patterns):
+            return "AA"
+        if any(p in token for p in td_patterns):
+            return "TD"
+        if any(p in token for p in heavy_patterns):
+            return "HT"
+        if any(p in token for p in light_patterns):
+            return "LT"
+        return ""
+
+    return ""
+
 COLOR_INFO_TEXT         = (255, 228, 64, 255)   
 COLOR_BARREL_LINE       = (0, 255, 0, 255)      
 COLOR_BOX_TARGET        = (255, 255, 0, 200)
@@ -69,7 +160,7 @@ COLOR_CLASS_ICON_AIR    = (120, 220, 255, 235)
 
 BULLET_GRAVITY       = 9.80665   
 
-DRAW_GROUND_STATIC_LEADMARK = False
+GROUND_LEADMARK_TOP_N = 3  # <=0 = OFF/ALL visible ground targets
 
 DEBUG_DRAW_LOCAL_AXES = False
 DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = False
@@ -123,7 +214,7 @@ UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
 
 DEBUG_VELOCITY = False
 
-DEBUG_DRAW_MUZZLE_RAY = True
+DEBUG_DRAW_MUZZLE_RAY = False
 DEBUG_DRAW_BOX_ENTRY_HIT = False
 DEBUG_COMPARE_DYNAMIC_GEOMETRY = False
 
@@ -197,6 +288,7 @@ DYNAMIC_GEOMETRY_FPS_UNIT_SCALE = 1.35
 
 # Leadmark / ballistic solver tuning
 LEADMARK_RANGE_LIMIT_RATIO = 0.80  # ต่ำลง = ซ่อน leadmark เร็วขึ้นเมื่อเป้าไกลเกิน effective range
+MAX_TOF_AIR_LEADMARK = 6.00       # <=0 = OFF
 BALLISTIC_MIN_SPEED = 50.0
 BALLISTIC_MAX_SPEED = 3000.0
 BALLISTIC_MIN_MASS = 0.005
@@ -656,6 +748,7 @@ UNIT_FAMILY_SHIP_FRIGATE = 10
 UNIT_FAMILY_SHIP_DESTROYER = 11
 UNIT_FAMILY_SHIP_CRUISER = 12
 UNIT_FAMILY_SHIP_BATTLESHIP = 13
+UNIT_FAMILY_GROUND_LIGHT_TANK = 14
 
 def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model, zero_pitch, my_rot=None):
     if not target_pos or not fire_origin or bullet_speed <= 0.0:
@@ -1071,6 +1164,11 @@ def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, 
         short_name or "",
     )).lower()
 
+    pragmatic_code = _match_pragmatic_unit_family_code(family_tag, token)
+    pragmatic_family = _unit_family_from_code(pragmatic_code)
+    if pragmatic_family != UNIT_FAMILY_UNKNOWN:
+        return pragmatic_family
+
     if family_tag == "exp_helicopter":
         return UNIT_FAMILY_AIR_HELICOPTER
     if family_tag == "exp_bomber":
@@ -1081,6 +1179,8 @@ def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, 
         return UNIT_FAMILY_AIR_FIGHTER
     if family_tag == "exp_spaa":
         return UNIT_FAMILY_GROUND_SPAA
+    if family_tag in ("exp_light_tank", "exp_tank_light", "exp_ltank"):
+        return UNIT_FAMILY_GROUND_LIGHT_TANK
     if family_tag in ("exp_tank_destroyer", "exp_tank_destr"):
         return UNIT_FAMILY_GROUND_TANK_DESTROYER
     if family_tag == "exp_heavy_tank":
@@ -1128,6 +1228,13 @@ def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, 
         return UNIT_FAMILY_SHIP_BOAT
     if "spaa" in token:
         return UNIT_FAMILY_GROUND_SPAA
+    if (
+        "light_tank" in token or
+        "light tank" in token or
+        "exp_light_tank" in token or
+        "exp_tank_light" in token
+    ):
+        return UNIT_FAMILY_GROUND_LIGHT_TANK
     if "tank_destroyer" in token or "tank_destr" in token:
         return UNIT_FAMILY_GROUND_TANK_DESTROYER
     if "heavy_tank" in token:
@@ -1202,6 +1309,18 @@ def _draw_unit_class_icon(painter, center_x, center_y, unit_family, size):
             QPoint(int(center_x - inner_hw), y2), 
             QPoint(int(center_x - inner_hw), y3), 
             QPoint(int(center_x - body_hw), y3)   
+        ])
+        painter.drawPolygon(poly)
+        return
+
+    if unit_family == UNIT_FAMILY_GROUND_LIGHT_TANK:
+        # Light Tank: ใช้ทรงใกล้ medium แต่ไม่มีส่วนสายพานด้านล่าง
+        lt_body_hw = int(body_hw * 0.78)
+        poly = QPolygon([
+            QPoint(int(center_x - lt_body_hw), y1),
+            QPoint(int(center_x + lt_body_hw), y1),
+            QPoint(int(center_x + lt_body_hw), y2),
+            QPoint(int(center_x - lt_body_hw), y2)
         ])
         painter.drawPolygon(poly)
         return
@@ -1432,6 +1551,7 @@ def _unit_family_debug_label(unit_family):
         UNIT_FAMILY_AIR_BOMBER: "BM",
         UNIT_FAMILY_AIR_ATTACKER: "AT",
         UNIT_FAMILY_AIR_HELICOPTER: "HC",
+        UNIT_FAMILY_GROUND_LIGHT_TANK: "LT",
         UNIT_FAMILY_GROUND_MEDIUM_TANK: "MT",
         UNIT_FAMILY_GROUND_HEAVY_TANK: "HT",
         UNIT_FAMILY_GROUND_TANK_DESTROYER: "TD",
@@ -1831,6 +1951,12 @@ def _get_leadmark_range_limit(profile):
     return max_distance * LEADMARK_RANGE_LIMIT_RATIO
 
 
+def _get_leadmark_tof_limit(is_air_target):
+    if not is_air_target:
+        return 0.0
+    return max(0.0, float(MAX_TOF_AIR_LEADMARK or 0.0))
+
+
 def _drag_band_factor(model, speed):
     if BALLISTIC_MODEL0_USE_DIRECT_DRAG_K and model.get("model_enum", 0) in (0, 4) and model.get("drag_k", 0.0) > 0.0:
         factor = BALLISTIC_MODEL0_DIRECT_FACTOR
@@ -1953,6 +2079,7 @@ class ESPOverlay(QWidget):
         self.dead_unit_latch = set()
         self.ballistic_zero_cache = {}
         self.invalid_runtime_frames = 0
+        self.my_unit_spawn_grace_until = 0.0
         self.shutdown_requested = False
         self.startup_time = time.time()
         self.calibration_offset = [0.0, 0.0]
@@ -2452,6 +2579,19 @@ class ESPOverlay(QWidget):
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
+            if my_unit != self.last_my_unit:
+                reset_runtime_caches(clear_view=True)
+                if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {}
+                self.max_reload_cache = {}
+                self.vel_window = {}
+                self.velocity_cache = {}
+                self.last_velocity_meta = {}
+                self.ai_ghost_queue = []
+                self.dead_unit_latch = set()
+                self.live_velocity_debug = None
+                self.last_my_unit = my_unit
+                self.my_unit_spawn_grace_until = curr_t + 0.40
+
             my_is_air = False
             my_name = ""
             my_name_key = ""
@@ -2467,7 +2607,11 @@ class ESPOverlay(QWidget):
                 elif my_profile.get("kind") == "ground":
                     my_is_air = False
             
-            my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t) if my_unit and my_pos else (0.0, 0.0, 0.0)
+            my_spawn_in_grace = curr_t < self.my_unit_spawn_grace_until
+            if my_spawn_in_grace:
+                my_vel = (0.0, 0.0, 0.0)
+            else:
+                my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t) if my_unit and my_pos else (0.0, 0.0, 0.0)
             if not my_vel: my_vel = (0.0, 0.0, 0.0)
             my_vx, my_vy, my_vz = my_vel
             my_ground_shot_origin = my_pos
@@ -2517,17 +2661,6 @@ class ESPOverlay(QWidget):
                                 painter.drawLine(my_pts[p1][0], my_pts[p1][1], my_pts[p2][0], my_pts[p2][1])
                 except Exception:
                     pass
-
-            if my_unit != self.last_my_unit:
-                reset_runtime_caches(clear_view=True)
-                if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {} 
-                self.max_reload_cache = {}
-                self.vel_window = {} 
-                self.velocity_cache = {}
-                self.last_velocity_meta = {}
-                self.ai_ghost_queue = [] 
-                self.dead_unit_latch = set()
-                self.last_my_unit = my_unit
 
             valid_targets = []
             current_seen_ptrs = set()
@@ -2719,11 +2852,19 @@ class ESPOverlay(QWidget):
                     if select_box_rect and not is_air_target:
                         select_sx = (select_box_rect[0] + select_box_rect[2]) * 0.5
                     dist_crosshair = math.hypot(select_sx - self.center_x, select_sy - self.center_y)
-                    visible_targets.append((dist_crosshair, u_ptr))
+                    visible_targets.append((dist_crosshair, u_ptr, is_air_target))
 
+            ground_leadmark_allow_ptrs = None
             if visible_targets:
                 visible_targets.sort(key=lambda item: item[0])
                 active_target_ptr = visible_targets[0][1]
+                if GROUND_LEADMARK_TOP_N > 0:
+                    ordered_ground = [
+                        u_ptr
+                        for _dist_crosshair, u_ptr, is_air_target in visible_targets
+                        if not is_air_target
+                    ]
+                    ground_leadmark_allow_ptrs = set(ordered_ground[:GROUND_LEADMARK_TOP_N])
             else:
                 self.target_cycle_index = 0
 
@@ -2971,6 +3112,7 @@ class ESPOverlay(QWidget):
                         UNIT_FAMILY_AIR_HELICOPTER,
                     )
                     family_is_ground = unit_family in (
+                        UNIT_FAMILY_GROUND_LIGHT_TANK,
                         UNIT_FAMILY_GROUND_MEDIUM_TANK,
                         UNIT_FAMILY_GROUND_HEAVY_TANK,
                         UNIT_FAMILY_GROUND_TANK_DESTROYER,
@@ -3172,9 +3314,20 @@ class ESPOverlay(QWidget):
                             continue
                         t_x, t_y, t_z = ground_aim_point
 
-                    leadmark_in_range = (
+                    process_ground_leadmark = (
+                        physics_is_air or
+                        ground_leadmark_allow_ptrs is None or
+                        u_ptr in ground_leadmark_allow_ptrs
+                    )
+                    if (not physics_is_air) and (not process_ground_leadmark):
+                        continue
+
+                    leadmark_tof_limit = _get_leadmark_tof_limit(physics_is_air)
+                    leadmark_range_ok = (
                         leadmark_range_limit <= 0.0 or dist <= leadmark_range_limit
                     )
+                    leadmark_tof_ok = True
+                    leadmark_in_range = leadmark_range_ok
 
                     # =========================================================
                     # 🚀 WT TRUE BALLISTICS SOLVER (TILT-COMPENSATED)
@@ -3262,6 +3415,11 @@ class ESPOverlay(QWidget):
                     final_x -= (my_vx * best_t)
                     final_y -= (my_vy * best_t)
                     final_z -= (my_vz * best_t)
+
+                    leadmark_tof_ok = (
+                        leadmark_tof_limit <= 0.0 or best_t <= leadmark_tof_limit
+                    )
+                    leadmark_in_range = leadmark_range_ok and leadmark_tof_ok
                     
                     # =========================================================
                     # 📊 [STICKY DASHBOARD]: อัปเดตแบบ Real-time ทับบรรทัดเดิม
@@ -3337,11 +3495,14 @@ class ESPOverlay(QWidget):
                         range_limit_text = (
                             f"{leadmark_range_limit:.0f}m" if leadmark_range_limit > 0.0 else "OFF"
                         )
+                        tof_limit_text = (
+                            f"{leadmark_tof_limit:.2f}s" if leadmark_tof_limit > 0.0 else "OFF"
+                        )
                         out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
                         out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f}) | SRC:{vel_source}\n"
                         out += f"📡 Vel Check  : raw={raw_mag:>6.1f} km/h | pos={pos_mag:>6.1f} km/h | PTR:{hex(u_ptr)}\n"
                         out += f"🌪️ Accel      : {accel_mag:>6.2f} m/s² | A:({ax:>6.2f}, {ay:>6.2f}, {az:>6.2f})\n"
-                        out += f"🎯 Lead Limit : {range_limit_text} | InRange:{'Y' if leadmark_in_range else 'N'}\n"
+                        out += f"🎯 Lead Limit : {range_limit_text} | RangeOK:{'Y' if leadmark_range_ok else 'N'} | TOFLimit:{tof_limit_text} | TOFOK:{'Y' if leadmark_tof_ok else 'N'} | InRange:{'Y' if leadmark_in_range else 'N'}\n"
                         out += "-" * 64 + "\n"
                         out += f"📉 [BALLISTICS]\n"
                         vel_lo, vel_hi = ballistic_profile["vel_range"]
@@ -3370,9 +3531,9 @@ class ESPOverlay(QWidget):
                                 print(out, end="")
                             self.last_debug_log_time = curr_t
 
-                    static_ground_final = None
-                    if (not physics_is_air) and leadmark_in_range:
-                        static_ground_final = _solve_static_ground_leadmark(
+                    ground_reference_final = None
+                    if (not physics_is_air) and leadmark_in_range and (not my_spawn_in_grace):
+                        ground_reference_final = _solve_static_ground_leadmark(
                             (t_x, t_y, t_z),
                             fire_origin,
                             (my_vx, my_vy, my_vz),
@@ -3422,28 +3583,18 @@ class ESPOverlay(QWidget):
                                         'style': 'main',
                                     })
 
-                    target_vel_mag = math.sqrt(vx**2 + vy**2 + vz**2)
-
-                    static_screen = None
-                    if (not physics_is_air) and leadmark_in_range and static_ground_final and all(math.isfinite(c) for c in static_ground_final):
-                        target_anchor_screen = world_to_screen(
+                    ground_reference_screen = None
+                    if (not physics_is_air) and leadmark_in_range and ground_reference_final and all(math.isfinite(c) for c in ground_reference_final):
+                        ground_reference_screen = world_to_screen(
                             view_matrix,
-                            t_x,
-                            t_y,
-                            t_z,
+                            ground_reference_final[0],
+                            ground_reference_final[1],
+                            ground_reference_final[2],
                             self.screen_width,
                             self.screen_height,
                         )
-                        static_screen = world_to_screen(
-                            view_matrix,
-                            static_ground_final[0],
-                            static_ground_final[1],
-                            static_ground_final[2],
-                            self.screen_width,
-                            self.screen_height,
-                        )
-                        if static_screen and static_screen[2] > 0:
-                                spx, spy = static_screen[0], static_screen[1]
+                        if ground_reference_screen and ground_reference_screen[2] > 0:
+                                spx, spy = ground_reference_screen[0], ground_reference_screen[1]
                                     
                                 # 🎯 THE CLEAN HITPOINT ENGINE (ลบ VirtualBox ทิ้ง และทำงานเฉพาะ Selected Ground Target)
                                 if u_ptr == active_target_ptr and target_box_rect and not physics_is_air:
@@ -3454,7 +3605,7 @@ class ESPOverlay(QWidget):
                                     )
                                     effective_camera_parallax = self.camera_parallax
                                     dynamic_world_offset = None
-                                    dynamic_static_screen = static_screen
+                                    dynamic_reference_screen = ground_reference_screen
                                     if my_dynamic_geometry:
                                         effective_camera_parallax = float(
                                             my_dynamic_geometry.get("dynamic_parallax_pct", self.camera_parallax)
@@ -3468,23 +3619,23 @@ class ESPOverlay(QWidget):
                                                     float(camera_world[1] - barrel_base_world[1]),
                                                     float(camera_world[2] - barrel_base_world[2]),
                                                 )
-                                                dynamic_static_world = _offset_world_point(static_ground_final, dynamic_world_offset)
-                                                projected_dynamic_static = world_to_screen(
+                                                dynamic_reference_world = _offset_world_point(ground_reference_final, dynamic_world_offset)
+                                                projected_dynamic_reference = world_to_screen(
                                                     view_matrix,
-                                                    dynamic_static_world[0],
-                                                    dynamic_static_world[1],
-                                                    dynamic_static_world[2],
+                                                    dynamic_reference_world[0],
+                                                    dynamic_reference_world[1],
+                                                    dynamic_reference_world[2],
                                                     self.screen_width,
                                                     self.screen_height,
                                                 )
-                                                if projected_dynamic_static and projected_dynamic_static[2] > 0:
-                                                    dynamic_static_screen = projected_dynamic_static
+                                                if projected_dynamic_reference and projected_dynamic_reference[2] > 0:
+                                                    dynamic_reference_screen = projected_dynamic_reference
                                                     effective_camera_parallax = 0.0
                                     compare_base_hitpoint = None
                                     compare_fallback_hitpoint = None
                                     dynamic_spx, dynamic_spy = spx, spy
-                                    if dynamic_static_screen and dynamic_static_screen[2] > 0:
-                                        dynamic_spx, dynamic_spy = dynamic_static_screen[0], dynamic_static_screen[1]
+                                    if dynamic_reference_screen and dynamic_reference_screen[2] > 0:
+                                        dynamic_spx, dynamic_spy = dynamic_reference_screen[0], dynamic_reference_screen[1]
                                     compare_dynamic_hitpoint = _map_aim_to_target_box_hitpoint(
                                         (self.center_x, self.center_y),
                                         (dynamic_spx, dynamic_spy),
@@ -3586,7 +3737,7 @@ class ESPOverlay(QWidget):
                                                     "baseline_family": VERTICAL_BASELINE_LAST_MATCH.get("family", ""),
                                                     "baseline_profile_key": VERTICAL_BASELINE_LAST_MATCH.get("profile_key", ""),
                                                     "dynamic_geometry_used": bool(my_dynamic_geometry),
-                                                    "dynamic_worldspace_used": bool(dynamic_world_offset) and bool(dynamic_static_screen and dynamic_static_screen[2] > 0),
+                                                    "dynamic_worldspace_used": bool(dynamic_world_offset) and bool(dynamic_reference_screen and dynamic_reference_screen[2] > 0),
                                                     "dynamic_parallax_scale": float(DYNAMIC_PARALLAX_SCALE),
                                                     "dynamic_parallax": float(effective_camera_parallax),
                                                     "fallback_parallax": float(self.camera_parallax),
@@ -3599,8 +3750,8 @@ class ESPOverlay(QWidget):
                                                     "dynamic_parallax_terms": dynamic_parallax_terms,
                                                     "fallback_parallax_terms": fallback_parallax_terms,
                                                     "dynamic_world_offset": dynamic_world_offset,
-                                                    "dynamic_screen_dx": (dynamic_spx - spx) if dynamic_static_screen and static_screen else 0.0,
-                                                    "dynamic_screen_dy": (dynamic_spy - spy) if dynamic_static_screen and static_screen else 0.0,
+                                                    "dynamic_screen_dx": (dynamic_spx - spx) if dynamic_reference_screen and ground_reference_screen else 0.0,
+                                                    "dynamic_screen_dy": (dynamic_spy - spy) if dynamic_reference_screen and ground_reference_screen else 0.0,
                                                 }
                                     if mapped_hitpoint:
                                         is_hitpoint_inside_bbox = True
@@ -3669,31 +3820,6 @@ class ESPOverlay(QWidget):
                                                 "sx": fire_origin_screen[0], "sy": fire_origin_screen[1], "px": spx, "py": spy,
                                             })
 
-                                # 🎯 THE PERFECT STATIC LEADMARK SYNC
-                                if DRAW_GROUND_STATIC_LEADMARK:
-                                    if target_vel_mag > 0.05 and math.isfinite(spx) and math.isfinite(spy):
-                                        draw_spx = spx
-                                        draw_sx = avg_x
-                                        draw_sy = avg_y
-                                        
-                                        if target_box_rect and target_anchor_screen:
-                                            center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
-                                            center_y = (target_box_rect[1] + target_box_rect[3]) * 0.5
-                                            draw_sx = center_x
-                                            draw_sy = center_y
-                                            # หักลบความคลาดเคลื่อน 3D Perspective ให้จุดปลายแกน X ตรงกับ Bounding Box
-                                            draw_spx = center_x + (spx - target_anchor_screen[0])
-
-                                        lead_marks_to_draw.append({
-                                            'sx': draw_sx,
-                                            'sy': draw_sy,
-                                            'px': draw_spx,
-                                            'py': spy,
-                                            'is_air': False,
-                                            'is_turning': False,
-                                            'style': 'ground_static',
-                                        })
-
                 except Exception as e:
                     if "NaN" not in str(e):
                         print(f"Main processing error: {e}")
@@ -3724,17 +3850,6 @@ class ESPOverlay(QWidget):
             # 🔝 FRONT LAYER RENDERER
             # ========================================================
             for lm in lead_marks_to_draw:
-                if lm.get('style') == 'ground_static':
-                    pred_color = QColor(*COLOR_PREDICTION_GROUND_STATIC)
-                    line_pts = _screen_int_tuple(lm['sx'], lm['sy'], lm['px'], lm['py'])
-                    center_pts = _screen_int_tuple(lm['px'], lm['py'])
-                    if not line_pts or not center_pts:
-                        continue
-                    painter.setPen(QPen(pred_color, 2, Qt.DotLine))
-                    painter.drawLine(*line_pts)
-                    _draw_leadmark_glyph(painter, center_pts[0], center_pts[1], pred_color, outer_radius=6, core_radius=2, pen_width=2)
-                    continue
-
                 line_pts = _screen_int_tuple(lm['sx'], lm['sy'], lm['px'], lm['py'])
                 center_pts = _screen_int_tuple(lm['px'], lm['py'])
                 if not line_pts or not center_pts:
