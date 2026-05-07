@@ -224,3 +224,23 @@ Success criteria:
   - throttle repeated `VEL READ FAIL` / `VEL FALLBACK HIT` logs
   - score multiple valid ground specs and prefer `GROUND_PRIMARY` when planar behavior is stronger / cleaner than fallbacks
 - Result after first pass: ground-induced leadmark jitter reduced by roughly `90%+` in live testing.
+
+### Dead-State Ghost Filtering
+
+- Some live sessions show unit-state glitches:
+  - a dead unit can briefly report `state = alive` again while the player changes vehicle
+  - a dead unit can stay logically "alive" forever after that player leaves the match
+- A plain `dead_unit_latch = set(ptr)` is not sufficient for those cases because the runtime pointer alone does not prove a new vehicle/entity identity.
+- Applied fix:
+  - change dead latch from `set(unit_ptr)` to `dict(unit_ptr -> latched info_ptr)`
+  - once a unit reports dead, keep it hidden until its `info_ptr` changes to a new valid identity
+  - still clear latch automatically when the unit pointer disappears from the live unit list
+- Expected effect:
+  - no short false revive of a corpse during vehicle-switch transitions
+  - no permanently visible dead ghost if the same dead entity keeps toggling/holding `alive` state incorrectly
+- Limitation:
+  - if the game itself keeps exporting a dead ghost as `alive` even after ESP restarts, history-based latch is not enough
+  - that case requires a separate runtime discriminator from the current memory image, not from prior overlay history
+- Tool added for that path:
+  - `tools/sub/ghost_unit_runtime_compare_dumper.py`
+  - purpose: compare live/ghost/dead candidates by `info_ptr`, `movement ptr`, `reload`, `bbox`, `velocity`, and raw state bytes
