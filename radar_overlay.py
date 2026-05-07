@@ -251,8 +251,8 @@ NON_PLAYABLE_RUNTIME_HINTS = (
     # "hangar",
 )
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
-MAX_GROUND_TARGET_DISTANCE = 10000.0
-MAX_AIR_TARGET_DISTANCE = 18000.0
+MAX_GROUND_TARGET_DISTANCE = 20000.0
+MAX_AIR_TARGET_DISTANCE = 28000.0
 ORIGIN_GHOST_RADIUS = 35.0
 ORIGIN_GHOST_MY_DIST_MIN = 250.0
 
@@ -2374,6 +2374,14 @@ class ESPOverlay(QWidget):
 
         return (curr_t - float(watch.get("first_seen", curr_t))) >= RECON_GHOST_SPAWN_WINDOW_SEC
 
+    def _is_recon_alert_ready(self, u_ptr, curr_t):
+        watch = self.recon_spawn_watch.get(u_ptr)
+        if not watch:
+            return False
+        if watch.get("moved"):
+            return True
+        return (curr_t - float(watch.get("first_seen", curr_t))) >= RECON_GHOST_SPAWN_WINDOW_SEC
+
     def _update_screen_metrics(self):
         # screen = self.screen() or QApplication.primaryScreen()
         # geometry = screen.geometry() if screen is not None else QApplication.desktop().screenGeometry()
@@ -2980,6 +2988,8 @@ class ESPOverlay(QWidget):
                 if not pos: continue
                 if is_recon_drone and self._is_fixed_recon_ghost(u_ptr, pos, curr_t):
                     continue
+                if is_recon_drone and not self._is_recon_alert_ready(u_ptr, curr_t):
+                    continue
                 pre_vel = None
                 if not resolved_is_air:
                     pre_vel = self._stabilize_velocity(u_ptr, False, pos, curr_t)
@@ -3380,8 +3390,6 @@ class ESPOverlay(QWidget):
                     elif family_is_ground:
                         physics_is_air = False
 
-                    self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
-
                     display_is_air = physics_is_air
                     if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
                         display_is_air = False
@@ -3399,6 +3407,9 @@ class ESPOverlay(QWidget):
                     icon_y = text_y - CLASS_ICON_LINE_GAP
                     debug_label_y = icon_y - CLASS_ICON_DEBUG_TEXT_GAP
                     overlay_debug_y = debug_label_y - UNIT_FAMILY_OVERLAY_DEBUG_GAP
+
+                    if (not is_recon_drone) or self._is_recon_alert_ready(u_ptr, curr_t):
+                        self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
 
                     # ========================================================
                     # 🚨 THREAT WARNING SYSTEM (แจ้งเตือนภัยคุกคาม)
