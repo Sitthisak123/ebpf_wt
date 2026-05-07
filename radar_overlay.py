@@ -82,6 +82,7 @@ def _get_alert_audio_volume():
 ALERT_AUDIO_DIR = os.path.join(os.path.dirname(__file__), ".assets", "audio", "alert")
 ALERT_SOUND_AIRCRAFT = os.path.join(ALERT_AUDIO_DIR, "aircraft.mp3")
 ALERT_SOUND_HELO = os.path.join(ALERT_AUDIO_DIR, "helo.mp3")
+ALERT_SOUND_RECON = os.path.join(ALERT_AUDIO_DIR, "recon.mp3")
 ALERT_AUDIO_ON = True
 ALERT_AUDIO_VOLUME = 100  # 0..100
 AIR_ALERT_SOUND_COOLDOWN = 1.0
@@ -1211,24 +1212,11 @@ def _get_ground_target_aim_point(box_data, fallback_pos, distance_to_target):
 
 def _is_recon_drone_like(token):
     token = str(token or "").lower()
-    drone_patterns = (
+    recon_patterns = (
         "recon micro",
         "recon_micro",
-        "recon drone",
-        "recon_drone",
-        "scout drone",
-        "scout_drone",
-        "observation drone",
-        "observation_drone",
-        "spotter drone",
-        "spotter_drone",
-        "quadcopter",
-        "micro_uav",
-        "micro uav",
-        "uav",
-        "drone",
     )
-    return any(p in token for p in drone_patterns)
+    return any(p in token for p in recon_patterns)
 
 
 def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, name_key, short_name, is_air):
@@ -2332,8 +2320,11 @@ class ESPOverlay(QWidget):
                 except Exception:
                     continue
 
-    def _maybe_alert_for_air_target(self, u_ptr, unit_family, curr_t):
-        if unit_family == UNIT_FAMILY_AIR_HELICOPTER:
+    def _maybe_alert_for_air_target(self, u_ptr, unit_family, curr_t, is_recon_drone=False):
+        if is_recon_drone:
+            sound_key = "recon"
+            sound_path = ALERT_SOUND_RECON
+        elif unit_family == UNIT_FAMILY_AIR_HELICOPTER:
             sound_key = "helo"
             sound_path = ALERT_SOUND_HELO
         elif unit_family in (
@@ -3345,12 +3336,6 @@ class ESPOverlay(QWidget):
                     elif family_is_ground:
                         physics_is_air = False
 
-                    self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t)
-
-                    display_is_air = physics_is_air
-                    if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
-                        display_is_air = False
-
                     is_recon_drone = _is_recon_drone_like(" ".join((
                         family_name or "",
                         profile_tag or "",
@@ -3360,6 +3345,12 @@ class ESPOverlay(QWidget):
                         short_name or "",
                         clean_name or "",
                     )))
+
+                    self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
+
+                    display_is_air = physics_is_air
+                    if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
+                        display_is_air = False
 
                     has_reload_bar = (not display_is_air and (0 <= reload_val < 500))
                     dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
