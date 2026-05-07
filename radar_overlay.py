@@ -3170,6 +3170,7 @@ class ESPOverlay(QWidget):
                 profile_path,
                 profile_unit_key,
                 pre_vel,
+                is_recon_drone,
             ) in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
                 try:
