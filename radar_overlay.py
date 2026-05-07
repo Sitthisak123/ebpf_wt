@@ -4,7 +4,10 @@ import time
 import struct
 import os
 import json
+import shutil
+import subprocess
 import traceback
+import pwd
 import mss
 from PyQt5.QtGui import QImage, QPixmap, QPolygon
 from PyQt5.QtCore import QRect, QPoint
@@ -17,8 +20,15 @@ except ImportError:
     HAS_KEYBOARD = False
 
 from PyQt5.QtWidgets import QApplication, QWidget
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QUrl
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont
+try:
+    from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
+    HAS_QT_MULTIMEDIA = True
+except Exception:
+    QMediaContent = None
+    QMediaPlayer = None
+    HAS_QT_MULTIMEDIA = False
 
 # 🎯 นำเข้าจากระบบ Core Engine ที่แยกออกมาใหม่
 from src.utils.scanner import *
@@ -33,6 +43,52 @@ def _console_supports_sticky_dashboard():
         return sys.stdout.isatty() and term not in ("", "dumb")
     except Exception:
         return False
+
+
+def _get_default_pulse_sink_name():
+    try:
+        out = subprocess.check_output(
+            ["pactl", "get-default-sink"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        return out or ""
+    except Exception:
+        return ""
+
+
+def _get_desktop_audio_env():
+    env = os.environ.copy()
+    run_as_user = None
+    sudo_user = (env.get("SUDO_USER") or "").strip()
+    if os.geteuid() == 0 and sudo_user and sudo_user != "root":
+        try:
+            pw = pwd.getpwnam(sudo_user)
+            env["HOME"] = pw.pw_dir
+            env["XDG_RUNTIME_DIR"] = f"/run/user/{pw.pw_uid}"
+            run_as_user = sudo_user
+        except Exception:
+            run_as_user = None
+    return env, run_as_user
+
+
+def _get_alert_audio_volume():
+    try:
+        return max(0, min(100, int(ALERT_AUDIO_VOLUME)))
+    except Exception:
+        return 100
+
+
+ALERT_AUDIO_DIR = os.path.join(os.path.dirname(__file__), ".assets", "audio", "alert")
+ALERT_SOUND_AIRCRAFT = os.path.join(ALERT_AUDIO_DIR, "aircraft.mp3")
+ALERT_SOUND_HELO = os.path.join(ALERT_AUDIO_DIR, "helo.mp3")
+ALERT_AUDIO_ON = True
+ALERT_AUDIO_VOLUME = 100  # 0..100
+AIR_ALERT_SOUND_COOLDOWN = 1.0
+ALERT_AUDIO_BACKEND = "auto"  # auto | system | qt
+
+# Backward compatibility for older config references.
+ENABLE_AIR_ALERT_SOUND = ALERT_AUDIO_ON
 
 
 def _unit_family_from_code(code):
@@ -1153,6 +1209,28 @@ def _get_ground_target_aim_point(box_data, fallback_pos, distance_to_target):
     )
 
 
+def _is_recon_drone_like(token):
+    token = str(token or "").lower()
+    drone_patterns = (
+        "recon micro",
+        "recon_micro",
+        "recon drone",
+        "recon_drone",
+        "scout drone",
+        "scout_drone",
+        "observation drone",
+        "observation_drone",
+        "spotter drone",
+        "spotter_drone",
+        "quadcopter",
+        "micro_uav",
+        "micro uav",
+        "uav",
+        "drone",
+    )
+    return any(p in token for p in drone_patterns)
+
+
 def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, name_key, short_name, is_air):
     family_tag = (family_name or profile_tag or "").lower()
     token = " ".join((
@@ -2076,7 +2154,11 @@ class ESPOverlay(QWidget):
         self.q_pressed_last = False
         self.last_debug_log_time = 0.0
         self.console_initialized = False
-        self.dead_unit_latch = set()
+        self.dead_unit_latch = {}
+        self.air_alert_seen = {}
+        self.last_air_alert_sound_at = 0.0
+        self.alert_players = {}
+        self.alert_processes = {}
         self.ballistic_zero_cache = {}
         self.invalid_runtime_frames = 0
         self.my_unit_spawn_grace_until = 0.0
@@ -2147,12 +2229,126 @@ class ESPOverlay(QWidget):
         except Exception:
             pass
         try:
+            for proc in self.alert_processes.values():
+                if proc and proc.poll() is None:
+                    proc.kill()
+        except Exception:
+            pass
+        try:
             self.close()
         except Exception:
             pass
         app = QApplication.instance()
         if app is not None:
             app.quit()
+
+    def _play_alert_sound(self, sound_key, sound_path, curr_t):
+        if not ALERT_AUDIO_ON:
+            return
+        if not sound_path or not os.path.isfile(sound_path):
+            return
+        if (curr_t - self.last_air_alert_sound_at) < AIR_ALERT_SOUND_COOLDOWN:
+            return
+        volume = _get_alert_audio_volume()
+        if ALERT_AUDIO_BACKEND == "system":
+            backends = ("system",)
+        elif ALERT_AUDIO_BACKEND == "qt":
+            backends = ("qt",)
+        else:
+            backends = ("system", "qt")
+
+        for backend in backends:
+            if backend == "system":
+                try:
+                    prev = self.alert_processes.get(sound_key)
+                    if prev and prev.poll() is None:
+                        prev.kill()
+                    env, run_as_user = _get_desktop_audio_env()
+                    sink_name = _get_default_pulse_sink_name()
+                    if sink_name:
+                        env["PULSE_SINK"] = sink_name
+
+                    command_variants = []
+                    ffplay = shutil.which("ffplay")
+                    if ffplay:
+                        command_variants.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", str(volume), sound_path])
+                    mpv = shutil.which("mpv")
+                    if mpv:
+                        command_variants.append([mpv, "--no-video", "--really-quiet", f"--volume={volume}", sound_path])
+                    gst_play = shutil.which("gst-play-1.0")
+                    if gst_play:
+                        command_variants.append([gst_play, sound_path])
+
+                    for base_cmd in command_variants:
+                        cmd = list(base_cmd)
+                        if run_as_user:
+                            sudo_cmd = [
+                                "sudo",
+                                "--preserve-env=HOME,XDG_RUNTIME_DIR,PULSE_SINK",
+                                "-u",
+                                run_as_user,
+                                "--",
+                                "env",
+                                f"HOME={env.get('HOME', '')}",
+                                f"XDG_RUNTIME_DIR={env.get('XDG_RUNTIME_DIR', '')}",
+                            ]
+                            if env.get("PULSE_SINK"):
+                                sudo_cmd.append(f"PULSE_SINK={env['PULSE_SINK']}")
+                            cmd = sudo_cmd + cmd
+                        proc = subprocess.Popen(
+                            cmd,
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            start_new_session=True,
+                            close_fds=True,
+                            env=env,
+                        )
+                        self.alert_processes[sound_key] = proc
+                        self.last_air_alert_sound_at = curr_t
+                        return
+                except Exception:
+                    continue
+
+            if backend == "qt":
+                if not HAS_QT_MULTIMEDIA:
+                    continue
+                player = self.alert_players.get(sound_key)
+                if player is None:
+                    try:
+                        player = QMediaPlayer(self)
+                        player.setVolume(volume)
+                        player.setMedia(QMediaContent(QUrl.fromLocalFile(sound_path)))
+                        self.alert_players[sound_key] = player
+                    except Exception:
+                        continue
+                try:
+                    player.setVolume(volume)
+                    player.stop()
+                    player.setPosition(0)
+                    player.play()
+                    self.last_air_alert_sound_at = curr_t
+                    return
+                except Exception:
+                    continue
+
+    def _maybe_alert_for_air_target(self, u_ptr, unit_family, curr_t):
+        if unit_family == UNIT_FAMILY_AIR_HELICOPTER:
+            sound_key = "helo"
+            sound_path = ALERT_SOUND_HELO
+        elif unit_family in (
+            UNIT_FAMILY_AIR_FIGHTER,
+            UNIT_FAMILY_AIR_BOMBER,
+            UNIT_FAMILY_AIR_ATTACKER,
+        ):
+            sound_key = "aircraft"
+            sound_path = ALERT_SOUND_AIRCRAFT
+        else:
+            return
+        if u_ptr in self.air_alert_seen:
+            return
+        self.air_alert_seen[u_ptr] = curr_t
+        self._play_alert_sound(sound_key, sound_path, curr_t)
 
     def _update_screen_metrics(self):
         # screen = self.screen() or QApplication.primaryScreen()
@@ -2574,7 +2770,11 @@ class ESPOverlay(QWidget):
             all_units_data = get_all_units(self.scanner, cgame_base)
             all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
             if self.dead_unit_latch:
-                self.dead_unit_latch.intersection_update(all_unit_ptrs)
+                self.dead_unit_latch = {
+                    ptr: meta
+                    for ptr, meta in self.dead_unit_latch.items()
+                    if ptr in all_unit_ptrs
+                }
 
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
@@ -2587,7 +2787,7 @@ class ESPOverlay(QWidget):
                 self.velocity_cache = {}
                 self.last_velocity_meta = {}
                 self.ai_ghost_queue = []
-                self.dead_unit_latch = set()
+                self.dead_unit_latch = {}
                 self.live_velocity_debug = None
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
@@ -2685,12 +2885,29 @@ class ESPOverlay(QWidget):
                 self.profile_cache[u_ptr] = cached_prof
                 
                 u_team, u_state, unit_name, reload_val = cached_prof['status']
-                
+
+                latch_meta = self.dead_unit_latch.get(u_ptr)
                 if u_state >= 1:
-                    self.dead_unit_latch.add(u_ptr)
+                    self.dead_unit_latch[u_ptr] = {
+                        "info_ptr": info_ptr_now if is_valid_ptr(info_ptr_now) else 0,
+                        "latched_at": curr_t,
+                    }
                     continue
-                if u_ptr in self.dead_unit_latch:
-                    continue
+                if latch_meta:
+                    latched_info_ptr = int(latch_meta.get("info_ptr") or 0)
+                    info_ptr_changed = (
+                        is_valid_ptr(info_ptr_now)
+                        and is_valid_ptr(latched_info_ptr)
+                        and info_ptr_now != latched_info_ptr
+                    )
+                    info_ptr_reborn = (
+                        is_valid_ptr(info_ptr_now)
+                        and not is_valid_ptr(latched_info_ptr)
+                    )
+                    if info_ptr_changed or info_ptr_reborn:
+                        del self.dead_unit_latch[u_ptr]
+                    else:
+                        continue
                 if u_team == 0 or (my_team != 0 and u_team == my_team): continue
 
                 profile = cached_prof['profile']
@@ -3128,13 +3345,25 @@ class ESPOverlay(QWidget):
                     elif family_is_ground:
                         physics_is_air = False
 
+                    self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t)
+
                     display_is_air = physics_is_air
                     if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
                         display_is_air = False
 
+                    is_recon_drone = _is_recon_drone_like(" ".join((
+                        family_name or "",
+                        profile_tag or "",
+                        profile_path or "",
+                        profile_unit_key or "",
+                        name_key or "",
+                        short_name or "",
+                        clean_name or "",
+                    )))
+
                     has_reload_bar = (not display_is_air and (0 <= reload_val < 500))
                     dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
-                    hide_name = False if display_is_air else (dist > 550 and dist_to_crosshair >= 350)
+                    hide_name = (dist > 550 and dist_to_crosshair >= 350) if (is_recon_drone or not display_is_air) else False
                     
                     # 🎯 กลับมาใช้รูปแบบเดิมที่โชว์แค่ ชื่อ และ ระยะทาง
                     display_text = f"-{int(dist)}m-" if hide_name else f"{clean_name.upper()} [{int(dist)}m]"
@@ -3360,6 +3589,7 @@ class ESPOverlay(QWidget):
                     sight_drop_comp = 0.5 * BULLET_GRAVITY * (t_sight * t_sight)
                     
                     best_t = dist / current_bullet_speed if current_bullet_speed > 0 else 0.1
+                    bullet_drop_sim = 0.0
                     final_x, final_y, final_z = t_x, t_y, t_z
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
                     
@@ -3391,21 +3621,23 @@ class ESPOverlay(QWidget):
                         dx_imp = pred_x - (origin_x + my_vx * best_t)
                         dy_imp = pred_y - (origin_y + my_vy * best_t)
                         dz_imp = pred_z - (origin_z + my_vz * best_t)
-                        d_imp = math.sqrt(dx_imp**2 + dy_imp**2 + dz_imp**2)
+                        horizontal_imp = math.hypot(dx_imp, dz_imp)
                         
                         if current_bullet_speed > 0:
-                            if k > 0.000001:
-                                kx = min(k * d_imp, 5.0) 
+                            if physics_is_air:
+                                best_t, bullet_drop_sim, _ = _simulate_projectile_range(horizontal_imp, ballistic_model, zero_pitch)
+                            elif k > 0.000001:
+                                kx = min(k * horizontal_imp, 5.0) 
                                 best_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
                             else:
-                                best_t = d_imp / current_bullet_speed
+                                best_t = horizontal_imp / current_bullet_speed
                         else:
                             best_t = 999.0
                             
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
 
                     # 📉 Gravity Drop Compensation: 0.5 * g * t^2
-                    gravity_offset = 0.5 * BULLET_GRAVITY * (best_t ** 2)
+                    gravity_offset = bullet_drop_sim if physics_is_air else (0.5 * BULLET_GRAVITY * (best_t ** 2))
                     
                     # 🎯 แรงโน้มถ่วงดึงลงตรงๆ แกน Y ของโลกเท่านั้น!
                     final_y += gravity_offset                  
@@ -4150,6 +4382,8 @@ class ESPOverlay(QWidget):
                 
             for ptr in [ptr for ptr in self.vel_window if ptr not in seen_targets_this_frame]:
                 del self.vel_window[ptr]
+            for ptr in [ptr for ptr in self.air_alert_seen if ptr not in seen_targets_this_frame]:
+                del self.air_alert_seen[ptr]
 
         except Exception as e: 
             self._fatal_shutdown(
