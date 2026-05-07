@@ -87,6 +87,8 @@ ALERT_AUDIO_ON = True
 ALERT_AUDIO_VOLUME = 100  # 0..100
 AIR_ALERT_SOUND_COOLDOWN = 1.0
 ALERT_AUDIO_BACKEND = "auto"  # auto | system | qt
+RECON_GHOST_SPAWN_WINDOW_SEC = 2.0
+RECON_GHOST_POS_EPS_METERS = 1.5
 
 # Backward compatibility for older config references.
 ENABLE_AIR_ALERT_SOUND = ALERT_AUDIO_ON
@@ -400,7 +402,7 @@ ZERO_PITCH_MAX = 0.18  # clamp สูงสุดของ zero pitch
 # ==========================================
 # 🔎 SNIPER MODE (PiP) CONFIGURATION
 # ==========================================
-ENABLE_SNIPER_MODE = True
+ENABLE_SNIPER_MODE = False
 SNIPER_ZOOM_SCALE = 4.5       # อัตราการซูม (เท่า)
 SNIPER_WINDOW_SIZE = 450      # ขนาดกรอบหน้าต่าง Sniper (พิกเซล)
 SNIPER_POS_X = 20             # ตำแหน่งแกน X (มุมซ้ายบน)
@@ -2144,6 +2146,7 @@ class ESPOverlay(QWidget):
         self.console_initialized = False
         self.dead_unit_latch = {}
         self.air_alert_seen = {}
+        self.recon_spawn_watch = {}
         self.last_air_alert_sound_at = 0.0
         self.alert_players = {}
         self.alert_processes = {}
@@ -2340,6 +2343,36 @@ class ESPOverlay(QWidget):
             return
         self.air_alert_seen[u_ptr] = curr_t
         self._play_alert_sound(sound_key, sound_path, curr_t)
+
+    def _is_fixed_recon_ghost(self, u_ptr, pos, curr_t):
+        if not u_ptr or not pos:
+            return False
+        watch = self.recon_spawn_watch.get(u_ptr)
+        if watch is None:
+            self.recon_spawn_watch[u_ptr] = {
+                "first_seen": curr_t,
+                "anchor_pos": tuple(pos),
+                "moved": False,
+                "last_seen": curr_t,
+            }
+            return False
+
+        watch["last_seen"] = curr_t
+        anchor = watch.get("anchor_pos") or tuple(pos)
+        moved_dist = math.sqrt(
+            ((pos[0] - anchor[0]) ** 2) +
+            ((pos[1] - anchor[1]) ** 2) +
+            ((pos[2] - anchor[2]) ** 2)
+        )
+        if moved_dist > RECON_GHOST_POS_EPS_METERS:
+            watch["moved"] = True
+            watch["anchor_pos"] = tuple(pos)
+            return False
+
+        if watch.get("moved"):
+            return False
+
+        return (curr_t - float(watch.get("first_seen", curr_t))) >= RECON_GHOST_SPAWN_WINDOW_SEC
 
     def _update_screen_metrics(self):
         # screen = self.screen() or QApplication.primaryScreen()
@@ -2779,6 +2812,7 @@ class ESPOverlay(QWidget):
                 self.last_velocity_meta = {}
                 self.ai_ghost_queue = []
                 self.dead_unit_latch = {}
+                self.recon_spawn_watch = {}
                 self.live_velocity_debug = None
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
@@ -2940,8 +2974,12 @@ class ESPOverlay(QWidget):
                 if any(h in runtime_filter_blob for h in NON_PLAYABLE_RUNTIME_HINTS):
                     continue
 
+                is_recon_drone = _is_recon_drone_like(runtime_filter_blob)
+
                 pos = get_unit_pos(self.scanner, u_ptr)
                 if not pos: continue
+                if is_recon_drone and self._is_fixed_recon_ghost(u_ptr, pos, curr_t):
+                    continue
                 pre_vel = None
                 if not resolved_is_air:
                     pre_vel = self._stabilize_velocity(u_ptr, False, pos, curr_t)
@@ -2973,12 +3011,16 @@ class ESPOverlay(QWidget):
                     profile_path,
                     (profile.get("unit_key") or ""),
                     pre_vel,
+                    is_recon_drone,
                 ))
             
             # 🧹 Clean up Profile Cache for missing units
             for ptr in list(self.profile_cache.keys()):
                 if ptr not in current_seen_ptrs:
                     del self.profile_cache[ptr]
+            for ptr in list(self.recon_spawn_watch.keys()):
+                if ptr not in current_seen_ptrs:
+                    del self.recon_spawn_watch[ptr]
             
             dprint_frame_stats(
                 self.current_fps, 
@@ -3005,6 +3047,7 @@ class ESPOverlay(QWidget):
                 profile_path,
                 profile_unit_key,
                 pre_vel,
+                is_recon_drone,
             ) in valid_targets:
                 select_screen = None
                 select_box_rect = None
@@ -3335,16 +3378,6 @@ class ESPOverlay(QWidget):
                         physics_is_air = True
                     elif family_is_ground:
                         physics_is_air = False
-
-                    is_recon_drone = _is_recon_drone_like(" ".join((
-                        family_name or "",
-                        profile_tag or "",
-                        profile_path or "",
-                        profile_unit_key or "",
-                        name_key or "",
-                        short_name or "",
-                        clean_name or "",
-                    )))
 
                     self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
 
