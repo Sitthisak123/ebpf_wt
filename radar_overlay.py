@@ -184,38 +184,39 @@ def _match_pragmatic_unit_family_code(family_tag, token):
 
     return ""
 
-COLOR_INFO_TEXT         = (255, 228, 64, 255)   
-COLOR_BARREL_LINE       = (0, 255, 0, 255)      
-COLOR_BOX_TARGET        = (255, 255, 0, 200)
-COLOR_BOX_SELECT_TARGET = (255, 255, 0, 200)
-COLOR_BOX_MY_UNIT       = (80, 220, 255, 220)
-COLOR_TEXT_GROUND       = (255, 196, 20, 200)    
-COLOR_TEXT_AIR          = (255, 196, 20, 230)   
-COLOR_RELOAD_BG         = (0, 0, 0, 180)        
-COLOR_RELOAD_READY      = (255, 255, 255, 255)      
-COLOR_RELOAD_LOADING    = (255, 165, 0, 200)    
-COLOR_PREDICTION        = (255, 255, 255, 255)    
-COLOR_PREDICTION_GROUND_STATIC = (64, 220, 255, 120)
-COLOR_FLIGHT_PATH       = (255, 200, 0, 150)    
-COLOR_FPS_GOOD          = (0, 255, 0, 255)
-COLOR_THREAD_TEXT       = (255, 0, 0, 50)
-COLOR_THREAD_TEXT2      = (255, 0, 0, 255)
-COLOR_THREAD_WARNING    = (255, 0, 0, 100)
-COLOR_THREAD_WARNING2   = (255, 0, 0, 255) 
-COLOR_THREAD_ALERT      = (255, 180, 0, 80)
-COLOR_THREAD_ALERT2     = (255, 180, 0, 255)
+COLOR_INFO_TEXT                 = (255, 228, 64, 255)   
+COLOR_BARREL_LINE               = (0, 255, 0, 255)      
+COLOR_BOX_TARGET                = (255, 255, 0, 200)
+COLOR_BOX_SELECT_TARGET         = (255, 255, 0, 200)
+COLOR_BOX_MY_UNIT               = (80, 220, 255, 220)
+COLOR_TEXT_GROUND               = (255, 196, 20, 200)    
+COLOR_TEXT_AIR                  = (255, 196, 20, 230)   
+COLOR_RELOAD_BG                 = (0, 0, 0, 180)        
+COLOR_RELOAD_READY              = (255, 255, 255, 255)      
+COLOR_RELOAD_LOADING            = (255, 165, 0, 200)    
+COLOR_PREDICTION                = (255, 255, 255, 255)    
+COLOR_PREDICTION_GROUND_STATIC  = (64, 220, 255, 120)
+COLOR_FLIGHT_PATH               = (255, 200, 0, 150)    
+COLOR_FPS_GOOD                  = (0, 255, 0, 255)
+COLOR_THREAD_TEXT               = (255, 0, 0, 50)
+COLOR_THREAD_TEXT2              = (255, 0, 0, 255)
+COLOR_THREAD_WARNING            = (255, 0, 0, 100)
+COLOR_THREAD_WARNING2           = (255, 0, 0, 255) 
+COLOR_THREAD_ALERT              = (255, 180, 0, 80)
+COLOR_THREAD_ALERT2             = (255, 180, 0, 255)
+COLOR_CCIP_TARGET               = (255, 255, 255, 255)
 
-COLOR_AXIS_X            = (255, 64, 64, 255)
-COLOR_AXIS_Y            = (64, 255, 64, 255)
-COLOR_AXIS_Z            = (64, 160, 255, 255)
-COLOR_BOX_HITPOINT      = (255, 255, 255, 255)
-COLOR_DYNAMIC_COMPARE_HIT = (80, 255, 255, 235)
-COLOR_FALLBACK_COMPARE_HIT = (255, 120, 40, 235)
-COLOR_DEBUG_MUZZLE_RAY  = (80, 255, 120, 220)
-COLOR_DEBUG_BOX_ENTRY   = (255, 120, 40, 235)
-COLOR_CALIBRATION_HIT   = (0, 150, 255, 255)
-COLOR_CLASS_ICON_GROUND = (255, 215, 96, 235)
-COLOR_CLASS_ICON_AIR    = (120, 220, 255, 235)
+COLOR_AXIS_X                    = (255, 64, 64, 255)
+COLOR_AXIS_Y                    = (64, 255, 64, 255)
+COLOR_AXIS_Z                    = (64, 160, 255, 255)
+COLOR_BOX_HITPOINT              = (255, 255, 255, 255)
+COLOR_DYNAMIC_COMPARE_HIT       = (80, 255, 255, 235)
+COLOR_FALLBACK_COMPARE_HIT      = (255, 120, 40, 235)
+COLOR_DEBUG_MUZZLE_RAY          = (80, 255, 120, 220)
+COLOR_DEBUG_BOX_ENTRY           = (255, 120, 40, 235)
+COLOR_CALIBRATION_HIT           = (0, 150, 255, 255)
+COLOR_CLASS_ICON_GROUND         = (255, 215, 96, 235)
+COLOR_CLASS_ICON_AIR            = (120, 220, 255, 235)
 
 BULLET_GRAVITY       = 9.80665   
 
@@ -2103,6 +2104,39 @@ def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
 
     return t, y_down, speed_mag
 
+def _simulate_bomb_impact(my_pos, my_vel, ground_y, drag_k=0.0001):
+    """
+    จำลองจุดตกของระเบิด
+    """
+    x, y, z = my_pos
+    vx, vy, vz = my_vel
+    
+    if y <= ground_y:
+        return None
+        
+    dt = 0.05  # ความละเอียด
+    max_time = 30.0
+    t = 0.0
+    
+    # ดึงค่าแรงโน้มถ่วงจากตัวแปร Global
+    gravity = 9.80665 
+    
+    while y > ground_y and t < max_time:
+        speed = math.sqrt(vx**2 + vy**2 + vz**2)
+        ax = -drag_k * speed * vx
+        ay = (-drag_k * speed * vy) - gravity
+        az = -drag_k * speed * vz
+        
+        vx += ax * dt
+        vy += ay * dt
+        vz += az * dt
+        
+        x += vx * dt
+        y += vy * dt
+        z += vz * dt
+        t += dt
+        
+    return (x, ground_y, z)
 
 def _solve_zero_pitch(zeroing_distance, model):
     if zeroing_distance <= 1.0:
@@ -3683,6 +3717,39 @@ class ESPOverlay(QWidget):
                     final_x -= (my_vx * best_t)
                     final_y -= (my_vy * best_t)
                     final_z -= (my_vz * best_t)
+
+                    # 🎯 วางตรงนี้ครับท่านนายพล! (ตรวจสอบเงื่อนไข CCIP)
+                    # =========================================================
+                    # 💣 AIR-TO-GROUND BOMB CCIP (จุดตกกระทบระเบิด)
+                    # =========================================================
+                    if my_is_air and u_ptr == active_target_ptr and not is_air_target:
+                        # ใช้ความสูงเป้าหมาย (t_y) เป็นพื้นดินอ้างอิง
+                        bomb_impact_pos = _simulate_bomb_impact(my_pos, (my_vx, my_vy, my_vz), t_y, drag_k=0.0001)
+                        
+                        if bomb_impact_pos:
+                            bomb_screen = world_to_screen(
+                                view_matrix,
+                                bomb_impact_pos[0],
+                                bomb_impact_pos[1],
+                                bomb_impact_pos[2],
+                                self.screen_width,
+                                self.screen_height,
+                            )
+                            
+                            if bomb_screen and bomb_screen[2] > 0:
+                                b_sx, b_sy = int(bomb_screen[0]), int(bomb_screen[1])
+                                
+                                ccip_color = QColor(*COLOR_CCIP_TARGET)
+                                painter.setPen(QPen(ccip_color, 2))
+                                painter.setBrush(Qt.NoBrush)
+                                
+                                radius = 75
+                                painter.drawEllipse(b_sx - radius, b_sy - radius, radius * 2, radius * 2)
+                                painter.drawLine(b_sx, b_sy - radius, b_sx, b_sy + radius)
+                                painter.drawLine(b_sx - radius, b_sy, b_sx + radius, b_sy)
+                                
+                                painter.setBrush(ccip_color)
+                                painter.drawEllipse(b_sx - 2, b_sy - 2, 4, 4)
 
                     leadmark_tof_ok = (
                         leadmark_tof_limit <= 0.0 or best_t <= leadmark_tof_limit
