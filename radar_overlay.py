@@ -347,7 +347,7 @@ DYNAMIC_GEOMETRY_FPS_MAX_DIST = 6.0
 DYNAMIC_GEOMETRY_FPS_UNIT_SCALE = 1.35
 
 # Leadmark / ballistic solver tuning
-LEADMARK_RANGE_LIMIT_RATIO = 0.80  # ต่ำลง = ซ่อน leadmark เร็วขึ้นเมื่อเป้าไกลเกิน effective range
+LEADMARK_RANGE_LIMIT_RATIO = 0.70  # ต่ำลง = ซ่อน leadmark เร็วขึ้นเมื่อเป้าไกลเกิน effective range
 MAX_TOF_AIR_LEADMARK = 6.00       # <=0 = OFF
 BALLISTIC_MIN_SPEED = 50.0
 BALLISTIC_MAX_SPEED = 3000.0
@@ -2104,9 +2104,9 @@ def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
 
     return t, y_down, speed_mag
 
-def _simulate_bomb_impact(my_pos, my_vel, ground_y, drag_k=0.0001):
+def _simulate_bomb_impact(my_pos, my_vel, ground_y, drag_k=0.0000):
     """
-    จำลองจุดตกของระเบิด
+    จำลองจุดตกของระเบิด (อัปเกรดระบบสมูท: Sub-step Interpolation)
     """
     x, y, z = my_pos
     vx, vy, vz = my_vel
@@ -2114,14 +2114,18 @@ def _simulate_bomb_impact(my_pos, my_vel, ground_y, drag_k=0.0001):
     if y <= ground_y:
         return None
         
-    dt = 0.05  # ความละเอียด
+    dt = 0.05  # ความละเอียด (ยิ่งน้อยยิ่งเป๊ะ แต่ 0.05 พร้อม Interpolation ก็เนียนกริบแล้ว)
     max_time = 30.0
-    t = 0.0
+    t = 0
     
-    # ดึงค่าแรงโน้มถ่วงจากตัวแปร Global
     gravity = 9.80665 
     
+    # 🎯 ตัวแปรเก็บตำแหน่งก่อนหน้า (เพื่อเอามาคำนวณจุดตัด)
+    prev_x, prev_y, prev_z = x, y, z
+    
     while y > ground_y and t < max_time:
+        prev_x, prev_y, prev_z = x, y, z  # 🎯 เก็บค่าเฟรมที่แล้วไว้ก่อนที่จะขยับ
+        
         speed = math.sqrt(vx**2 + vy**2 + vz**2)
         ax = -drag_k * speed * vx
         ay = (-drag_k * speed * vy) - gravity
@@ -2135,6 +2139,16 @@ def _simulate_bomb_impact(my_pos, my_vel, ground_y, drag_k=0.0001):
         y += vy * dt
         z += vz * dt
         t += dt
+        
+    # 🎯 คำนวณจุดตกกระทบที่แท้จริง (Sub-step Lerp)
+    # ถ้าระเบิดก้าวทะลุพื้นไปแล้ว ให้ดึงกลับมาที่ผิวพื้นดินเป๊ะๆ!
+    if y < ground_y and prev_y > ground_y:
+        # 🛠️ THE FIX: สลับสมการให้ค่าเป็นบวกเสมอ (ระยะที่ตกผ่านไปแล้ว หารด้วย ระยะที่ตกลงมาในเฟรมนี้)
+        frac = (prev_y - ground_y) / max(prev_y - y, 1e-6)
+        
+        final_x = prev_x + (x - prev_x) * frac
+        final_z = prev_z + (z - prev_z) * frac
+        return (final_x, ground_y, final_z)
         
     return (x, ground_y, z)
 
@@ -2640,12 +2654,18 @@ class ESPOverlay(QWidget):
                 chosen_vel = pos_vel
                 source = "pos_air_floor"
             elif raw_mag > 0.001 and pos_mag > 0.05:
-                chosen_vel = (
-                    (raw_vel[0] * 0.65) + (pos_vel[0] * 0.35),
-                    (raw_vel[1] * 0.65) + (pos_vel[1] * 0.35),
-                    (raw_vel[2] * 0.65) + (pos_vel[2] * 0.35),
-                )
-                source = "blended"
+                if is_air:
+                    # ✈️ AIR: ใช้ความเร็วจาก Physics ของเกม 100% ไม่ผสมค่า dx/dt เพื่อป้องกัน Loop Jitter
+                    chosen_vel = raw_vel
+                    source = "raw_trusted"
+                else:
+                    # 🚜 GROUND: ผสมค่าความเร็วตามเดิม เพื่อลดอาการแกว่งของช่วงล่างรถถัง
+                    chosen_vel = (
+                        (raw_vel[0] * 0.65) + (pos_vel[0] * 0.35),
+                        (raw_vel[1] * 0.65) + (pos_vel[1] * 0.35),
+                        (raw_vel[2] * 0.65) + (pos_vel[2] * 0.35),
+                    )
+                    source = "blended"
 
         if not is_air:
             prev_vel = cached.get('vel') if cached else None
@@ -2696,7 +2716,7 @@ class ESPOverlay(QWidget):
                     chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
                     chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
                     source = f"{source}_smoothed"
-
+        
         self.velocity_cache[u_ptr] = {
             'time': curr_t,
             'pos': pos,
@@ -3724,6 +3744,10 @@ class ESPOverlay(QWidget):
                     # =========================================================
                     if my_is_air and u_ptr == active_target_ptr and not is_air_target:
                         # ใช้ความสูงเป้าหมาย (t_y) เป็นพื้นดินอ้างอิง
+                        painter.setPen(QColor(*COLOR_INFO_TEXT))
+                        painter.drawText(20, 150, f"my_pos: {my_pos}")
+                        painter.drawText(20, 170, f"my_vel: {my_vy}")
+                        painter.drawText(20, 190, f"t_y: {t_y}")
                         bomb_impact_pos = _simulate_bomb_impact(my_pos, (my_vx, my_vy, my_vz), t_y, drag_k=0.0001)
                         
                         if bomb_impact_pos:

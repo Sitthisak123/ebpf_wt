@@ -1,0 +1,30 @@
+{
+  "source": "manual_seed_from_runtime_and_ingame_loadout_ui",
+  "updated_by_tool": "manual",
+  "profiles": {
+    "mig_15bis_ish_250_bombs": {
+      "unit_key": "mig-15bis_ish",
+      "display_name": "MiG-15bis ISh FAB-250 x4",
+      "initial_count": 4,
+      "bomb_mass": 250,
+      "explosive_mass": 97,
+      "armor_pen": 79,
+      "explode_radius": 6,
+      "fragment_radius": 114,
+      "drag_profile": "",
+      "notes": "Observed runtime preset at my_unit+0x7c0"
+    },
+    "mig_15bis_ish_500_bombs": {
+      "unit_key": "mig-15bis_ish",
+      "display_name": "MiG-15bis ISh FAB-500 x2",
+      "initial_count": 2,
+      "bomb_mass": 500,
+      "explosive_mass": 201,
+      "armor_pen": 88,
+      "explode_radius": 9,
+      "fragment_radius": 134,
+      "drag_profile": "",
+      "notes": "Observed runtime preset at my_unit+0x7c0"
+    }
+  }
+}

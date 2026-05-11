@@ -49,4 +49,6 @@ QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
 "
 
 - Show Ground Leadmark in Sniper Only
-- 
+- IF MY-UNIT IS GROUND IGNORE ALL BOAT
+- LEADMARK: too fast at close range
+- Low Trick rate Air_VEL
