@@ -3744,10 +3744,6 @@ class ESPOverlay(QWidget):
                     # =========================================================
                     if my_is_air and u_ptr == active_target_ptr and not is_air_target:
                         # ใช้ความสูงเป้าหมาย (t_y) เป็นพื้นดินอ้างอิง
-                        painter.setPen(QColor(*COLOR_INFO_TEXT))
-                        painter.drawText(20, 150, f"my_pos: {my_pos}")
-                        painter.drawText(20, 170, f"my_vel: {my_vy}")
-                        painter.drawText(20, 190, f"t_y: {t_y}")
                         bomb_impact_pos = _simulate_bomb_impact(my_pos, (my_vx, my_vy, my_vz), t_y, drag_k=0.0001)
                         
                         if bomb_impact_pos:

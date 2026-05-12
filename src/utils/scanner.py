@@ -244,7 +244,8 @@ class MemoryScanner:
         """ค้นหาลายนิ้วมือหาตัวแปร Global (DAT_MANAGER, MY_UNIT)"""
         regex_bytes = b""
         for chunk in pattern_hex.split():
-            if chunk == "?" or chunk == "??": regex_bytes += b"."
+            if "?" in chunk: # ถ้ามีเครื่องหมาย ? อยู่ในกลุ่มนั้น ไม่ว่าจะ '??' หรือ 'D?' ให้ถือว่าเป็น Wildcard
+                regex_bytes += b"."
             else:
                 b = bytes([int(chunk, 16)])
                 if b in b".^$*+?{}\\[]|()": regex_bytes += b"\\" + b
@@ -788,19 +789,20 @@ def init_dynamic_offsets(scanner, base_address):
 
     # 5️⃣ หา OFF_AIR_VEL (0x318)
     # 🧬 DNA: 0F 10 ?? 18 03 00 00 0F 10 ?? 24 03 00 00 (จาก 025effcb)
-    air_vel_dna = "0F 10 ? 18 03 00 00 0F 10 ? 24 03 00 00"
-    air_vel_cands = scanner.find_all_struct_offsets(air_vel_dna, 3)
-    if air_vel_cands:
-        top_vel = Counter(air_vel_cands).most_common(1)[0][0]
-        mul.OFF_AIR_VEL = top_vel
-        print(f"  [+] ✅ BINGO! AIR_VEL = {hex(mul.OFF_AIR_VEL)} (โหวต {Counter(air_vel_cands).most_common(1)[0][1]} เสียง)")
-    else:
-        print(f"  [!] ⚠️ หา AIR_VEL ไม่เจอ ใช้ค่า Persistence: {hex(mul.OFF_AIR_VEL)}")
+    # air_vel_dna = "0F 10 ? 18 03 00 00 0F 10 ? 24 03 00 00"
+    # air_vel_cands = scanner.find_all_struct_offsets(air_vel_dna, 3)
+    # if air_vel_cands:
+    #     top_vel = Counter(air_vel_cands).most_common(1)[0][0]
+    #     mul.OFF_AIR_VEL = top_vel
+    #     print(f"  [+] ✅ BINGO! AIR_VEL = {hex(mul.OFF_AIR_VEL)} (โหวต {Counter(air_vel_cands).most_common(1)[0][1]} เสียง)")
+    # else:
+    #     print(f"  [!] ⚠️ หา AIR_VEL ไม่เจอ ใช้ค่า Persistence: {hex(mul.OFF_AIR_VEL)}")
 
     # 6️⃣ หา OFF_AIR_MOVEMENT (0x18) - 🆕 High Precision (Byte)
-    # 🎯 AIR_MOVEMENT (0x18) - 🆕 DNA: MOV EDI, [RBX+18]; MOVSS XMM1, [RBP-40C]; TEST EDI, EDI
-    air_mov_dna = "8B 7B ? F3 0F 10 8D ? ? FF FF 85 FF 0F 88"
-    air_mov_cands = scanner.find_byte_struct_offset(air_mov_dna, 2)
+    # DNA จาก LAB_017e1919: MOV RDI, [RDX + 0xd18] -> MOV [RBP+var], RDX -> MOV [RBP+var], RSI -> MOV RAX, [RDI]
+    air_mov_dna = "48 8B BA ?? ?? ?? ?? 48 89 55 ?? 48 89 75 ?? 48 8B 07"
+    # 🎯 สแกนหา 4 ไบต์ (18 0D 00 00) โดยเริ่มอ่านที่ Index 3
+    air_mov_cands = scanner.find_all_struct_offsets(air_mov_dna, 3)
     if air_mov_cands:
         top_mov, votes = Counter(air_mov_cands).most_common(1)[0]
         mul.OFF_AIR_MOVEMENT = top_mov
