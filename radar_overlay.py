@@ -34,6 +34,7 @@ except Exception:
 from src.utils.scanner import *
 from src.utils.mul import *
 from src.utils.debug import *
+from src.utils.kalman import KinematicKalmanFilter
 from src.utils.ammo_family import resolve_ammo_family
 
 
@@ -2174,6 +2175,7 @@ class ESPOverlay(QWidget):
         self.last_my_unit = 0 
         self.vel_window = {} 
         self.velocity_cache = {}
+        self.kalman_filters = {}
         self.last_frame_time = time.time()
         self.current_fps = 0.0
         self.cached_matrix_offset = 0x1C0
@@ -2865,6 +2867,7 @@ class ESPOverlay(QWidget):
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
+            #Cache reset on my_unit change
             if my_unit != self.last_my_unit:
                 reset_runtime_caches(clear_view=True)
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {}
@@ -2878,6 +2881,7 @@ class ESPOverlay(QWidget):
                 self.live_velocity_debug = None
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
+                self.kalman_filters = {}
 
             my_is_air = False
             my_name = ""
@@ -2895,10 +2899,23 @@ class ESPOverlay(QWidget):
                     my_is_air = False
             
             my_spawn_in_grace = curr_t < self.my_unit_spawn_grace_until
+            my_acc = (0.0, 0.0, 0.0)
+            
             if my_spawn_in_grace:
                 my_vel = (0.0, 0.0, 0.0)
             else:
                 my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t) if my_unit and my_pos else (0.0, 0.0, 0.0)
+                
+                # ✈️ ใช้ Kalman Filter กรองความเร็วและตำแหน่งของ "ยานพาหนะเรา"
+                # if my_is_air and my_unit and my_pos:
+                #     if my_unit not in self.kalman_filters:
+                #         self.kalman_filters[my_unit] = KinematicKalmanFilter(my_pos, my_vel)
+                #     else:
+                #         smoothed_pos, smoothed_vel, smoothed_acc = self.kalman_filters[my_unit].update(my_pos, my_vel)
+                #         my_pos = smoothed_pos  # ใช้พิกัดที่สมูทแล้วลดอาการ CCIP แกว่ง
+                #         my_vel = smoothed_vel  # ความเร็วที่กรองแล้ว
+                #         my_acc = smoothed_acc  # สามารถดึงไปใช้ทำนายจุดตก Advanced Bomb Lead ได้
+
             if not my_vel: my_vel = (0.0, 0.0, 0.0)
             my_vx, my_vy, my_vz = my_vel
             my_ground_shot_origin = my_pos
@@ -3566,33 +3583,34 @@ class ESPOverlay(QWidget):
                     ax, ay, az = 0.0, 0.0, 0.0
                     
                     if physics_is_air:
-                        if u_ptr not in self.vel_window:
-                            self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (0.0, 0.0, 0.0), 'fail_count': 0, 'turn_time': 0.0}
+                        if u_ptr not in self.kalman_filters:
+                            self.kalman_filters[u_ptr] = KinematicKalmanFilter(pos, vel)
+                            self.vel_window[u_ptr] = {'turn_time': 0.0} # ใช้เก็บแค่ Timestamp ตอนเครื่องบินหักเลี้ยว
                         else:
-                            history = self.vel_window[u_ptr]
-                            old_v, old_t, old_a = history['v'], history['time'], history['a']
-                            fail_count = history.get('fail_count', 0)
-                            turn_time = history.get('turn_time', 0.0) 
+                            # 1. ป้อนข้อมูลใหม่ (pos, vel) ให้ Filter
+                            smoothed_pos, smoothed_vel, smoothed_acc = self.kalman_filters[u_ptr].update(pos, vel)
                             
-                            if vx != old_v[0] or vy != old_v[1] or vz != old_v[2]:
-                                dt_track = curr_t - old_t
-                                if dt_track >= 0.01: 
-                                    raw_ax = (vx - old_v[0]) / dt_track
-                                    raw_ay = (vy - old_v[1]) / dt_track
-                                    raw_az = (vz - old_v[2]) / dt_track
-                                    
-                                    alpha = 0.85 
-                                    ax = old_a[0] + alpha * (raw_ax - old_a[0])
-                                    ay = old_a[1] + alpha * (raw_ay - old_a[1])
-                                    az = old_a[2] + alpha * (raw_az - old_a[2])
-                                    self.vel_window[u_ptr] = {'time': curr_t, 'v': vel, 'a': (ax, ay, az), 'fail_count': 0, 'turn_time': turn_time}
-                                else:
-                                    ax, ay, az = old_a
+                            # 2. นำข้อมูลที่ผ่านการกรอง (Smoothed) ไปใช้คำนวณ Leadmark ต่อไป
+                            pos = smoothed_pos
+                            vel = smoothed_vel
+                            vx, vy, vz = smoothed_vel
+                            ax, ay, az = smoothed_acc
+                            
+                            # 3. คำนวณความเร่งรวมเพื่อใช้ประเมินว่า "เครื่องบินกำลังเลี้ยวหรือไม่"
+                            a_mag = math.sqrt(ax**2 + ay**2 + az**2)
+                            
+                            if a_mag > 1.5: 
+                                is_turning = True
+                                self.vel_window[u_ptr]['turn_time'] = curr_t 
                             else:
-                                fail_count += 1
-                                ax, ay, az = old_a
-                                if fail_count > 15: ax, ay, az = 0.0, 0.0, 0.0
-                                self.vel_window[u_ptr] = {'time': old_t, 'v': old_v, 'a': (ax, ay, az), 'fail_count': fail_count, 'turn_time': turn_time}
+                                if curr_t - self.vel_window[u_ptr].get('turn_time', 0.0) < 1.0:
+                                    is_turning = True 
+                                else:
+                                    is_turning = False 
+                                    
+                            # 4. Limit Acceleration ป้องกันเป้ากระตุกหลุดจอเวลา Memory อ่านค่าเพี้ยนฉับพลัน
+                            if a_mag > 150.0: 
+                                ax, ay, az = (ax/a_mag)*150.0, (ay/a_mag)*150.0, (az/a_mag)*150.0
                                 
                         a_mag = math.sqrt(ax**2 + ay**2 + az**2)
                         
@@ -4503,8 +4521,8 @@ class ESPOverlay(QWidget):
                     # ป้องกันโปรแกรมค้างหากแคปจอผิดพลาด
                     pass
                 
-            for ptr in [ptr for ptr in self.vel_window if ptr not in seen_targets_this_frame]:
-                del self.vel_window[ptr]
+            for ptr in [ptr for ptr in self.kalman_filters if ptr not in seen_targets_this_frame and ptr != my_unit]:
+                del self.kalman_filters[ptr]
             for ptr in [ptr for ptr in self.air_alert_seen if ptr not in seen_targets_this_frame]:
                 del self.air_alert_seen[ptr]
 
