@@ -22,3 +22,38 @@ Unit: 0x429b15d0 | Move Ptr: 0x22C8 | Vel Offset: 0x0D78 | Type: FLOAT
 Unit: 0x429b15d0 | Move Ptr: 0x23A8 | Vel Offset: 0x0E50 | Type: FLOAT
 Unit: 0x429b15d0 | Move Ptr: 0x23B0 | Vel Offset: 0x0E50 | Type: FLOAT
 
+
+=== 🧠 V2 SMART TICK-RATE SCANNER (±5 MODE) ===
+
+✅ 1. เจอแม่แบบ (Baseline): X:104.8 Y:-38.7 Z:21.9
+🔍 2. กวาด Memory แบบ ±5 หาตัว Interpolate (รอ 1 วินาที เล็งเป้าค้างไว้!)...
+🔄 ความเร็ว Loop สแกนเนอร์: 142 ครั้ง/วินาที
+
+🏆 --- ผลลัพธ์: ອอฟเซ็ตที่มีพฤติกรรมคล้ายความเร็ว ---
+
+📁 กลุ่ม UNIT POINTER (Base):
+   [Unit + 0x3a58] | FLOAT | Ticks: 61 | ⚡ High Tick (สมูท)!
+   -> ค่าล่าสุด: X:102.3 Y:-53.9 Z:32.6
+   [Unit + 0x3f48] | FLOAT | Ticks: 61 | ⚡ High Tick (สมูท)!
+   -> ค่าล่าสุด: X:102.3 Y:-53.9 Z:32.6
+
+📁 กลุ่ม MOVE POINTER (0x018):
+   [Move + 0x137c] | FLOAT | Ticks: 58 | ⚡ High Tick (สมูท)!
+   -> ค่าล่าสุด: X:102.6 Y:-57.1 Z:42.2
+   [Move + 0x358] | FLOAT | Ticks: 3 | Low (3Hz)
+   -> ค่าล่าสุด: X:101.4 Y:-58.3 Z:38.5
+   [Move + 0x398] | FLOAT | Ticks: 3 | Low (3Hz)
+   -> ค่าล่าสุด: X:101.6 Y:-58.1 Z:39.3
+   [Move + 0x3d8] | FLOAT | Ticks: 3 | Low (3Hz)
+   -> ค่าล่าสุด: X:101.9 Y:-57.8 Z:40.2
+   [Move + 0x318] | FLOAT | Ticks: 2 | Low (2Hz) (ตัว Network 5Hz)
+   -> ค่าล่าสุด: X:101.2 Y:-58.3 Z:37.7
+
+[Ctrl+C] to Exit
+^CTraceback (most recent call last):
+  File "/mnt/ntfs-p3/My Projects/Python/ebpf_wt/vel_hunter_scanner.py", line 164, in <module>
+    main()
+  File "/mnt/ntfs-p3/My Projects/Python/ebpf_wt/vel_hunter_scanner.py", line 161, in main
+    time.sleep(1)
+KeyboardInterrupt
+

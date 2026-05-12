@@ -800,15 +800,16 @@ def init_dynamic_offsets(scanner, base_address):
 
     # 6️⃣ หา OFF_AIR_MOVEMENT (0x18) - 🆕 High Precision (Byte)
     # DNA จาก LAB_017e1919: MOV RDI, [RDX + 0xd18] -> MOV [RBP+var], RDX -> MOV [RBP+var], RSI -> MOV RAX, [RDI]
-    air_mov_dna = "48 8B BA ?? ?? ?? ?? 48 89 55 ?? 48 89 75 ?? 48 8B 07"
-    # 🎯 สแกนหา 4 ไบต์ (18 0D 00 00) โดยเริ่มอ่านที่ Index 3
-    air_mov_cands = scanner.find_all_struct_offsets(air_mov_dna, 3)
-    if air_mov_cands:
-        top_mov, votes = Counter(air_mov_cands).most_common(1)[0]
-        mul.OFF_AIR_MOVEMENT = top_mov
-        print(f"  [+] ✅ BINGO! AIR_MOVEMENT = {hex(mul.OFF_AIR_MOVEMENT)} (โหวต {votes} เสียง)")
-    else:
-        print(f"  [!] ⚠️ หา AIR_MOVEMENT ไม่เจอ ใช้ค่า Persistence: {hex(mul.OFF_AIR_MOVEMENT)}")
+    # air_mov_dna = "48 8B BA ?? ?? ?? ?? 48 89 55 ?? 48 89 75 ?? 48 8B 07"
+    # # 🎯 สแกนหา 4 ไบต์ (18 0D 00 00) โดยเริ่มอ่านที่ Index 3
+    # air_mov_cands = scanner.find_all_struct_offsets(air_mov_dna, 3)
+    # if air_mov_cands:
+    #     top_mov, votes = Counter(air_mov_cands).most_common(1)[0]
+    #     # mul.OFF_AIR_MOVEMENT = top_mov
+    #     mul.OFF_AIR_MOVEMENT = 0x018
+    #     print(f"  [+] ✅ BINGO! AIR_MOVEMENT = {hex(mul.OFF_AIR_MOVEMENT)} (โหวต {votes} เสียง)")
+    # else:
+    #     print(f"  [!] ⚠️ หา AIR_MOVEMENT ไม่เจอ ใช้ค่า Persistence: {hex(mul.OFF_AIR_MOVEMENT)}")
 
     # 7️⃣ หา OFF_GROUND_SMART (0x1DF8) - 🆕 High Precision (49 8B 84 24)
     # 🧬 DNA: 49 8B 84 24 F8 1D 00 00 (จาก FUN_00ad6b20)

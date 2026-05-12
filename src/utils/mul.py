@@ -412,9 +412,9 @@ VELOCITY_PROFILES = {
         "requested_label": "AIR",
         "primary": {
             "label": "AIR_PRIMARY",
-            "mov_off": lambda: OFF_AIR_MOVEMENT,
-            "vel_off": lambda: 0x68,
-            "fmt": "ddd",
+            "mov_off": lambda: 0x0000,
+            "vel_off": lambda: 0x3A58,
+            "fmt": "fff",
             "max_speed": 12000.0,
         },
         "fallbacks": [
@@ -1246,10 +1246,52 @@ def get_unit_detailed_dna(scanner, u_ptr):
 # Velocity Helpers
 # ==========================================
 def get_air_velocity(scanner, u_ptr):
+    """
+    [2026 VERIFIED 60Hz] ดึงความเร็วเครื่องบิน 3 มิติแบบ High-Tick (Smooth)
+    ใช้ระบบ Waterfall ลำดับความสำคัญจากผล Dumper ที่ดีที่สุด
+    """
     try:
-        return _read_velocity_by_profile(scanner, u_ptr, "air")
+        # 🌟 1. [60Hz] อ่านตรงจาก Unit Pointer (0x3A58) - ไวที่สุด!
+        vel_raw = scanner.read_mem(u_ptr + 0x3A58, 12)
+        if vel_raw:
+            vx, vy, vz = struct.unpack("<fff", vel_raw)
+            if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
+                return (vx, vy, vz)
+
+        # 🌟 2. [60Hz] สำรอง อ่านตรงจาก Unit Pointer (0x3F48)
+        vel_raw = scanner.read_mem(u_ptr + 0x3F48, 12)
+        if vel_raw:
+            vx, vy, vz = struct.unpack("<fff", vel_raw)
+            if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
+                return (vx, vy, vz)
+
+        # 🌟 3. เข้าสู่ชั้น Move Pointer (ลึกขึ้น 1 สเต็ป)
+        move_raw = scanner.read_mem(u_ptr + 0x0018, 8)
+        if move_raw:
+            move_ptr = struct.unpack("<Q", move_raw)[0]
+            if move_ptr > 0x10000:
+                
+                # 🌟 3.1 [60Hz] ผ่าน Move Pointer (0x137C)
+                vel_raw = scanner.read_mem(move_ptr + 0x137C, 12)
+                if vel_raw:
+                    vx, vy, vz = struct.unpack("<fff", vel_raw)
+                    if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
+                        return (vx, vy, vz)
+                # dprint(f"Air Velocity Fallback to 5Hz", force=True)
+                # # 🌟 4. [5Hz] FALLBACK: ตัว Network แม่แบบ (0x318)
+                # vel_raw = scanner.read_mem(move_ptr + 0x0318, 12)
+                # if vel_raw:
+                #     vx, vy, vz = struct.unpack("<fff", vel_raw)
+                #     if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
+                #         return (vx, vy, vz)
+
+        return (0.0, 0.0, 0.0)
     except Exception as e:
-        dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=AIR | error={e}", force=False)
+        try:
+            from src.utils.debug import dprint
+            dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=AIR | error={e}", force=False)
+        except:
+            pass
         return (0.0, 0.0, 0.0)
 
 
