@@ -413,26 +413,22 @@ VELOCITY_PROFILES = {
         "primary": {
             "label": "AIR_PRIMARY",
             "mov_off": lambda: OFF_AIR_MOVEMENT,
-            "vel_off": lambda: OFF_AIR_VEL,
-            "fmt": "fff",
-            "max_speed": 2500.0,
+            "vel_off": lambda: 0x68,
+            "fmt": "ddd",
+            "max_speed": 12000.0,
         },
         "fallbacks": [
-            {"label": "AIR_SCAN", "mov_off": 0x0AD8, "vel_off": 0x0040, "fmt": "ddd", "max_speed": 2500.0},
-            {"label": "AIR_OLD", "mov_off": 0x1B90, "vel_off": 0x0BE0, "fmt": "fff", "max_speed": 2500.0},
-            {"label": "GROUND_SCAN", "mov_off": 0x0D18, "vel_off": 0x003C, "fmt": "fff", "max_speed": 200.0},
-            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
-            {"label": "GROUND_ALT2", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 200.0},
+            {"label": "GROUND_ALT", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 12000.0},
         ],
     },
     "ground": {
         "requested_label": "GROUND",
         "primary": {
             "label": "GROUND_PRIMARY",
-            "mov_off": 0x1DF8,
-            "vel_off": 0x54,
+            "mov_off": OFF_GROUND_MOVEMENT,
+            "vel_off": OFF_GROUND_VEL,
             "fmt": "fff",
-            "max_speed": 200.0,
+            "max_speed": 500.0,
             "shuffle": (0, 2, 1),
         },
         "fallbacks": [
