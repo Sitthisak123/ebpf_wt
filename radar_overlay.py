@@ -404,8 +404,8 @@ ZERO_PITCH_MAX = 0.18  # clamp สูงสุดของ zero pitch
 # ==========================================
 # 🔎 SNIPER MODE (PiP) CONFIGURATION
 # ==========================================
-ENABLE_SNIPER_MODE = False
-SNIPER_ZOOM_SCALE = 4.5       # อัตราการซูม (เท่า)
+ENABLE_SNIPER_MODE = True
+SNIPER_ZOOM_SCALE = 7.5         # อัตราการซูม (เท่า)
 SNIPER_WINDOW_SIZE = 450      # ขนาดกรอบหน้าต่าง Sniper (พิกเซล)
 SNIPER_POS_X = 20             # ตำแหน่งแกน X (มุมซ้ายบน)
 SNIPER_POS_Y = 320            # ตำแหน่งแกน Y (มุมซ้ายบน ถัดจากตัวหนังสือ)
@@ -2904,7 +2904,17 @@ class ESPOverlay(QWidget):
             if my_spawn_in_grace:
                 my_vel = (0.0, 0.0, 0.0)
             else:
-                my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t) if my_unit and my_pos else (0.0, 0.0, 0.0)
+                if my_unit:
+                    # 🚀 ใช้ get_my_air_velocity (DOUBLE) ที่เราสร้างใหม่ใน mul.py
+                    if my_is_air:
+                        raw_my_vel = get_my_air_velocity(self.scanner, my_unit)
+                    else:
+                        raw_my_vel = get_ground_velocity(self.scanner, my_unit)
+                    
+                    # นำ raw_my_vel ไปใช้งานต่อ (เช่น เข้า EMA Filter หรือใช้ตรงๆ)
+                    my_vel = raw_my_vel 
+                else:
+                    my_vel = (0.0, 0.0, 0.0)
                 
                 # ✈️ ใช้ Kalman Filter กรองความเร็วและตำแหน่งของ "ยานพาหนะเรา"
                 # if my_is_air and my_unit and my_pos:
