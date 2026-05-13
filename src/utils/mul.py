@@ -48,6 +48,8 @@ OFF_AIR_UNITS       = (0x340, True)
 OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kinematics dumpers
 OFF_AIR_VEL         = 0x0318      # 🎯 Velocity (FLOAT Vector 12-byte)
 OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)
+OFF_MY_AIR_VEL      = 0x068       # 🎯 My Velocity (สำหรับ Air Lead, FLOAT Vector 12-byte
+OFF_MY_AIR_MOVEMENT = 0xD18       # 🎯 My Movement Ptr (สำหรับ Air Lead, อัปเดตจากการสแกนล่าสุด)
 
 OFF_GROUND_UNITS    = (0x358, False)
 OFF_GROUND_MOVEMENT = 0x0D18  
@@ -1277,13 +1279,13 @@ def get_air_velocity(scanner, u_ptr):
                     vx, vy, vz = struct.unpack("<fff", vel_raw)
                     if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
                         return (vx, vy, vz)
-                # dprint(f"Air Velocity Fallback to 5Hz", force=True)
-                # # 🌟 4. [5Hz] FALLBACK: ตัว Network แม่แบบ (0x318)
-                # vel_raw = scanner.read_mem(move_ptr + 0x0318, 12)
-                # if vel_raw:
-                #     vx, vy, vz = struct.unpack("<fff", vel_raw)
-                #     if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
-                #         return (vx, vy, vz)
+                dprint(f"Air Velocity Fallback to 5Hz", force=True)
+                # 🌟 4. [5Hz] FALLBACK: ตัว Network แม่แบบ (0x318)
+                vel_raw = scanner.read_mem(move_ptr + 0x0318, 12)
+                if vel_raw:
+                    vx, vy, vz = struct.unpack("<fff", vel_raw)
+                    if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
+                        return (vx, vy, vz)
 
         return (0.0, 0.0, 0.0)
     except Exception as e:
@@ -1292,6 +1294,32 @@ def get_air_velocity(scanner, u_ptr):
             dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=AIR | error={e}", force=False)
         except:
             pass
+        return (0.0, 0.0, 0.0)
+
+def get_my_air_velocity(scanner, my_unit_ptr):
+    """
+    [MY UNIT ONLY] ดึงความเร็วเครื่องบินเราเองแบบ High Precision
+    ใช้ Move Ptr: 0x0D10 | Vel Offset: 0x0068 | Type: DOUBLE
+    """
+    try:
+        # 1. อ่าน Move Pointer (0x0D10)
+        move_raw = scanner.read_mem(my_unit_ptr + OFF_MY_AIR_MOVEMENT, 8)
+        if move_raw:
+            move_ptr = struct.unpack("<Q", move_raw)[0]
+            if move_ptr > 0x10000:
+                
+                # 2. อ่าน Velocity แบบ DOUBLE (อ่าน 24 Bytes)
+                vel_raw = scanner.read_mem(move_ptr + OFF_MY_AIR_VEL, 24)
+                if vel_raw:
+                    # 3. ถอดรหัสเป็นทศนิยม Double (<ddd)
+                    vx, vy, vz = struct.unpack("<ddd", vel_raw)
+                    
+                    # กรองค่าขยะ
+                    if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
+                        return (vx, vy, vz)
+                        
+        return (0.0, 0.0, 0.0)
+    except Exception as e:
         return (0.0, 0.0, 0.0)
 
 
