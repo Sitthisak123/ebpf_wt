@@ -1062,8 +1062,8 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                 if abs(bx) < 5000 and abs(by) < 5000:
                                     wtm_ptr = w_ptr
                                     target_bone_index = target_idx
-                                else: del scanner.bone_cache[u_ptr]
-                            else: del scanner.bone_cache[u_ptr]
+                                # else: del scanner.bone_cache[u_ptr]
+                            # else: del scanner.bone_cache[u_ptr]
 
         # (ในไฟล์ mul.py ภายใต้ฟังก์ชัน get_weapon_barrel)
         if wtm_ptr == 0 or target_bone_index == -1:
@@ -1135,7 +1135,8 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                     lx*unit_rot_matrix[2] + ly*unit_rot_matrix[5] + lz*unit_rot_matrix[8] + unit_pos[2])
                         return to_world(bx, by, bz), to_world(bx + (fx * length), by + (fy * length), bz + (fz * length))
     except Exception as e:
-        print("get_weapon_barrel: ", e)
+        # print("get_weapon_barrel: ", e)
+        pass
     return None
 
 def get_local_team(scanner, base_addr):

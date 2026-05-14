@@ -220,6 +220,7 @@ COLOR_CLASS_ICON_GROUND         = (255, 215, 96, 235)
 COLOR_CLASS_ICON_AIR            = (120, 220, 255, 235)
 
 BULLET_GRAVITY       = 9.80665   
+BOMB_CCIP_DRAG_K     = 0.0000175  # Small drag trim: 0.0001 was too much, 0.0 was slightly too little.
 
 GROUND_LEADMARK_TOP_N = 3  # <=0 = OFF/ALL visible ground targets
 
@@ -3772,7 +3773,12 @@ class ESPOverlay(QWidget):
                     # =========================================================
                     if my_is_air and u_ptr == active_target_ptr and not is_air_target:
                         # ใช้ความสูงเป้าหมาย (t_y) เป็นพื้นดินอ้างอิง
-                        bomb_impact_pos = _simulate_bomb_impact(my_pos, (my_vx, my_vy, my_vz), t_y, drag_k=0.0001)
+                        bomb_impact_pos = _simulate_bomb_impact(
+                            my_pos,
+                            (my_vx, my_vy, my_vz),
+                            t_y,
+                            drag_k=BOMB_CCIP_DRAG_K,
+                        )
                         
                         if bomb_impact_pos:
                             bomb_screen = world_to_screen(
