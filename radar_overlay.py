@@ -3755,6 +3755,16 @@ class ESPOverlay(QWidget):
                             
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
 
+                    # ให้ตำแหน่งสุดท้ายใช้ TOF ล่าสุดจริง
+                    if physics_is_air:
+                        final_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
+                        final_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
+                        final_z = t_z + (vz * best_t) + (0.5 * az * (best_t ** 2))
+                    else:
+                        final_x = t_x + (vx * best_t)
+                        final_y = t_y + (vy * best_t)
+                        final_z = t_z + (vz * best_t)
+
                     # 📉 Gravity Drop Compensation: 0.5 * g * t^2
                     gravity_offset = bullet_drop_sim if physics_is_air else (0.5 * BULLET_GRAVITY * (best_t ** 2))
                     

@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-14T19:55:42.105913",
+  "updated_at": "2026-05-14T22:58:53.860338",
   "camera_off": 1648,
   "matrix_off": 464,
   "source": "scanner_auto_view_matrix",
@@ -8,6 +8,6 @@
   "build_fingerprint": {
     "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
     "size": 156440160,
-    "mtime_ns": 1778642492000000000
+    "mtime_ns": 1778736732000000000
   }
 }
