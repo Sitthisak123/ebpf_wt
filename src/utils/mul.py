@@ -1051,7 +1051,8 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
             if anim_char_raw: 
                 anim_char = struct.unpack("<Q", anim_char_raw)[0]
                 if is_valid_ptr(anim_char):
-                    wtm_raw = scanner.read_mem(anim_char + 0x0, 8)
+                    sub_matrix_off = int(cache.get('sub_matrix_off', 0) or 0)
+                    wtm_raw = scanner.read_mem(anim_char + sub_matrix_off, 8)
                     if wtm_raw:
                         w_ptr = struct.unpack("<Q", wtm_raw)[0]
                         if is_valid_ptr(w_ptr):
@@ -1114,7 +1115,11 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                     if is_valid_ptr(w_ptr):
                                         wtm_ptr = w_ptr
                                         target_bone_index = best_idx
-                                        scanner.bone_cache[u_ptr] = {'anim_off': a_off, 'bone_idx': best_idx}
+                                        scanner.bone_cache[u_ptr] = {
+                                            'anim_off': a_off,
+                                            'bone_idx': best_idx,
+                                            'sub_matrix_off': sub_matrix_off,
+                                        }
                                         break
                             if wtm_ptr != 0: break
 
