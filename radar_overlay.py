@@ -90,6 +90,7 @@ AIR_ALERT_SOUND_COOLDOWN = 1.0
 ALERT_AUDIO_BACKEND = "auto"  # auto | system | qt
 RECON_GHOST_SPAWN_WINDOW_SEC = 2.0
 RECON_GHOST_POS_EPS_METERS = 1.5
+IGNORE_ALL_BOATS = True
 
 # Backward compatibility for older config references.
 ENABLE_AIR_ALERT_SOUND = ALERT_AUDIO_ON
@@ -1222,6 +1223,29 @@ def _is_recon_drone_like(token):
         "recon_micro",
     )
     return any(p in token for p in recon_patterns)
+
+
+def _is_boat_like(family_name, profile_tag, profile_path, unit_key="", name_key="", short_name=""):
+    family_tag = str(family_name or profile_tag or "").lower()
+    token = " ".join((
+        family_name or "",
+        profile_tag or "",
+        profile_path or "",
+        unit_key or "",
+        name_key or "",
+        short_name or "",
+    )).lower()
+    if family_tag in ("exp_torpedo_gun_boat", "exp_gun_boat", "exp_torpedo_boat"):
+        return True
+    return any(k in token for k in (
+        "torpedo_gun_boat",
+        "gun_boat",
+        "torpedo_boat",
+        "type143",
+        "s38",
+        "lcs_",
+        "ships/",
+    ))
 
 
 def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, name_key, short_name, is_air):
@@ -3067,6 +3091,16 @@ class ESPOverlay(QWidget):
                 )).lower()
                 if any(h in runtime_filter_blob for h in NON_PLAYABLE_RUNTIME_HINTS):
                     continue
+                if _is_boat_like(
+                    family_name,
+                    profile_tag,
+                    profile_path,
+                    profile.get("unit_key") or "",
+                    name_key,
+                    short_name,
+                ):
+                    if IGNORE_ALL_BOATS or (not my_is_air):
+                        continue
 
                 is_recon_drone = _is_recon_drone_like(runtime_filter_blob)
 
