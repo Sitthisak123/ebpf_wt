@@ -2174,6 +2174,7 @@ class ESPOverlay(QWidget):
         self.max_reload_cache = {}
         self.profile_cache = {} # 🛡️ New Profile Cache
         self.last_my_unit = 0 
+        self.last_my_team = 0
         self.vel_window = {} 
         self.velocity_cache = {}
         self.kalman_filters = {}
@@ -2866,6 +2867,9 @@ class ESPOverlay(QWidget):
                 }
 
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
+            if my_team:
+                self.last_my_team = my_team
+            effective_my_team = my_team or self.last_my_team
             my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
             #Cache reset on my_unit change
@@ -3023,7 +3027,7 @@ class ESPOverlay(QWidget):
                         del self.dead_unit_latch[u_ptr]
                     else:
                         continue
-                if u_team == 0 or (my_team != 0 and u_team == my_team): continue
+                if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team): continue
 
                 profile = cached_prof['profile']
                 if profile.get("skip"): continue
@@ -3490,7 +3494,7 @@ class ESPOverlay(QWidget):
                     debug_label_y = icon_y - CLASS_ICON_DEBUG_TEXT_GAP
                     overlay_debug_y = debug_label_y - UNIT_FAMILY_OVERLAY_DEBUG_GAP
 
-                    if (not is_recon_drone) or self._is_recon_alert_ready(u_ptr, curr_t):
+                    if effective_my_team != 0 and ((not is_recon_drone) or self._is_recon_alert_ready(u_ptr, curr_t)):
                         self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
 
                     # ========================================================
