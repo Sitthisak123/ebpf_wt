@@ -351,7 +351,7 @@ DYNAMIC_GEOMETRY_FPS_UNIT_SCALE = 1.35
 
 # Leadmark / ballistic solver tuning
 LEADMARK_RANGE_LIMIT_RATIO = 0.70  # ต่ำลง = ซ่อน leadmark เร็วขึ้นเมื่อเป้าไกลเกิน effective range
-MAX_TOF_AIR_LEADMARK = 15.00       # <=0 = OFF
+MAX_TOF_AIR_LEADMARK = 8.00       # <=0 = OFF
 BALLISTIC_MIN_SPEED = 50.0
 BALLISTIC_MAX_SPEED = 3000.0
 BALLISTIC_MIN_MASS = 0.005
