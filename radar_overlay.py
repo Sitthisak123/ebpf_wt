@@ -351,7 +351,7 @@ DYNAMIC_GEOMETRY_FPS_UNIT_SCALE = 1.35
 
 # Leadmark / ballistic solver tuning
 LEADMARK_RANGE_LIMIT_RATIO = 0.70  # ต่ำลง = ซ่อน leadmark เร็วขึ้นเมื่อเป้าไกลเกิน effective range
-MAX_TOF_AIR_LEADMARK = 6.00       # <=0 = OFF
+MAX_TOF_AIR_LEADMARK = 15.00       # <=0 = OFF
 BALLISTIC_MIN_SPEED = 50.0
 BALLISTIC_MAX_SPEED = 3000.0
 BALLISTIC_MIN_MASS = 0.005
@@ -3779,10 +3779,18 @@ class ESPOverlay(QWidget):
                         dy_imp = pred_y - (origin_y + my_vy * best_t)
                         dz_imp = pred_z - (origin_z + my_vz * best_t)
                         horizontal_imp = math.hypot(dx_imp, dz_imp)
+                        slant_imp = math.sqrt((dx_imp * dx_imp) + (dy_imp * dy_imp) + (dz_imp * dz_imp))
+                        air_tof_range = horizontal_imp
+                        if slant_imp > 1e-6:
+                            elev_ratio = min(abs(dy_imp) / slant_imp, 1.0)
+                            # blend จาก horizontal -> slant เมื่อมุมเงยสูงขึ้น
+                            # เริ่มมีผลชัดหลังราว 45 deg และเต็มที่ใกล้ 75-80 deg
+                            blend_t = max(0.0, min((elev_ratio - 0.70) / 0.27, 1.0))
+                            air_tof_range = horizontal_imp + ((slant_imp - horizontal_imp) * blend_t)
                         
                         if current_bullet_speed > 0:
                             if physics_is_air:
-                                best_t, bullet_drop_sim, _ = _simulate_projectile_range(horizontal_imp, ballistic_model, zero_pitch)
+                                best_t, bullet_drop_sim, _ = _simulate_projectile_range(air_tof_range, ballistic_model, zero_pitch)
                             elif k > 0.000001:
                                 kx = min(k * horizontal_imp, 5.0) 
                                 best_t = (math.exp(kx) - 1.0) / (k * current_bullet_speed)
