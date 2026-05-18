@@ -3784,8 +3784,8 @@ class ESPOverlay(QWidget):
                         if slant_imp > 1e-6:
                             elev_ratio = min(abs(dy_imp) / slant_imp, 1.0)
                             # blend จาก horizontal -> slant เมื่อมุมเงยสูงขึ้น
-                            # เริ่มมีผลชัดหลังราว 45 deg และเต็มที่ใกล้ 75-80 deg
-                            blend_t = max(0.0, min((elev_ratio - 0.70) / 0.27, 1.0))
+                            # เริ่มมีผลหลังราว 50 deg และเต็มที่ใกล้ 75-80 deg
+                            blend_t = max(0.0, min((elev_ratio - 0.77) / 0.20, 1.0))
                             air_tof_range = horizontal_imp + ((slant_imp - horizontal_imp) * blend_t)
                         
                         if current_bullet_speed > 0:
