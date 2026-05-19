@@ -53,3 +53,7 @@ QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'
 - LEADMARK: too fast at close range
 -  re-cache: barrel mismatch
 - increase Thread warning angle when My_Unit is Air and Thread is SPAA/Ground
+
+
+#python3 tools/sub/vertical_baseline_config_builder.py --distance-step 50
+
