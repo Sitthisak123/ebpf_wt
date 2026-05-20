@@ -3995,6 +3995,15 @@ class ESPOverlay(QWidget):
                         
                         if pred_screen and pred_screen[2] > 0:
                             px, py = pred_screen[0], pred_screen[1]
+                            if (not physics_is_air) and target_box_rect:
+                                auto_vertical_baseline = _get_auto_vertical_baseline(
+                                    my_name_key,
+                                    ballistic_profile,
+                                    dist,
+                                )
+                                box_h = max(target_box_rect[3] - target_box_rect[1], 1.0)
+                                leadmark_vertical_correction = self.vertical_correction + auto_vertical_baseline
+                                py += (leadmark_vertical_correction / 100.0) * box_h
                             
                             # 🎯 เช็ค NaN ก่อนแปลงเป็น int
                             if math.isfinite(px) and math.isfinite(py):
