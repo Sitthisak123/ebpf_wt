@@ -272,6 +272,16 @@ CLASS_ICON_SIZE = 15
 CLASS_ICON_LINE_GAP = 14
 DRAW_CLASS_ICON_DEBUG_TEXT = False
 CLASS_ICON_DEBUG_TEXT_GAP = 12
+DRAW_OFFSCREEN_AIR_INDICATOR = True
+OFFSCREEN_AIR_INDICATOR_ONLY = True
+OFFSCREEN_AIR_INDICATOR_MARGIN = 28
+OFFSCREEN_AIR_TRANSITION_PX = 110
+OFFSCREEN_AIR_TEXT_GAP = 10
+OFFSCREEN_AIR_ICON_SIZE = 16
+OFFSCREEN_AIR_SMOOTHING = 0.28
+OUTLINE_OVERLAY_TEXT = True
+OUTLINE_OVERLAY_TEXT_PX = 1
+OUTLINE_OVERLAY_TEXT_COLOR = (0, 0, 0, 190)
 DRAW_UNIT_FAMILY_OVERLAY_DEBUG = False
 UNIT_FAMILY_OVERLAY_DEBUG_GAP = 30
 
@@ -1367,7 +1377,7 @@ def _resolve_is_air_now(default_is_air, family_name, profile_tag, profile_path):
     return default_is_air
 
 
-def _draw_unit_class_icon(painter, center_x, center_y, unit_family, size):
+def _draw_unit_class_icon(painter, center_x, center_y, unit_family, size, is_recon_drone=False, override_color=None):
     is_air = unit_family in (
         UNIT_FAMILY_AIR_FIGHTER,
         UNIT_FAMILY_AIR_BOMBER,
@@ -1376,10 +1386,21 @@ def _draw_unit_class_icon(painter, center_x, center_y, unit_family, size):
     )
 
     color = QColor(*(COLOR_CLASS_ICON_AIR if is_air else COLOR_CLASS_ICON_GROUND))
+    if override_color is not None:
+        color = QColor(override_color)
     painter.setPen(Qt.NoPen)
     painter.setBrush(color)
 
     half = max(5, int(size * 0.5))
+    if is_recon_drone:
+        diamond = QPolygon([
+            QPoint(int(center_x), int(center_y - half)),
+            QPoint(int(center_x + half), int(center_y)),
+            QPoint(int(center_x), int(center_y + half)),
+            QPoint(int(center_x - half), int(center_y)),
+        ])
+        painter.drawPolygon(diamond)
+        return
     # สัดส่วนสมมาตร: Track H = Turret H = Body H และ Track W = Turret W
     u_h = max(2, int(half * 0.8))   # ความสูง 1 ส่วน (ใช้กับ ป้อมปืน, ตัวรถ, สายพาน)
     t_w = max(4, int(half * 1))     # ความกว้างของป้อมปืน (และสายพาน 1 ข้าง)
@@ -1677,6 +1698,138 @@ def _screen_int_tuple(*values):
             return None
         out.append(int(value))
     return tuple(out)
+
+
+def _draw_outlined_text(painter, x, y, text, color, outline_color=None, outline_px=1):
+    if not text:
+        return
+    outline_color = outline_color or QColor(*OUTLINE_OVERLAY_TEXT_COLOR)
+    if OUTLINE_OVERLAY_TEXT and outline_px > 0:
+        painter.setPen(outline_color)
+        for ox in range(-outline_px, outline_px + 1):
+            for oy in range(-outline_px, outline_px + 1):
+                if ox == 0 and oy == 0:
+                    continue
+                painter.drawText(int(x + ox), int(y + oy), text)
+    painter.setPen(color)
+    painter.drawText(int(x), int(y), text)
+
+
+def _get_air_warning_level(my_pos, target_pos, vel):
+    if not my_pos or not target_pos or not vel:
+        return 0
+    try:
+        v_mag = math.sqrt((vel[0] * vel[0]) + (vel[1] * vel[1]) + (vel[2] * vel[2]))
+        if v_mag <= 5.0:
+            return 0
+        dx_v, dy_v, dz_v = vel[0] / v_mag, vel[1] / v_mag, vel[2] / v_mag
+        tx_v = my_pos[0] - target_pos[0]
+        ty_v = my_pos[1] - target_pos[1]
+        tz_v = my_pos[2] - target_pos[2]
+        t_mag = math.sqrt((tx_v * tx_v) + (ty_v * ty_v) + (tz_v * tz_v))
+        if t_mag <= 0.0:
+            return 0
+        tx_v, ty_v, tz_v = tx_v / t_mag, ty_v / t_mag, tz_v / t_mag
+        dot_prod = max(-1.0, min(1.0, dx_v * tx_v + dy_v * ty_v + dz_v * tz_v))
+        angle = math.degrees(math.acos(dot_prod))
+        if angle <= 2.5:
+            return 2
+        if angle <= 6.0:
+            return 1
+    except Exception:
+        return 0
+    return 0
+
+
+def _offscreen_indicator_target_alpha(screen_x, screen_y, screen_w, screen_h, transition_px):
+    try:
+        transition_px = max(float(transition_px), 1.0)
+        inside = 0.0 <= screen_x <= screen_w and 0.0 <= screen_y <= screen_h
+        if inside:
+            edge_dist = min(screen_x, screen_w - screen_x, screen_y, screen_h - screen_y)
+            if edge_dist >= transition_px:
+                return 0.0
+            return max(0.0, min(1.0, 1.0 - (edge_dist / transition_px)))
+        return 1.0
+    except Exception:
+        return 0.0
+
+
+def _clamp_to_screen_edge(screen_x, screen_y, screen_w, screen_h, margin):
+    margin = max(0.0, float(margin))
+    min_x = margin
+    min_y = margin
+    max_x = max(min_x, screen_w - margin)
+    max_y = max(min_y, screen_h - margin)
+    center_x = screen_w * 0.5
+    center_y = screen_h * 0.5
+    dx = float(screen_x) - center_x
+    dy = float(screen_y) - center_y
+
+    if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+        return center_x, min_y, "top"
+
+    candidates = []
+    if abs(dx) > 1e-6:
+        t_left = (min_x - center_x) / dx
+        y_left = center_y + (dy * t_left)
+        if t_left > 0.0 and min_y <= y_left <= max_y:
+            candidates.append((t_left, min_x, y_left, "left"))
+        t_right = (max_x - center_x) / dx
+        y_right = center_y + (dy * t_right)
+        if t_right > 0.0 and min_y <= y_right <= max_y:
+            candidates.append((t_right, max_x, y_right, "right"))
+
+    if abs(dy) > 1e-6:
+        t_top = (min_y - center_y) / dy
+        x_top = center_x + (dx * t_top)
+        if t_top > 0.0 and min_x <= x_top <= max_x:
+            candidates.append((t_top, x_top, min_y, "top"))
+        t_bottom = (max_y - center_y) / dy
+        x_bottom = center_x + (dx * t_bottom)
+        if t_bottom > 0.0 and min_x <= x_bottom <= max_x:
+            candidates.append((t_bottom, x_bottom, max_y, "bottom"))
+
+    if candidates:
+        _, clamped_x, clamped_y, side = min(candidates, key=lambda item: item[0])
+        return clamped_x, clamped_y, side
+
+    clamped_x = min(max(screen_x, min_x), max_x)
+    clamped_y = min(max(screen_y, min_y), max_y)
+    if clamped_x <= min_x:
+        side = "left"
+    elif clamped_x >= max_x:
+        side = "right"
+    elif clamped_y <= min_y:
+        side = "top"
+    else:
+        side = "bottom"
+    return clamped_x, clamped_y, side
+
+
+def _project_indicator_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
+    try:
+        if not matrix or any(not math.isfinite(v) for v in matrix):
+            return None
+        w = (pos_x * matrix[3]) + (pos_y * matrix[7]) + (pos_z * matrix[11]) + matrix[15]
+        clip_x = (pos_x * matrix[0]) + (pos_y * matrix[4]) + (pos_z * matrix[8]) + matrix[12]
+        clip_y = (pos_x * matrix[1]) + (pos_y * matrix[5]) + (pos_z * matrix[9]) + matrix[13]
+        if not (math.isfinite(w) and math.isfinite(clip_x) and math.isfinite(clip_y)):
+            return None
+        denom = max(abs(w), 1e-6)
+        ndc_x = clip_x / denom
+        ndc_y = clip_y / denom
+        behind_camera = w < 0.01
+        if behind_camera:
+            ndc_x = -ndc_x
+            ndc_y = -ndc_y
+        screen_x = (screen_width * 0.5) * (1.0 + ndc_x)
+        screen_y = (screen_height * 0.5) * (1.0 - ndc_y)
+        if math.isfinite(screen_x) and math.isfinite(screen_y):
+            return (screen_x, screen_y, behind_camera)
+        return None
+    except Exception:
+        return None
 
 # ========================================================
 # 🚨 DUAL THREAT WARNING SYSTEM (จากเวอร์ชันเก่า)
@@ -2223,6 +2376,8 @@ class ESPOverlay(QWidget):
         self.dead_unit_latch = {}
         self.air_alert_seen = {}
         self.recon_spawn_watch = {}
+        self.offscreen_indicator_alpha = {}
+        self.offscreen_indicator_state = {}
         self.last_air_alert_sound_at = 0.0
         self.alert_players = {}
         self.alert_processes = {}
@@ -2807,6 +2962,7 @@ class ESPOverlay(QWidget):
         debug_virtual_boxes_to_draw = []
         calibration_hit_points_to_draw = []
         dynamic_compare_points_to_draw = []
+        offscreen_air_indicators_to_draw = []
         dynamic_compare_debug = None
         self.live_velocity_debug = None
         
@@ -3151,6 +3307,12 @@ class ESPOverlay(QWidget):
             for ptr in list(self.recon_spawn_watch.keys()):
                 if ptr not in current_seen_ptrs:
                     del self.recon_spawn_watch[ptr]
+            for ptr in list(self.offscreen_indicator_alpha.keys()):
+                if ptr not in current_seen_ptrs:
+                    del self.offscreen_indicator_alpha[ptr]
+            for ptr in list(self.offscreen_indicator_state.keys()):
+                if ptr not in current_seen_ptrs:
+                    del self.offscreen_indicator_state[ptr]
             
             dprint_frame_stats(
                 self.current_fps, 
@@ -3417,7 +3579,149 @@ class ESPOverlay(QWidget):
                             )
                             has_valid_box = True
 
-                    if not has_valid_box: continue 
+                    clean_name = raw_name
+                    for p in NAME_PREFIXES:
+                        if clean_name.lower().startswith(p):
+                            clean_name = clean_name[len(p):]
+                            break
+
+                    physics_is_air = is_air_target
+                    unit_family = _resolve_unit_family_enum(
+                        family_name,
+                        profile_tag,
+                        profile_path,
+                        profile_unit_key,
+                        name_key,
+                        short_name,
+                        physics_is_air,
+                    )
+                    family_is_air = unit_family in (
+                        UNIT_FAMILY_AIR_FIGHTER,
+                        UNIT_FAMILY_AIR_BOMBER,
+                        UNIT_FAMILY_AIR_ATTACKER,
+                        UNIT_FAMILY_AIR_HELICOPTER,
+                    )
+                    family_is_ground = unit_family in (
+                        UNIT_FAMILY_GROUND_LIGHT_TANK,
+                        UNIT_FAMILY_GROUND_MEDIUM_TANK,
+                        UNIT_FAMILY_GROUND_HEAVY_TANK,
+                        UNIT_FAMILY_GROUND_TANK_DESTROYER,
+                        UNIT_FAMILY_GROUND_SPAA,
+                        UNIT_FAMILY_SHIP_BOAT,
+                        UNIT_FAMILY_SHIP_FRIGATE,
+                        UNIT_FAMILY_SHIP_DESTROYER,
+                        UNIT_FAMILY_SHIP_CRUISER,
+                        UNIT_FAMILY_SHIP_BATTLESHIP,
+                    )
+                    if family_is_air:
+                        physics_is_air = True
+                    elif family_is_ground:
+                        physics_is_air = False
+
+                    display_is_air = physics_is_air
+                    if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
+                        display_is_air = False
+                    overlay_is_air = physics_is_air or is_recon_drone
+                    air_overlay_text = (
+                        f"[{int(dist)}m]"
+                        if is_recon_drone else
+                        f"{clean_name.upper()} [{int(dist)}m]"
+                    )
+
+                    warning_level = 0
+                    if physics_is_air and my_pos and dist > 10.0:
+                        warning_level = _get_air_warning_level(
+                            my_pos,
+                            pos,
+                            self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t),
+                        )
+
+                    center_screen = world_to_screen(
+                        view_matrix,
+                        pos[0],
+                        pos[1],
+                        pos[2],
+                        self.screen_width,
+                        self.screen_height,
+                    )
+                    indicator_alpha = 0.0
+                    indicator_screen = None
+                    if DRAW_OFFSCREEN_AIR_INDICATOR and overlay_is_air:
+                        if center_screen and center_screen[2] > 0:
+                            indicator_screen = (center_screen[0], center_screen[1])
+                            indicator_target_alpha = _offscreen_indicator_target_alpha(
+                                center_screen[0],
+                                center_screen[1],
+                                self.screen_width,
+                                self.screen_height,
+                                OFFSCREEN_AIR_TRANSITION_PX,
+                            )
+                            edge_x, edge_y, edge_side = _clamp_to_screen_edge(
+                                indicator_screen[0],
+                                indicator_screen[1],
+                                self.screen_width,
+                                self.screen_height,
+                                OFFSCREEN_AIR_INDICATOR_MARGIN,
+                            )
+                            self.offscreen_indicator_state[u_ptr] = {
+                                "x": edge_x,
+                                "y": edge_y,
+                                "side": edge_side,
+                            }
+                        else:
+                            indicator_target_alpha = float(self.offscreen_indicator_alpha.get(u_ptr, 0.0))
+                            cached_indicator = self.offscreen_indicator_state.get(u_ptr)
+                            if cached_indicator:
+                                indicator_screen = (
+                                    float(cached_indicator.get("x", self.center_x)),
+                                    float(cached_indicator.get("y", self.center_y)),
+                                )
+                                edge_side = cached_indicator.get("side", "top")
+                            else:
+                                edge_side = "top"
+                        prev_indicator_alpha = float(self.offscreen_indicator_alpha.get(u_ptr, 0.0))
+                        indicator_alpha = (
+                            (prev_indicator_alpha * (1.0 - OFFSCREEN_AIR_SMOOTHING)) +
+                            (indicator_target_alpha * OFFSCREEN_AIR_SMOOTHING)
+                        )
+                        self.offscreen_indicator_alpha[u_ptr] = indicator_alpha
+                        if indicator_alpha > 0.03 and indicator_screen:
+                            if center_screen and center_screen[2] > 0:
+                                edge_x, edge_y, edge_side = _clamp_to_screen_edge(
+                                    indicator_screen[0],
+                                    indicator_screen[1],
+                                    self.screen_width,
+                                    self.screen_height,
+                                    OFFSCREEN_AIR_INDICATOR_MARGIN,
+                                )
+                                self.offscreen_indicator_state[u_ptr] = {
+                                    "x": edge_x,
+                                    "y": edge_y,
+                                    "side": edge_side,
+                                }
+                            else:
+                                edge_x, edge_y = indicator_screen
+                            offscreen_air_indicators_to_draw.append({
+                                "u_ptr": u_ptr,
+                                "x": edge_x,
+                                "y": edge_y,
+                                "side": edge_side,
+                                "alpha": indicator_alpha,
+                                "text": air_overlay_text,
+                                "unit_family": unit_family,
+                                "is_recon_drone": is_recon_drone,
+                                "warning_level": warning_level,
+                            })
+                    draw_inline_air_overlay = not (overlay_is_air and indicator_alpha > 0.08)
+                    if OFFSCREEN_AIR_INDICATOR_ONLY and overlay_is_air and indicator_alpha > 0.03:
+                        draw_inline_air_overlay = False
+
+                    if not has_valid_box:
+                        if overlay_is_air and DRAW_OFFSCREEN_AIR_INDICATOR:
+                            # Air/Recon ที่อยู่นอกจอให้ indicator handle ต่อไป
+                            # และไม่เข้าทางวาด on-screen overlay ปกติ
+                            continue
+                        continue
                     
                     should_draw_local_axes = (
                         DEBUG_DRAW_LOCAL_AXES
@@ -3473,53 +3777,15 @@ class ESPOverlay(QWidget):
                             painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
                             barrel_base_2d = res_p1
 
-                    clean_name = raw_name
-                    for p in NAME_PREFIXES:
-                        if clean_name.lower().startswith(p): clean_name = clean_name[len(p):]; break
-
-                    physics_is_air = is_air_target
-                    unit_family = _resolve_unit_family_enum(
-                        family_name,
-                        profile_tag,
-                        profile_path,
-                        profile_unit_key,
-                        name_key,
-                        short_name,
-                        physics_is_air,
-                    )
-                    family_is_air = unit_family in (
-                        UNIT_FAMILY_AIR_FIGHTER,
-                        UNIT_FAMILY_AIR_BOMBER,
-                        UNIT_FAMILY_AIR_ATTACKER,
-                        UNIT_FAMILY_AIR_HELICOPTER,
-                    )
-                    family_is_ground = unit_family in (
-                        UNIT_FAMILY_GROUND_LIGHT_TANK,
-                        UNIT_FAMILY_GROUND_MEDIUM_TANK,
-                        UNIT_FAMILY_GROUND_HEAVY_TANK,
-                        UNIT_FAMILY_GROUND_TANK_DESTROYER,
-                        UNIT_FAMILY_GROUND_SPAA,
-                        UNIT_FAMILY_SHIP_BOAT,
-                        UNIT_FAMILY_SHIP_FRIGATE,
-                        UNIT_FAMILY_SHIP_DESTROYER,
-                        UNIT_FAMILY_SHIP_CRUISER,
-                        UNIT_FAMILY_SHIP_BATTLESHIP,
-                    )
-                    if family_is_air:
-                        physics_is_air = True
-                    elif family_is_ground:
-                        physics_is_air = False
-
-                    display_is_air = physics_is_air
-                    if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
-                        display_is_air = False
-
-                    has_reload_bar = (not display_is_air and (0 <= reload_val < 500))
+                    has_reload_bar = (not overlay_is_air and (0 <= reload_val < 500))
                     dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
-                    hide_name = (dist > 550 and dist_to_crosshair >= 350) if (is_recon_drone or not display_is_air) else False
-                    
-                    # 🎯 กลับมาใช้รูปแบบเดิมที่โชว์แค่ ชื่อ และ ระยะทาง
-                    display_text = f"-{int(dist)}m-" if hide_name else f"{clean_name.upper()} [{int(dist)}m]"
+                    hide_name = (dist > 550 and dist_to_crosshair >= 350) if (is_recon_drone or not overlay_is_air) else False
+                    if is_recon_drone:
+                        display_text = air_overlay_text
+                    elif physics_is_air:
+                        display_text = air_overlay_text
+                    else:
+                        display_text = f"-{int(dist)}m-" if hide_name else f"{clean_name.upper()} [{int(dist)}m]"
                         
                     fm = painter.fontMetrics()
                     text_w = fm.boundingRect(display_text).width()
@@ -3534,24 +3800,7 @@ class ESPOverlay(QWidget):
                     # ========================================================
                     # 🚨 THREAT WARNING SYSTEM (แจ้งเตือนภัยคุกคาม)
                     # ========================================================
-                    warning_level = 0 
-                    
-                    if physics_is_air and my_pos and dist > 10.0:
-                        vel = self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
-                        if vel:
-                            v_mag = math.sqrt(vel[0]**2 + vel[1]**2 + vel[2]**2)
-                            if v_mag > 5.0: 
-                                dx_v, dy_v, dz_v = vel[0]/v_mag, vel[1]/v_mag, vel[2]/v_mag
-                                tx_v, ty_v, tz_v = my_pos[0] - pos[0], my_pos[1] - pos[1], my_pos[2] - pos[2]
-                                t_mag = math.sqrt(tx_v**2 + ty_v**2 + tz_v**2)
-                                if t_mag > 0:
-                                    tx_v, ty_v, tz_v = tx_v/t_mag, ty_v/t_mag, tz_v/t_mag
-                                    dot_prod = max(-1.0, min(1.0, dx_v*tx_v + dy_v*ty_v + dz_v*tz_v))
-                                    angle = math.degrees(math.acos(dot_prod))
-                                    if angle <= 2.5: warning_level = 2
-                                    elif angle <= 6.0: warning_level = 1
-                                        
-                    elif not physics_is_air and my_pos and barrel_data and dist > 10.0:
+                    if (not physics_is_air) and my_pos and barrel_data and dist > 10.0:
                         if is_ground_threat(barrel_data[0], barrel_data[1], my_pos): warning_level = 2
                         elif is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=4.5): warning_level = 1
 
@@ -3563,11 +3812,15 @@ class ESPOverlay(QWidget):
                             dot_text = "⚠️ THREAT!"
                             dot_x = int(avg_x - fm.boundingRect(dot_text).width() / 2) 
                             dot_y = text_y - 14 
-                            painter.setPen(QColor(*COLOR_THREAD_TEXT))
-                            for ox, oy in [(-1,-1), (1,-1), (-1,1), (1,1), (0,-2), (0,2), (-2,0), (2,0)]:
-                                painter.drawText(dot_x + ox, dot_y + oy, dot_text)
-                            painter.setPen(QColor(*COLOR_THREAD_TEXT2))
-                            painter.drawText(dot_x, dot_y, dot_text)
+                            _draw_outlined_text(
+                                painter,
+                                dot_x,
+                                dot_y,
+                                dot_text,
+                                QColor(*COLOR_THREAD_TEXT2),
+                                QColor(*COLOR_THREAD_TEXT),
+                                max(1, OUTLINE_OVERLAY_TEXT_PX),
+                            )
                             painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING), 5, Qt.DashLine))
                             painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
                             painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING2), 2, Qt.DashLine))
@@ -3579,7 +3832,7 @@ class ESPOverlay(QWidget):
                             painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT2), 2))
                             painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
 
-                    painter.setPen(QColor(*COLOR_TEXT_AIR) if display_is_air else QColor(*COLOR_TEXT_GROUND))
+                    painter.setPen(QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND))
                     if DRAW_UNIT_FAMILY_OVERLAY_DEBUG:
                         debug_parts = [
                             f"ptr={hex(u_ptr)}",
@@ -3589,25 +3842,46 @@ class ESPOverlay(QWidget):
                         ]
                         overlay_debug_text = " | ".join(debug_parts)
                         overlay_debug_w = fm.boundingRect(overlay_debug_text).width()
-                        painter.drawText(
+                        _draw_outlined_text(
+                            painter,
                             int(avg_x - (overlay_debug_w * 0.5)),
                             int(overlay_debug_y),
                             overlay_debug_text,
+                            QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
+                            QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
+                            max(1, OUTLINE_OVERLAY_TEXT_PX),
                         )
                     if DRAW_CLASS_ICON_DEBUG_TEXT:
                         debug_label = _unit_family_debug_label(unit_family)
                         debug_w = fm.boundingRect(debug_label).width()
-                        painter.drawText(int(avg_x - (debug_w * 0.5)), int(debug_label_y), debug_label)
-                    if DRAW_CLASS_ICON:
+                        _draw_outlined_text(
+                            painter,
+                            int(avg_x - (debug_w * 0.5)),
+                            int(debug_label_y),
+                            debug_label,
+                            QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
+                            QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
+                            max(1, OUTLINE_OVERLAY_TEXT_PX),
+                        )
+                    if DRAW_CLASS_ICON and (draw_inline_air_overlay or not overlay_is_air):
                         _draw_unit_class_icon(
                             painter,
                             int(avg_x),
                             int(icon_y - 10),
                             unit_family,
                             CLASS_ICON_SIZE,
+                            is_recon_drone=is_recon_drone,
                         )
-                    painter.setPen(QColor(*COLOR_TEXT_AIR) if display_is_air else QColor(*COLOR_TEXT_GROUND))
-                    painter.drawText(int(avg_x - text_w/2), text_y, display_text)
+                    if draw_inline_air_overlay or not overlay_is_air:
+                        _draw_outlined_text(
+                            painter,
+                            int(avg_x - text_w/2),
+                            text_y,
+                            display_text,
+                            QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
+                            QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
+                            max(1, OUTLINE_OVERLAY_TEXT_PX),
+                        )
 
                     if has_reload_bar:
                         max_val = self.max_reload_cache.setdefault(u_ptr, reload_val)
@@ -4318,6 +4592,70 @@ class ESPOverlay(QWidget):
                 
                 _draw_leadmark_glyph(painter, center_pts[0], center_pts[1], pred_color, outer_radius=8, core_radius=3, pen_width=3)
 
+            if DRAW_OFFSCREEN_AIR_INDICATOR:
+                for indicator in offscreen_air_indicators_to_draw:
+                    alpha = max(0.0, min(1.0, float(indicator.get("alpha", 0.0))))
+                    if alpha <= 0.03:
+                        continue
+                    ix = float(indicator.get("x", 0.0))
+                    iy = float(indicator.get("y", 0.0))
+                    side = indicator.get("side", "top")
+                    warning_level = int(indicator.get("warning_level", 0) or 0)
+                    text = indicator.get("text", "")
+                    is_recon = bool(indicator.get("is_recon_drone"))
+                    unit_family = indicator.get("unit_family", UNIT_FAMILY_UNKNOWN)
+
+                    if warning_level >= 2:
+                        text_color = QColor(*COLOR_THREAD_WARNING2)
+                        icon_color = QColor(*COLOR_THREAD_WARNING2)
+                    elif warning_level == 1:
+                        text_color = QColor(*COLOR_THREAD_ALERT2)
+                        icon_color = QColor(*COLOR_THREAD_ALERT2)
+                    else:
+                        text_color = QColor(*COLOR_TEXT_AIR)
+                        icon_color = QColor(*COLOR_CLASS_ICON_AIR)
+                    text_color.setAlpha(int(text_color.alpha() * alpha))
+                    icon_color.setAlpha(int(icon_color.alpha() * alpha))
+                    outline_color = QColor(*OUTLINE_OVERLAY_TEXT_COLOR)
+                    outline_color.setAlpha(int(outline_color.alpha() * alpha))
+
+                    _draw_unit_class_icon(
+                        painter,
+                        int(ix),
+                        int(iy),
+                        unit_family,
+                        OFFSCREEN_AIR_ICON_SIZE,
+                        is_recon_drone=is_recon,
+                        override_color=icon_color,
+                    )
+
+                    fm = painter.fontMetrics()
+                    text_w = fm.boundingRect(text).width()
+                    text_h = fm.height()
+                    tx = ix - (text_w * 0.5)
+                    ty = iy
+                    if side == "left":
+                        tx = ix + OFFSCREEN_AIR_TEXT_GAP
+                        ty = iy + (text_h * 0.35)
+                    elif side == "right":
+                        tx = ix - text_w - OFFSCREEN_AIR_TEXT_GAP
+                        ty = iy + (text_h * 0.35)
+                    elif side == "top":
+                        tx = ix - (text_w * 0.5)
+                        ty = iy + OFFSCREEN_AIR_TEXT_GAP + text_h
+                    else:
+                        tx = ix - (text_w * 0.5)
+                        ty = iy - OFFSCREEN_AIR_TEXT_GAP
+                    _draw_outlined_text(
+                        painter,
+                        int(tx),
+                        int(ty),
+                        text,
+                        text_color,
+                        outline_color,
+                        max(1, OUTLINE_OVERLAY_TEXT_PX),
+                    )
+
             compare_visibility_mode = self._get_compare_visibility_mode()
             show_base_compare = compare_visibility_mode in ("all", "base")
             show_fallback_compare = compare_visibility_mode in ("all", "fallback")
@@ -4578,11 +4916,9 @@ class ESPOverlay(QWidget):
                     monitor = {"top": top, "left": left, "width": cap_size, "height": cap_size}
                     img = self.sct.grab(monitor)
                     
-                    # 🎯 FIX 1: ดึงภาพมาแค่ RGB เพียวๆ (ตัดปัญหา Alpha เฟดขาวทิ้ง 100%)
+                    # ใช้ RGB path เดิมของ mss สำหรับ PiP sniper เพราะ BGRA/ARGB32 ทำสีเพี้ยนบนเครื่องนี้
                     raw_rgb = img.rgb
-                    
-                    # 🎯 FIX 2: เปลี่ยนฟอร์แมตเป็น RGB888 (3 ไบต์ต่อพิกเซล) และใส่ .copy()
-                    qimg = QImage(raw_rgb, img.width, img.height, img.width * 3, QImage.Format_RGB888)
+                    qimg = QImage(raw_rgb, img.width, img.height, img.width * 3, QImage.Format_RGB888).copy()
                     
                     # 3. วาดภาพซูมลงมุมซ้ายบน
                     painter.drawImage(QRect(SNIPER_POS_X, SNIPER_POS_Y, SNIPER_WINDOW_SIZE, SNIPER_WINDOW_SIZE), qimg)
