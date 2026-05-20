@@ -1,9 +1,9 @@
 {
-  "updated_at": "2026-05-16T04:04:08",
+  "updated_at": "2026-05-20T21:03:22",
   "build_fingerprint": {
     "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
-    "size": 156427872,
-    "mtime_ns": 1778756010000000000
+    "size": 156448352,
+    "mtime_ns": 1779173052000000000
   },
   "weapon_source": "runtime_effective_offsets",
   "best_layout_score": 0,
