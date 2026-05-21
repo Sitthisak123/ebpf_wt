@@ -3,11 +3,15 @@ import sys
 import struct
 import math
 import time
-from main import MemoryScanner, get_game_pid, get_game_base_address
+import json
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 
 try:
     from src.utils.mul import *
-    from src.utils.scanner import *
 except ImportError:
     print("[-] Error: ไม่สามารถ import src.utils.mul ได้")
     sys.exit(1)
@@ -26,9 +30,13 @@ def print_header(candidates_count):
 def save_candidates_to_log(candidates):
     if not candidates:
         print("[-] ไม่มีข้อมูลให้บันทึก")
-        return
+        return None
     
-    filename = "scan_results.txt"
+    os.makedirs("dumps", exist_ok=True)
+    filename = os.path.join(
+        "dumps",
+        f"01_my_unit_velocity_scan_{time.strftime('%Y%m%d_%H%M%S')}.txt",
+    )
     try:
         with open(filename, "w", encoding="utf-8") as f:
             f.write(f"=== WTM SCAN RESULTS ({time.strftime('%Y-%m-%d %H:%M:%S')}) ===\n")
@@ -37,9 +45,41 @@ def save_candidates_to_log(candidates):
             for u_ptr, p_off, v_off, dt in candidates:
                 line = f"Unit: {hex(u_ptr)} | Move Ptr: 0x{p_off:04X} | Vel Offset: 0x{v_off:04X} | Type: {dt}\n"
                 f.write(line)
-        print(f"\n[✅] บันทึกรายชื่อผู้ต้องสงสัยทั้งหมดลงใน '{filename}' เรียบร้อยแล้ว!")
+        return filename
     except Exception as e:
         print(f"[-] ไม่สามารถบันทึกไฟล์ได้: {e}")
+        return None
+
+
+def save_candidates_to_json(candidates, target_speed, tolerance, target_units_count):
+    os.makedirs("dumps", exist_ok=True)
+    payload = {
+        "captured_at": time.time(),
+        "captured_at_text": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "target_speed_kmh": float(target_speed),
+        "tolerance_kmh": float(tolerance),
+        "target_units_count": int(target_units_count),
+        "candidate_count": len(candidates),
+        "candidates": [
+            {
+                "unit_ptr": int(u_ptr),
+                "move_ptr_offset": int(p_off),
+                "vel_offset": int(v_off),
+                "data_type": dt,
+            }
+            for u_ptr, p_off, v_off, dt in candidates
+        ],
+    }
+    filename = os.path.join(
+        "dumps",
+        f"01_my_unit_velocity_scan_{time.strftime('%Y%m%d_%H%M%S')}.json",
+    )
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    latest_filename = os.path.join("dumps", "01_my_unit_velocity_scan_latest.json")
+    with open(latest_filename, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    return filename, latest_filename
 
 def main():
     pid = get_game_pid()
@@ -56,6 +96,7 @@ def main():
 
     tolerance = 2.0
     candidates = []
+    last_target_speed = 0.0
 
     while True:
         print_header(len(candidates))
@@ -85,13 +126,29 @@ def main():
             time.sleep(0.5)
 
         elif choice == '6':
-            save_candidates_to_log(candidates)
+            if not candidates:
+                print("[-] ไม่มี candidates ให้บันทึก")
+                input("\nกด Enter เพื่อกลับไปเมนู...")
+                continue
+            log_path = save_candidates_to_log(candidates)
+            try:
+                json_path, latest_json_path = save_candidates_to_json(candidates, last_target_speed, tolerance, len(target_units))
+            except Exception as e:
+                json_path, latest_json_path = None, None
+                print(f"[-] บันทึก JSON ไม่สำเร็จ: {e}")
+            if log_path:
+                print(f"\n[✅] TXT -> {log_path}")
+            if json_path:
+                print(f"[✅] JSON(unique) -> {json_path}")
+            if latest_json_path:
+                print(f"[✅] JSON(latest overwrite) -> {latest_json_path}")
             input("\nกด Enter เพื่อกลับไปเมนู...")
 
         elif choice == '1':
             val = input("   > ความเร็วปัจจุบัน (km/h): ").strip()
             try: target_speed = float(val)
             except: continue
+            last_target_speed = target_speed
             
             min_s, max_s = target_speed - tolerance, target_speed + tolerance
             print(f"[*] กำลังสแกนหาช่วง {min_s:.1f} - {max_s:.1f}...")
@@ -129,6 +186,7 @@ def main():
             val = input("   > ความเร็วใหม่ (km/h): ").strip()
             try: target_speed = float(val)
             except: continue
+            last_target_speed = target_speed
                 
             min_s, max_s = target_speed - tolerance, target_speed + tolerance
             new_candidates = []
