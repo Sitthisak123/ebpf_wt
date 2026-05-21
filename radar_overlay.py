@@ -362,6 +362,7 @@ DYNAMIC_GEOMETRY_FPS_UNIT_SCALE = 1.35
 # Leadmark / ballistic solver tuning
 LEADMARK_RANGE_LIMIT_RATIO = 0.70  # ต่ำลง = ซ่อน leadmark เร็วขึ้นเมื่อเป้าไกลเกิน effective range
 MAX_TOF_AIR_LEADMARK = 8.00       # <=0 = OFF
+MIN_TOF_LEADMARK = 0.15            # <=0 = OFF
 BALLISTIC_MIN_SPEED = 50.0
 BALLISTIC_MAX_SPEED = 3000.0
 BALLISTIC_MIN_MASS = 0.005
@@ -4135,8 +4136,12 @@ class ESPOverlay(QWidget):
                                 painter.setBrush(ccip_color)
                                 painter.drawEllipse(b_sx - 2, b_sy - 2, 4, 4)
 
+                    leadmark_min_tof_ok = (
+                        MIN_TOF_LEADMARK <= 0.0 or best_t >= float(MIN_TOF_LEADMARK)
+                    )
                     leadmark_tof_ok = (
-                        leadmark_tof_limit <= 0.0 or best_t <= leadmark_tof_limit
+                        (leadmark_tof_limit <= 0.0 or best_t <= leadmark_tof_limit)
+                        and leadmark_min_tof_ok
                     )
                     leadmark_in_range = leadmark_range_ok and leadmark_tof_ok
                     
@@ -4217,11 +4222,14 @@ class ESPOverlay(QWidget):
                         tof_limit_text = (
                             f"{leadmark_tof_limit:.2f}s" if leadmark_tof_limit > 0.0 else "OFF"
                         )
+                        tof_min_text = (
+                            f"{float(MIN_TOF_LEADMARK):.2f}s" if float(MIN_TOF_LEADMARK) > 0.0 else "OFF"
+                        )
                         out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
                         out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f}) | SRC:{vel_source}\n"
                         out += f"📡 Vel Check  : raw={raw_mag:>6.1f} km/h | pos={pos_mag:>6.1f} km/h | PTR:{hex(u_ptr)}\n"
                         out += f"🌪️ Accel      : {accel_mag:>6.2f} m/s² | A:({ax:>6.2f}, {ay:>6.2f}, {az:>6.2f})\n"
-                        out += f"🎯 Lead Limit : {range_limit_text} | RangeOK:{'Y' if leadmark_range_ok else 'N'} | TOFLimit:{tof_limit_text} | TOFOK:{'Y' if leadmark_tof_ok else 'N'} | InRange:{'Y' if leadmark_in_range else 'N'}\n"
+                        out += f"🎯 Lead Limit : {range_limit_text} | RangeOK:{'Y' if leadmark_range_ok else 'N'} | TOFMin:{tof_min_text} | TOFLimit:{tof_limit_text} | TOFOK:{'Y' if leadmark_tof_ok else 'N'} | InRange:{'Y' if leadmark_in_range else 'N'}\n"
                         out += "-" * 64 + "\n"
                         out += f"📉 [BALLISTICS]\n"
                         vel_lo, vel_hi = ballistic_profile["vel_range"]

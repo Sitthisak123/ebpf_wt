@@ -52,8 +52,8 @@ OFF_MY_AIR_VEL      = 0x068       # 🎯 My Velocity (สำหรับ Air Lea
 OFF_MY_AIR_MOVEMENT = 0xD18       # 🎯 My Movement Ptr (สำหรับ Air Lead, อัปเดตจากการสแกนล่าสุด)
 
 OFF_GROUND_UNITS    = (0x358, False)
-OFF_GROUND_MOVEMENT = 0x0D18  
-OFF_GROUND_VEL      = 0x003C
+OFF_GROUND_MOVEMENT = 0x1118
+OFF_GROUND_VEL      = 0x00FC
 OFF_GROUND_OMEGA    = 0
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก Deep Scan ล่าสุด)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
@@ -431,12 +431,9 @@ VELOCITY_PROFILES = {
             "vel_off": OFF_GROUND_VEL,
             "fmt": "fff",
             "max_speed": 500.0,
-            "shuffle": (0, 2, 1),
+            "shuffle": (0, 1, 2),
         },
-        "fallbacks": [
-            {"label": "GROUND_ALT", "mov_off": 0x0D18, "vel_off": 0x40, "fmt": "fff", "max_speed": 200.0, "shuffle": (0, 2, 1)},
-            {"label": "GROUND_ALT2", "mov_off": lambda: OFF_GROUND_MOVEMENT, "vel_off": 0x68, "fmt": "ddd", "max_speed": 200.0, "shuffle": (0, 2, 1)},
-        ],
+        "fallbacks": [],
     },
 }
 
