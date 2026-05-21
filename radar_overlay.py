@@ -4592,70 +4592,6 @@ class ESPOverlay(QWidget):
                 
                 _draw_leadmark_glyph(painter, center_pts[0], center_pts[1], pred_color, outer_radius=8, core_radius=3, pen_width=3)
 
-            if DRAW_OFFSCREEN_AIR_INDICATOR:
-                for indicator in offscreen_air_indicators_to_draw:
-                    alpha = max(0.0, min(1.0, float(indicator.get("alpha", 0.0))))
-                    if alpha <= 0.03:
-                        continue
-                    ix = float(indicator.get("x", 0.0))
-                    iy = float(indicator.get("y", 0.0))
-                    side = indicator.get("side", "top")
-                    warning_level = int(indicator.get("warning_level", 0) or 0)
-                    text = indicator.get("text", "")
-                    is_recon = bool(indicator.get("is_recon_drone"))
-                    unit_family = indicator.get("unit_family", UNIT_FAMILY_UNKNOWN)
-
-                    if warning_level >= 2:
-                        text_color = QColor(*COLOR_THREAD_WARNING2)
-                        icon_color = QColor(*COLOR_THREAD_WARNING2)
-                    elif warning_level == 1:
-                        text_color = QColor(*COLOR_THREAD_ALERT2)
-                        icon_color = QColor(*COLOR_THREAD_ALERT2)
-                    else:
-                        text_color = QColor(*COLOR_TEXT_AIR)
-                        icon_color = QColor(*COLOR_CLASS_ICON_AIR)
-                    text_color.setAlpha(int(text_color.alpha() * alpha))
-                    icon_color.setAlpha(int(icon_color.alpha() * alpha))
-                    outline_color = QColor(*OUTLINE_OVERLAY_TEXT_COLOR)
-                    outline_color.setAlpha(int(outline_color.alpha() * alpha))
-
-                    _draw_unit_class_icon(
-                        painter,
-                        int(ix),
-                        int(iy),
-                        unit_family,
-                        OFFSCREEN_AIR_ICON_SIZE,
-                        is_recon_drone=is_recon,
-                        override_color=icon_color,
-                    )
-
-                    fm = painter.fontMetrics()
-                    text_w = fm.boundingRect(text).width()
-                    text_h = fm.height()
-                    tx = ix - (text_w * 0.5)
-                    ty = iy
-                    if side == "left":
-                        tx = ix + OFFSCREEN_AIR_TEXT_GAP
-                        ty = iy + (text_h * 0.35)
-                    elif side == "right":
-                        tx = ix - text_w - OFFSCREEN_AIR_TEXT_GAP
-                        ty = iy + (text_h * 0.35)
-                    elif side == "top":
-                        tx = ix - (text_w * 0.5)
-                        ty = iy + OFFSCREEN_AIR_TEXT_GAP + text_h
-                    else:
-                        tx = ix - (text_w * 0.5)
-                        ty = iy - OFFSCREEN_AIR_TEXT_GAP
-                    _draw_outlined_text(
-                        painter,
-                        int(tx),
-                        int(ty),
-                        text,
-                        text_color,
-                        outline_color,
-                        max(1, OUTLINE_OVERLAY_TEXT_PX),
-                    )
-
             compare_visibility_mode = self._get_compare_visibility_mode()
             show_base_compare = compare_visibility_mode in ("all", "base")
             show_fallback_compare = compare_visibility_mode in ("all", "fallback")
@@ -4937,6 +4873,70 @@ class ESPOverlay(QWidget):
                 except Exception as e:
                     # ป้องกันโปรแกรมค้างหากแคปจอผิดพลาด
                     pass
+
+            if DRAW_OFFSCREEN_AIR_INDICATOR:
+                for indicator in offscreen_air_indicators_to_draw:
+                    alpha = max(0.0, min(1.0, float(indicator.get("alpha", 0.0))))
+                    if alpha <= 0.03:
+                        continue
+                    ix = float(indicator.get("x", 0.0))
+                    iy = float(indicator.get("y", 0.0))
+                    side = indicator.get("side", "top")
+                    warning_level = int(indicator.get("warning_level", 0) or 0)
+                    text = indicator.get("text", "")
+                    is_recon = bool(indicator.get("is_recon_drone"))
+                    unit_family = indicator.get("unit_family", UNIT_FAMILY_UNKNOWN)
+
+                    if warning_level >= 2:
+                        text_color = QColor(*COLOR_THREAD_WARNING2)
+                        icon_color = QColor(*COLOR_THREAD_WARNING2)
+                    elif warning_level == 1:
+                        text_color = QColor(*COLOR_THREAD_ALERT2)
+                        icon_color = QColor(*COLOR_THREAD_ALERT2)
+                    else:
+                        text_color = QColor(*COLOR_TEXT_AIR)
+                        icon_color = QColor(*COLOR_CLASS_ICON_AIR)
+                    text_color.setAlpha(int(text_color.alpha() * alpha))
+                    icon_color.setAlpha(int(icon_color.alpha() * alpha))
+                    outline_color = QColor(*OUTLINE_OVERLAY_TEXT_COLOR)
+                    outline_color.setAlpha(int(outline_color.alpha() * alpha))
+
+                    _draw_unit_class_icon(
+                        painter,
+                        int(ix),
+                        int(iy),
+                        unit_family,
+                        OFFSCREEN_AIR_ICON_SIZE,
+                        is_recon_drone=is_recon,
+                        override_color=icon_color,
+                    )
+
+                    fm = painter.fontMetrics()
+                    text_w = fm.boundingRect(text).width()
+                    text_h = fm.height()
+                    tx = ix - (text_w * 0.5)
+                    ty = iy
+                    if side == "left":
+                        tx = ix + OFFSCREEN_AIR_TEXT_GAP
+                        ty = iy + (text_h * 0.35)
+                    elif side == "right":
+                        tx = ix - text_w - OFFSCREEN_AIR_TEXT_GAP
+                        ty = iy + (text_h * 0.35)
+                    elif side == "top":
+                        tx = ix - (text_w * 0.5)
+                        ty = iy + OFFSCREEN_AIR_TEXT_GAP + text_h
+                    else:
+                        tx = ix - (text_w * 0.5)
+                        ty = iy - OFFSCREEN_AIR_TEXT_GAP
+                    _draw_outlined_text(
+                        painter,
+                        int(tx),
+                        int(ty),
+                        text,
+                        text_color,
+                        outline_color,
+                        max(1, OUTLINE_OVERLAY_TEXT_PX),
+                    )
                 
             for ptr in [ptr for ptr in self.kalman_filters if ptr not in seen_targets_this_frame and ptr != my_unit]:
                 del self.kalman_filters[ptr]
