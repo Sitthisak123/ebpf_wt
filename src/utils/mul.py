@@ -1042,26 +1042,46 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
     wtm_ptr = 0
 
     try:
+        current_info_ptr = _read_ptr(scanner, u_ptr + OFF_UNIT_INFO) if OFF_UNIT_INFO else 0
         if u_ptr in scanner.bone_cache:
             cache = scanner.bone_cache[u_ptr]
-            anim_char_raw = scanner.read_mem(u_ptr + cache['anim_off'], 8)
-            if anim_char_raw: 
-                anim_char = struct.unpack("<Q", anim_char_raw)[0]
-                if is_valid_ptr(anim_char):
-                    sub_matrix_off = int(cache.get('sub_matrix_off', 0) or 0)
-                    wtm_raw = scanner.read_mem(anim_char + sub_matrix_off, 8)
-                    if wtm_raw:
-                        w_ptr = struct.unpack("<Q", wtm_raw)[0]
-                        if is_valid_ptr(w_ptr):
-                            target_idx = cache['bone_idx']
-                            matrix_data = scanner.read_mem(w_ptr + (target_idx * 64), 64)
-                            if matrix_data:
-                                bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
-                                if abs(bx) < 5000 and abs(by) < 5000:
-                                    wtm_ptr = w_ptr
-                                    target_bone_index = target_idx
-                                # else: del scanner.bone_cache[u_ptr]
-                            # else: del scanner.bone_cache[u_ptr]
+            cache_expired = False
+            if cache.get('info_ptr') and current_info_ptr and cache.get('info_ptr') != current_info_ptr:
+                cache_expired = True
+            if not cache_expired:
+                reuse_count = int(cache.get('reuse_count', 0) or 0) + 1
+                cache['reuse_count'] = reuse_count
+                if reuse_count >= 240:
+                    cache_expired = True
+            if cache_expired:
+                del scanner.bone_cache[u_ptr]
+            else:
+                anim_char_raw = scanner.read_mem(u_ptr + cache['anim_off'], 8)
+                if anim_char_raw: 
+                    anim_char = struct.unpack("<Q", anim_char_raw)[0]
+                    if is_valid_ptr(anim_char):
+                        sub_matrix_off = int(cache.get('sub_matrix_off', 0) or 0)
+                        wtm_raw = scanner.read_mem(anim_char + sub_matrix_off, 8)
+                        if wtm_raw:
+                            w_ptr = struct.unpack("<Q", wtm_raw)[0]
+                            if is_valid_ptr(w_ptr):
+                                target_idx = cache['bone_idx']
+                                matrix_data = scanner.read_mem(w_ptr + (target_idx * 64), 64)
+                                if matrix_data and len(matrix_data) == 64:
+                                    bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
+                                    if math.isfinite(bx) and math.isfinite(by) and math.isfinite(bz) and abs(bx) < 5000 and abs(by) < 5000 and abs(bz) < 5000:
+                                        wtm_ptr = w_ptr
+                                        target_bone_index = target_idx
+                                    else:
+                                        del scanner.bone_cache[u_ptr]
+                                else:
+                                    del scanner.bone_cache[u_ptr]
+                            else:
+                                del scanner.bone_cache[u_ptr]
+                    else:
+                        del scanner.bone_cache[u_ptr]
+                else:
+                    del scanner.bone_cache[u_ptr]
 
         # (ในไฟล์ mul.py ภายใต้ฟังก์ชัน get_weapon_barrel)
         if wtm_ptr == 0 or target_bone_index == -1:
@@ -1116,6 +1136,9 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                             'anim_off': a_off,
                                             'bone_idx': best_idx,
                                             'sub_matrix_off': sub_matrix_off,
+                                            'info_ptr': current_info_ptr,
+                                            'reuse_count': 0,
+                                            'cached_at': time.time(),
                                         }
                                         break
                             if wtm_ptr != 0: break
