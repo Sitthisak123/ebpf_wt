@@ -78,18 +78,23 @@ def _group_key(rec):
 
 def _profile_signature(rec):
     return (
-        rec.get("my_unit_key", "") or "",
         round(float(rec.get("speed", 0.0) or 0.0), 3),
         round(float(rec.get("caliber", 0.0) or 0.0), 6),
+        round(float(rec.get("mass", 0.0) or 0.0), 6),
+        int(rec.get("bullet_type_idx", -1) or -1),
+        round(float(resolve_ammo_family(rec).get("cannon_size", 0.0) or 0.0), 6),
         round(float(rec.get("camera_parallax", 0.0) or 0.0), 3),
     )
 
 
-def _profile_key(my_key, speed, caliber, camera_parallax):
+def _profile_key(speed, caliber, mass, bullet_type_idx, cannon_size, camera_parallax):
     return (
-        f"{my_key}"
+        f"kin"
         f"|speed={float(speed):.3f}"
         f"|caliber={float(caliber):.6f}"
+        f"|mass={float(mass):.6f}"
+        f"|bt={int(bullet_type_idx)}"
+        f"|csize={float(cannon_size):.6f}"
         f"|parallax={float(camera_parallax):.3f}"
     )
 
@@ -151,12 +156,12 @@ def _build_table(records, distance_step, min_points):
             continue
         bucket = _ammo_bucket(rec)
         _target_key = rec.get("target_unit_key", rec.get("unit_key", "")) or ""
-        _sig_my_key, sig_speed, sig_caliber, sig_parallax = _profile_signature(rec)
+        sig_speed, sig_caliber, sig_mass, sig_bullet_type, sig_cannon_size, sig_parallax = _profile_signature(rec)
         lo, _hi = _distance_bucket(float(rec.get("distance", 0.0) or 0.0), distance_step)
-        grouped[(bucket, my_key, sig_speed, sig_caliber, sig_parallax, lo)].append(rec)
+        grouped[(bucket, sig_speed, sig_caliber, sig_mass, sig_bullet_type, sig_cannon_size, sig_parallax, lo)].append(rec)
 
     bucket_rows = defaultdict(list)
-    for (bucket, my_key, sig_speed, sig_caliber, sig_parallax, bucket_lo), items in grouped.items():
+    for (bucket, sig_speed, sig_caliber, sig_mass, sig_bullet_type, sig_cannon_size, sig_parallax, bucket_lo), items in grouped.items():
         avg_distance = _mean([float(r.get("distance", 0.0) or 0.0) for r in items])
         avg_vertical = _mean([_effective_y_offset(r) for r in items])
         avg_speed = _mean([float(r.get("speed", 0.0) or 0.0) for r in items])
@@ -168,38 +173,44 @@ def _build_table(records, distance_step, min_points):
             "speed": round(avg_speed, 3),
             "caliber": round(avg_caliber, 6),
         }
-        bucket_rows[(bucket, my_key, sig_speed, sig_caliber, sig_parallax)].append(row)
+        bucket_rows[(bucket, sig_speed, sig_caliber, sig_mass, sig_bullet_type, sig_cannon_size, sig_parallax)].append((row, items))
 
     table = {}
     summary_rows = []
-    for (bucket, my_key, sig_speed, sig_caliber, sig_parallax), rows in sorted(bucket_rows.items()):
-        rows = sorted(rows, key=lambda item: item["distance"])
+    for (bucket, sig_speed, sig_caliber, sig_mass, sig_bullet_type, sig_cannon_size, sig_parallax), row_items in sorted(bucket_rows.items()):
+        rows = sorted([row for row, _items in row_items], key=lambda item: item["distance"])
         if len(rows) < min_points:
             continue
         curve = [[row["distance"], row["vertical"]] for row in rows]
         avg_speed = _mean([row["speed"] for row in rows])
         avg_caliber = _mean([row["caliber"] for row in rows])
-        profile_key = _profile_key(my_key, sig_speed, sig_caliber, sig_parallax)
+        all_items = []
+        for _row, items in row_items:
+            all_items.extend(items)
+        unit_keys = sorted({str(r.get("my_unit_key", "") or "") for r in all_items if str(r.get("my_unit_key", "") or "")})
+        profile_key = _profile_key(sig_speed, sig_caliber, sig_mass, sig_bullet_type, sig_cannon_size, sig_parallax)
         table.setdefault(bucket, {})[profile_key] = {
-            "my_unit_key": my_key,
+            "my_unit_key": unit_keys[0] if unit_keys else "",
+            "unit_keys": unit_keys,
             "speed": round(avg_speed, 3),
             "caliber": round(avg_caliber, 6),
             "camera_parallax": round(sig_parallax, 3),
-            "mass": round(_mean([float(r.get("mass", 0.0) or 0.0) for r in items]), 6),
-            "bullet_type_idx": int(_mean([float(r.get("bullet_type_idx", -1) or -1) for r in items])) if items else -1,
-            "cannon_size": round(resolve_ammo_family(items[0]).get("cannon_size", 0.0), 6) if items else 0.0,
-            "ammo_family": resolve_ammo_family(items[0]).get("family", "other") if items else "other",
+            "mass": round(_mean([float(r.get("mass", 0.0) or 0.0) for r in all_items]), 6),
+            "bullet_type_idx": int(_mean([float(r.get("bullet_type_idx", -1) or -1) for r in all_items])) if all_items else -1,
+            "cannon_size": round(resolve_ammo_family(all_items[0]).get("cannon_size", 0.0), 6) if all_items else 0.0,
+            "ammo_family": resolve_ammo_family(all_items[0]).get("family", "other") if all_items else "other",
             "curve": curve,
         }
         summary_rows.append({
             "ammo_bucket": bucket,
-            "ammo_family": resolve_ammo_family(items[0]).get("family", "other") if items else "other",
-            "my_unit_key": my_key,
+            "ammo_family": resolve_ammo_family(all_items[0]).get("family", "other") if all_items else "other",
+            "my_unit_key": unit_keys[0] if unit_keys else "",
+            "unit_keys": unit_keys,
             "profile_key": profile_key,
             "speed": round(avg_speed, 3),
             "caliber": round(avg_caliber, 6),
-            "mass": round(_mean([float(r.get("mass", 0.0) or 0.0) for r in items]), 6),
-            "bullet_type_idx": int(_mean([float(r.get("bullet_type_idx", -1) or -1) for r in items])) if items else -1,
+            "mass": round(_mean([float(r.get("mass", 0.0) or 0.0) for r in all_items]), 6),
+            "bullet_type_idx": int(_mean([float(r.get("bullet_type_idx", -1) or -1) for r in all_items])) if all_items else -1,
             "camera_parallax": round(sig_parallax, 3),
             "points": len(curve),
             "curve": curve,
