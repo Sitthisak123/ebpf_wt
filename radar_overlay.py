@@ -990,73 +990,60 @@ def _normalize_vertical_baseline_entry(entry):
     }
 
 
-def _vertical_baseline_entry_matches_unit(entry_key, entry, my_unit_key):
-    my_unit_key = str(my_unit_key or "")
-    if not my_unit_key:
-        return False
-    if str(entry_key) == my_unit_key:
+def _vertical_baseline_signature_fields(profile):
+    profile = profile or {}
+    family_info = resolve_ammo_family(profile)
+    return {
+        "speed": round(float(profile.get("speed", 0.0) or 0.0), 3),
+        "caliber": round(float(profile.get("caliber", 0.0) or 0.0), 6),
+        "mass": round(float(profile.get("mass", 0.0) or 0.0), 6),
+        "bullet_type_idx": int(profile.get("bullet_type_idx", -1) or -1),
+        "cannon_size": round(float(family_info.get("cannon_size", 0.0) or 0.0), 6),
+        "camera_parallax": round(float(profile.get("camera_parallax", 0.0) or 0.0), 3),
+    }
+
+
+def _vertical_baseline_signature_key(profile):
+    fields = _vertical_baseline_signature_fields(profile)
+    return (
+        f"kin"
+        f"|speed={fields['speed']:.3f}"
+        f"|caliber={fields['caliber']:.6f}"
+        f"|mass={fields['mass']:.6f}"
+        f"|bt={fields['bullet_type_idx']}"
+        f"|csize={fields['cannon_size']:.6f}"
+        f"|parallax={fields['camera_parallax']:.3f}"
+    )
+
+
+def _vertical_baseline_entry_matches_signature(entry_key, entry, ballistic_profile):
+    sig = _vertical_baseline_signature_fields(ballistic_profile)
+    if str(entry_key) == _vertical_baseline_signature_key(ballistic_profile):
         return True
-    entry_unit_key = str((entry or {}).get("my_unit_key", "") or "")
-    if entry_unit_key == my_unit_key:
-        return True
-    return str(entry_key).startswith(f"{my_unit_key}|")
+    return (
+        round(float((entry or {}).get("speed", 0.0) or 0.0), 3) == sig["speed"]
+        and round(float((entry or {}).get("caliber", 0.0) or 0.0), 6) == sig["caliber"]
+        and round(float((entry or {}).get("mass", 0.0) or 0.0), 6) == sig["mass"]
+        and int((entry or {}).get("bullet_type_idx", -1) or -1) == sig["bullet_type_idx"]
+        and round(float((entry or {}).get("cannon_size", 0.0) or 0.0), 6) == sig["cannon_size"]
+        and round(float((entry or {}).get("camera_parallax", 0.0) or 0.0), 3) == sig["camera_parallax"]
+    )
 
 
 def _choose_vertical_baseline_entry(my_unit_key, ballistic_profile):
     ammo_bucket = _vertical_baseline_ammo_bucket(ballistic_profile)
-    speed = float((ballistic_profile or {}).get("speed", 0.0) or 0.0)
-    caliber = float((ballistic_profile or {}).get("caliber", 0.0) or 0.0)
-
-    def iter_candidates(bucket_name):
-        table = VERTICAL_BASELINE_TABLE.get(bucket_name, {}) or {}
-        for unit_key, raw_entry in table.items():
-            entry = _normalize_vertical_baseline_entry(raw_entry)
-            yield bucket_name, unit_key, entry
+    sig_key = _vertical_baseline_signature_key(ballistic_profile)
 
     bucket_table = VERTICAL_BASELINE_TABLE.get(ammo_bucket, {}) or {}
-    if my_unit_key in bucket_table:
-        return ammo_bucket, my_unit_key, _normalize_vertical_baseline_entry(bucket_table[my_unit_key])
+    if sig_key in bucket_table:
+        return ammo_bucket, sig_key, _normalize_vertical_baseline_entry(bucket_table[sig_key])
 
-    exact_unit_candidates = []
     for entry_key, raw_entry in bucket_table.items():
         entry = _normalize_vertical_baseline_entry(raw_entry)
-        if _vertical_baseline_entry_matches_unit(entry_key, entry, my_unit_key):
-            exact_unit_candidates.append((ammo_bucket, entry_key, entry))
-    if exact_unit_candidates:
-        candidates = exact_unit_candidates
-    else:
-        candidates = list(iter_candidates(ammo_bucket))
+        if _vertical_baseline_entry_matches_signature(entry_key, entry, ballistic_profile):
+            return ammo_bucket, entry_key, entry
 
-    if not candidates:
-        for bucket_name in VERTICAL_BASELINE_TABLE.keys():
-            for entry_key, raw_entry in (VERTICAL_BASELINE_TABLE.get(bucket_name, {}) or {}).items():
-                entry = _normalize_vertical_baseline_entry(raw_entry)
-                if _vertical_baseline_entry_matches_unit(entry_key, entry, my_unit_key):
-                    candidates.append((bucket_name, entry_key, entry))
-        if not candidates:
-            for bucket_name in VERTICAL_BASELINE_TABLE.keys():
-                candidates.extend(iter_candidates(bucket_name))
-    if not candidates:
-        return ammo_bucket, "", {"speed": 0.0, "caliber": 0.0, "mass": 0.0, "bullet_type_idx": -1, "curve": []}
-
-    best = None
-    best_score = None
-    for bucket_name, unit_key, entry in candidates:
-        ref_speed = float(entry.get("speed", 0.0) or 0.0)
-        ref_caliber = float(entry.get("caliber", 0.0) or 0.0)
-        ref_mass = float(entry.get("mass", 0.0) or 0.0)
-        ref_bullet_type = int(entry.get("bullet_type_idx", -1) or -1)
-        speed_term = abs(speed - ref_speed) / max(max(speed, ref_speed, 1.0), 1.0)
-        caliber_term = abs(caliber - ref_caliber) / max(max(caliber, ref_caliber, 0.001), 0.001)
-        mass = float((ballistic_profile or {}).get("mass", 0.0) or 0.0)
-        bullet_type_idx = int((ballistic_profile or {}).get("bullet_type_idx", -1) or -1)
-        mass_term = abs(mass - ref_mass) / max(max(mass, ref_mass, 0.001), 0.001) if (mass > 0.0 and ref_mass > 0.0) else 0.0
-        bullet_type_term = 0.0 if (bullet_type_idx >= 0 and ref_bullet_type >= 0 and bullet_type_idx == ref_bullet_type) else 0.25
-        score = speed_term + (caliber_term * 2.0) + mass_term + bullet_type_term
-        if best_score is None or score < best_score:
-            best_score = score
-            best = (bucket_name, unit_key, entry)
-    return best
+    return ammo_bucket, "", {"speed": 0.0, "caliber": 0.0, "mass": 0.0, "bullet_type_idx": -1, "curve": []}
 
 
 def _get_auto_vertical_baseline(my_unit_key, ballistic_profile, distance_to_target):
