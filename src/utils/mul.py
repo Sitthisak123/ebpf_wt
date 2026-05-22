@@ -345,8 +345,14 @@ def get_unit_filter_profile(scanner, u_ptr):
         return cached["profile"].copy()
 
     tag = _read_info_string(scanner, info_ptr, 0x38, 64) or ""
-    path = _read_info_string(scanner, info_ptr, 0x18, 128) or _read_info_string(scanner, info_ptr, 0x10, 128) or ""
-    unit_key = _read_info_string(scanner, info_ptr, 0x40, 96) or _read_info_string(scanner, info_ptr, 0x08, 96) or ""
+    path = _read_info_string(scanner, info_ptr, 0x18, 128)
+    if not path:
+        path = _read_info_string(scanner, info_ptr, 0x10, 128)
+    path = path or ""
+    unit_key = _read_info_string(scanner, info_ptr, 0x40, 96)
+    if not unit_key:
+        unit_key = _read_info_string(scanner, info_ptr, 0x08, 96)
+    unit_key = unit_key or ""
 
     tag_l = tag.lower()
     path_l = path.lower()
@@ -361,8 +367,6 @@ def get_unit_filter_profile(scanner, u_ptr):
         kind = "air"
     elif "tankmodels/" in path_l or "ships/" in path_l or "air_defence/" in path_l or "structures/" in path_l:
         kind = "ground"
-    else:
-        kind = get_unit_kind_from_info(scanner, u_ptr)
 
     skip = False
     reason = ""
@@ -388,7 +392,7 @@ def get_unit_filter_profile(scanner, u_ptr):
             skip = True
             reason = "no_ground_mov"
 
-    display_name = unit_key or _name_from_path(path)
+    display_name = unit_key
     profile = {
         "skip": skip,
         "reason": reason,
