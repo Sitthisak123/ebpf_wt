@@ -1259,7 +1259,60 @@ def _is_boat_like(family_name, profile_tag, profile_path, unit_key="", name_key=
     ))
 
 
-def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, name_key, short_name, is_air):
+GROUND_SUBCLASS_ENUM_OFF = 0xF30
+GROUND_SUBCLASS_ENUM_MASK = 0x1F00
+GROUND_SUBCLASS_ENUM_MAP = {
+    0x100: UNIT_FAMILY_GROUND_LIGHT_TANK,
+    0x200: UNIT_FAMILY_GROUND_MEDIUM_TANK,
+    0x400: UNIT_FAMILY_GROUND_HEAVY_TANK,
+    0x800: UNIT_FAMILY_GROUND_TANK_DESTROYER,
+    0x1000: UNIT_FAMILY_GROUND_SPAA,
+}
+
+
+def _read_u64_fast(scanner, addr):
+    try:
+        raw = scanner.read_mem(addr, 8)
+        if not raw or len(raw) < 8:
+            return 0
+        return struct.unpack("<Q", raw)[0]
+    except Exception:
+        return 0
+
+
+def _resolve_dynamic_ground_subclass(scanner, u_ptr, family_tag):
+    if not scanner or not u_ptr:
+        return None
+
+    subclass_enum_raw = _read_u64_fast(scanner, u_ptr + GROUND_SUBCLASS_ENUM_OFF)
+    subclass_enum = subclass_enum_raw & GROUND_SUBCLASS_ENUM_MASK
+    mapped_family = GROUND_SUBCLASS_ENUM_MAP.get(subclass_enum)
+    if mapped_family is not None:
+        return mapped_family
+
+    sig_98 = _read_u64_fast(scanner, u_ptr + 0x98)
+    sig_c8 = _read_u64_fast(scanner, u_ptr + 0xC8)
+    if sig_98 == 0x400000004 or sig_c8 == 0x400000004:
+        return UNIT_FAMILY_GROUND_SPAA
+    if sig_98 == 0x800000005 or sig_c8 == 0x800000005:
+        return UNIT_FAMILY_GROUND_TANK_DESTROYER
+
+    if family_tag == "exp_heavy_tank":
+        return UNIT_FAMILY_GROUND_HEAVY_TANK
+    if family_tag in ("exp_tank_destroyer", "exp_tank_destr"):
+        return UNIT_FAMILY_GROUND_TANK_DESTROYER
+    if family_tag in ("exp_spaa",):
+        return UNIT_FAMILY_GROUND_SPAA
+    if family_tag in ("exp_light_tank", "exp_tank_light", "exp_ltank"):
+        return UNIT_FAMILY_GROUND_LIGHT_TANK
+
+    if family_tag != "exp_tank":
+        return None
+
+    return UNIT_FAMILY_GROUND_MEDIUM_TANK
+
+
+def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, name_key, short_name, is_air, scanner=None, u_ptr=0):
     family_tag = (family_name or profile_tag or "").lower()
     token = " ".join((
         family_name or "",
@@ -1270,11 +1323,6 @@ def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, 
         short_name or "",
     )).lower()
 
-    pragmatic_code = _match_pragmatic_unit_family_code(family_tag, token)
-    pragmatic_family = _unit_family_from_code(pragmatic_code)
-    if pragmatic_family != UNIT_FAMILY_UNKNOWN:
-        return pragmatic_family
-
     if family_tag == "exp_helicopter":
         return UNIT_FAMILY_AIR_HELICOPTER
     if family_tag == "exp_bomber":
@@ -1283,16 +1331,19 @@ def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, 
         return UNIT_FAMILY_AIR_ATTACKER
     if family_tag == "exp_fighter":
         return UNIT_FAMILY_AIR_FIGHTER
-    if family_tag == "exp_spaa":
-        return UNIT_FAMILY_GROUND_SPAA
-    if family_tag in ("exp_light_tank", "exp_tank_light", "exp_ltank"):
-        return UNIT_FAMILY_GROUND_LIGHT_TANK
-    if family_tag in ("exp_tank_destroyer", "exp_tank_destr"):
-        return UNIT_FAMILY_GROUND_TANK_DESTROYER
-    if family_tag == "exp_heavy_tank":
-        return UNIT_FAMILY_GROUND_HEAVY_TANK
-    if family_tag == "exp_tank":
-        return UNIT_FAMILY_GROUND_MEDIUM_TANK
+    if family_tag in (
+        "exp_spaa",
+        "exp_light_tank",
+        "exp_tank_light",
+        "exp_ltank",
+        "exp_tank_destroyer",
+        "exp_tank_destr",
+        "exp_heavy_tank",
+        "exp_tank",
+    ):
+        dynamic_ground_family = _resolve_dynamic_ground_subclass(scanner, u_ptr, family_tag)
+        if dynamic_ground_family is not None:
+            return dynamic_ground_family
     if family_tag == "exp_destroyer":
         return UNIT_FAMILY_SHIP_DESTROYER
     if family_tag == "exp_cruiser":
@@ -3595,6 +3646,8 @@ class ESPOverlay(QWidget):
                         name_key,
                         short_name,
                         physics_is_air,
+                        self.scanner,
+                        u_ptr,
                     )
                     family_is_air = unit_family in (
                         UNIT_FAMILY_AIR_FIGHTER,
