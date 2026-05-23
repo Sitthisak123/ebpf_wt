@@ -19,9 +19,9 @@ except ImportError:
     print("⚠️ กรุณาติดตั้งโมดูล keyboard: pip install keyboard")
     HAS_KEYBOARD = False
 
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication, QOpenGLWidget, QWidget
 from PyQt5.QtCore import Qt, QTimer, QUrl
-from PyQt5.QtGui import QPainter, QPen, QColor, QFont
+from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QSurfaceFormat
 try:
     from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
     HAS_QT_MULTIMEDIA = True
@@ -2381,7 +2381,7 @@ def _solve_zero_pitch(zeroing_distance, model):
     return max(ZERO_PITCH_MIN, min(ZERO_PITCH_MAX, pitch))
 
 
-class ESPOverlay(QWidget):
+class ESPOverlay(QOpenGLWidget):
     def __init__(self, scanner, base_address):
         super().__init__()
         set_dashboard_mode(True)
@@ -2444,9 +2444,16 @@ class ESPOverlay(QWidget):
         }
 
         self._update_screen_metrics()
+        
+        # 🚀 บังคับเปิดระบบประสานผิวภาพโปร่งใสในระดับฮาร์ดแวร์การ์ดจอ (Nvidia VIP)
+        fmt = QSurfaceFormat()
+        fmt.setAlphaBufferSize(8)
+        fmt.setSamples(4) # เปิดระบบลบรอยหยักเส้นดักเป้าใน GPU
+        self.setFormat(fmt)
+
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.setFocusPolicy(Qt.StrongFocus) # 🎯 บังคับให้หน้าต่างรับการกดปุ่มได้
+        self.setFocusPolicy(Qt.NoFocus)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
         self.setGeometry(0, 0, self.screen_width, self.screen_height)
 
@@ -2990,6 +2997,11 @@ class ESPOverlay(QWidget):
         painter = QPainter()
         painter.begin(self) 
         painter.setRenderHint(QPainter.Antialiasing)
+        
+        # 🧼 ล้างบางเฟรมสะสมเก่าใน VRAM ทิ้งทันที (Fix Infinite Frame Stacking bug)
+        painter.setCompositionMode(QPainter.CompositionMode_Source)
+        painter.fillRect(self.rect(), Qt.transparent)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver) # สลับกลับมาโหมดวาดปกติ
         
         seen_targets_this_frame = set()
         curr_t = time.time()
