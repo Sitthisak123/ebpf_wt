@@ -297,7 +297,7 @@ AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น Fals
 
 DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
-DEBUG_DRAW_CALIBRATION_HIT = True
+DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = False
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
