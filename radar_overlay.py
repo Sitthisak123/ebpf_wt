@@ -1733,7 +1733,8 @@ def _screen_int_tuple(*values):
     for value in values:
         if not math.isfinite(value):
             return None
-        if value < -2147483000 or value > 2147483000:
+        # 🛑 บังคับให้อยู่ในกรอบความปลอดภัยของ Qt Painter (ห้ามเกินลิมิต 32767)
+        if value < -16000 or value > 16000:
             return None
         out.append(int(value))
     return tuple(out)
