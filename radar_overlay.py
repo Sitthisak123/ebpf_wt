@@ -267,6 +267,7 @@ ORIGIN_GHOST_MY_DIST_MIN = 250.0
 DEBUG_LOG_INTERVAL = 0.5
 INVALID_RUNTIME_FRAME_LIMIT = 20
 STARTUP_LOADING_GRACE_SECONDS = 20.0
+OPENGL_OVERLAY_MSAA_SAMPLES = 0
 DRAW_CLASS_ICON = True
 CLASS_ICON_SIZE = 15
 CLASS_ICON_LINE_GAP = 14
@@ -423,6 +424,9 @@ SNIPER_WINDOW_SIZE = 450      # ขนาดกรอบหน้าต่าง
 SNIPER_POS_X = 20             # ตำแหน่งแกน X (มุมซ้ายบน)
 SNIPER_POS_Y = 320            # ตำแหน่งแกน Y (มุมซ้ายบน ถัดจากตัวหนังสือ)
 SNIPER_MIN_RANGE = 200.0      # ระยะต่ำสุดที่จะเปิด PiP sniper
+SNIPER_CROSSHAIR_MAX_PX = 180.0
+SNIPER_REJECT_WHITE_CAPTURE = True
+SNIPER_WHITE_CAPTURE_RATIO = 0.92
 
 #- อยากกดลงทุกระยะอีกหน่อย: เพิ่ม GROUND_HITPOINT_DROP_BASE
 #- อยากให้ระยะไกลลงมากขึ้น: เพิ่ม GROUND_HITPOINT_DROP_EXP
@@ -2382,6 +2386,31 @@ def _solve_zero_pitch(zeroing_distance, model):
     return max(ZERO_PITCH_MIN, min(ZERO_PITCH_MAX, pitch))
 
 
+def _is_probably_white_capture(raw_rgb, width, height):
+    if not raw_rgb or width <= 0 or height <= 0:
+        return True
+    sample_pixels = min(512, width * height)
+    if sample_pixels <= 0:
+        return True
+    step = max(3, (width * height * 3) // sample_pixels)
+    step -= step % 3
+    if step <= 0:
+        step = 3
+    white_count = 0
+    total = 0
+    limit = len(raw_rgb) - 2
+    for idx in range(0, limit, step):
+        r = raw_rgb[idx]
+        g = raw_rgb[idx + 1]
+        b = raw_rgb[idx + 2]
+        if r >= 245 and g >= 245 and b >= 245:
+            white_count += 1
+        total += 1
+        if total >= sample_pixels:
+            break
+    return total > 0 and (white_count / total) >= SNIPER_WHITE_CAPTURE_RATIO
+
+
 class ESPOverlay(QOpenGLWidget):
     def __init__(self, scanner, base_address):
         super().__init__()
@@ -2449,7 +2478,7 @@ class ESPOverlay(QOpenGLWidget):
         # 🚀 บังคับเปิดระบบประสานผิวภาพโปร่งใสในระดับฮาร์ดแวร์การ์ดจอ (Nvidia VIP)
         fmt = QSurfaceFormat()
         fmt.setAlphaBufferSize(8)
-        fmt.setSamples(0)
+        fmt.setSamples(int(OPENGL_OVERLAY_MSAA_SAMPLES))
         fmt.setSwapInterval(1)
         self.setFormat(fmt)
         self.setUpdateBehavior(QOpenGLWidget.NoPartialUpdate)
@@ -2665,10 +2694,10 @@ class ESPOverlay(QOpenGLWidget):
         return (curr_t - float(watch.get("first_seen", curr_t))) >= RECON_GHOST_SPAWN_WINDOW_SEC
 
     def _update_screen_metrics(self):
-        # screen = self.screen() or QApplication.primaryScreen()
-        # geometry = screen.geometry() if screen is not None else QApplication.desktop().screenGeometry()
-        self.screen_width = 2560
-        self.screen_height = 1440
+        screen = self.screen() or QApplication.primaryScreen()
+        geometry = screen.geometry() if screen is not None else QApplication.desktop().screenGeometry()
+        self.screen_width = int(geometry.width())
+        self.screen_height = int(geometry.height())
         self.center_x = self.screen_width / 2
         self.center_y = self.screen_height / 2
 
@@ -3001,7 +3030,10 @@ class ESPOverlay(QOpenGLWidget):
             
         painter = QPainter()
         painter.begin(self) 
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.HighQualityAntialiasing, False)
+        painter.setRenderHint(QPainter.TextAntialiasing, False)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, False)
         
         # 🧼 ล้างบางเฟรมสะสมเก่าใน VRAM ทิ้งทันที (Fix Infinite Frame Stacking bug)
         painter.setCompositionMode(QPainter.CompositionMode_Source)
@@ -4565,14 +4597,19 @@ class ESPOverlay(QOpenGLWidget):
                                                 hit_points_to_draw.append(mapped_hitpoint)
                                             if DEBUG_DRAW_BOX_ENTRY_HIT:
                                                 debug_box_entry_hits_to_draw.append(mapped_hitpoint)
-                                                
-                                            active_sniper_data = {
-                                                'center_x': avg_x,
-                                                'center_y': avg_y,
-                                                'hitpoint': mapped_hitpoint,
-                                                'target_box_rect': target_box_rect,
-                                                'distance': dist,
-                                            }
+
+                                            sniper_anchor_dist = math.hypot(
+                                                mapped_hitpoint[0] - self.center_x,
+                                                mapped_hitpoint[1] - self.center_y,
+                                            )
+                                            if sniper_anchor_dist <= SNIPER_CROSSHAIR_MAX_PX:
+                                                active_sniper_data = {
+                                                    'center_x': avg_x,
+                                                    'center_y': avg_y,
+                                                    'hitpoint': mapped_hitpoint,
+                                                    'target_box_rect': target_box_rect,
+                                                    'distance': dist,
+                                                }
 
                                             # 🛠️ BUG FIX: ย้ายฟังก์ชันวาดกากบาทสีฟ้า (Calibration) เข้ามาด้วย!
                                             calib_point = self._handle_hitpoint_calibration({
@@ -4919,6 +4956,8 @@ class ESPOverlay(QOpenGLWidget):
                     
                     # ใช้ RGB path เดิมของ mss สำหรับ PiP sniper เพราะ BGRA/ARGB32 ทำสีเพี้ยนบนเครื่องนี้
                     raw_rgb = img.rgb
+                    if SNIPER_REJECT_WHITE_CAPTURE and _is_probably_white_capture(raw_rgb, img.width, img.height):
+                        raise ValueError("sniper_white_capture_skip")
                     qimg = QImage(raw_rgb, img.width, img.height, img.width * 3, QImage.Format_RGB888).copy()
                     
                     # 3. วาดภาพซูมลงมุมซ้ายบน
