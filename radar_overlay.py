@@ -2449,18 +2449,22 @@ class ESPOverlay(QOpenGLWidget):
         # 🚀 บังคับเปิดระบบประสานผิวภาพโปร่งใสในระดับฮาร์ดแวร์การ์ดจอ (Nvidia VIP)
         fmt = QSurfaceFormat()
         fmt.setAlphaBufferSize(8)
-        fmt.setSamples(4) # เปิดระบบลบรอยหยักเส้นดักเป้าใน GPU
+        fmt.setSamples(0)
+        fmt.setSwapInterval(1)
         self.setFormat(fmt)
+        self.setUpdateBehavior(QOpenGLWidget.NoPartialUpdate)
 
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_NoSystemBackground)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setFocusPolicy(Qt.NoFocus)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
         self.setGeometry(0, 0, self.screen_width, self.screen_height)
 
         self.timer = QTimer()
+        self.timer.setTimerType(Qt.PreciseTimer)
         self.timer.timeout.connect(self.update)
-        self.timer.start(12)
+        self.timer.start(16)
 
 
         
@@ -2982,7 +2986,7 @@ class ESPOverlay(QOpenGLWidget):
 
         return chosen_vel
 
-    def paintEvent(self, event):
+    def paintGL(self):
         if self.shutdown_requested:
             return
         self._update_screen_metrics()
