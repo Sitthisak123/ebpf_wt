@@ -28,7 +28,7 @@ def _get_binary_fingerprint(binary_path=DEFAULT_GAME_BINARY_PATH):
         }
     except Exception:
         return None
-
+    
 
 def _write_persistence(camera_off, matrix_off):
     doc = {

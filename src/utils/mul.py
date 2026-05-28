@@ -44,6 +44,11 @@ OFF_UNIT_NAME_PTR   = 0      # 🎯 Pointer ไปหาชื่อย่อ (�
 OFF_UNIT_RELOADING  = 0
 OFF_UNIT_RELOAD     = 0
 
+OFF_ACTIVE_UNITS    = (0x310, False, 0x14)  # Air/clean subset.
+OFF_ACTIVE_EXTRA_UNIT_LISTS = (
+    (0x328, False, 0x10),  # Ground-ish subset; combined with 0x310 covers more units than either alone.
+)
+ENABLE_WORLD_UNIT_LIST_FALLBACK = False
 OFF_AIR_UNITS       = (0x340, True)
 OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kinematics dumpers
 OFF_AIR_VEL         = 0x0318      # 🎯 Velocity (FLOAT Vector 12-byte)
@@ -55,6 +60,9 @@ OFF_GROUND_UNITS    = (0x358, False)
 OFF_GROUND_MOVEMENT = 0x1118
 OFF_GROUND_VEL      = 0x00FC
 OFF_GROUND_OMEGA    = 0
+FILTER_UNITS_BY_STATE = False
+VALID_UNIT_STATES = (0,)
+FILTER_ZERO_POS_UNITS = True
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก Deep Scan ล่าสุด)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
 OFF_BULLET_SPEED    = 0x2048     # 🎯 ความเร็วต้น (Muzzle Velocity)
@@ -869,12 +877,32 @@ def get_unit_pos(scanner, u_ptr):
     if not (math.isfinite(val1) and math.isfinite(val2) and math.isfinite(val3)): return None
     return (val1, val2, val3)
 
+def _read_unit_state_i32(scanner, u_ptr):
+    if not OFF_UNIT_STATE:
+        return 0
+    raw = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 4)
+    if not raw or len(raw) < 4:
+        return None
+    return struct.unpack("<i", raw)[0]
+
+def _is_zero_unit_pos(scanner, u_ptr):
+    pos = get_unit_pos(scanner, u_ptr)
+    if not pos:
+        return True
+    return all(abs(v) < 0.01 for v in pos)
+
 def get_all_units(scanner, cgame_base):
     if cgame_base == 0: return []
     units = []
-    for off, is_air in [OFF_AIR_UNITS, OFF_GROUND_UNITS]:
+    list_specs = [OFF_ACTIVE_UNITS, *OFF_ACTIVE_EXTRA_UNIT_LISTS]
+    if ENABLE_WORLD_UNIT_LIST_FALLBACK:
+        list_specs.extend((
+            (OFF_AIR_UNITS[0], OFF_AIR_UNITS[1], 0x10),
+            (OFF_GROUND_UNITS[0], OFF_GROUND_UNITS[1], 0x10),
+        ))
+    for off, is_air, count_off in list_specs:
         raw_array_ptr = scanner.read_mem(cgame_base + off, 8)
-        raw_count = scanner.read_mem(cgame_base + off + 16, 4) 
+        raw_count = scanner.read_mem(cgame_base + off + count_off, 4) 
         if raw_array_ptr and raw_count:
             array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
             count = struct.unpack("<I", raw_count)[0]
@@ -888,11 +916,22 @@ def get_all_units(scanner, cgame_base):
     deduped = list({u[0]: u for u in units}.values())
     refined = []
     for u_ptr, is_air in deduped:
-        kind = get_unit_kind_from_info(scanner, u_ptr)
+        profile = get_unit_filter_profile(scanner, u_ptr)
+        if profile.get("skip"):
+            continue
+        kind = profile.get("kind") or get_unit_kind_from_info(scanner, u_ptr)
         if kind == "air":
             is_air = True
         elif kind == "ground":
             is_air = False
+        else:
+            continue
+        if FILTER_UNITS_BY_STATE:
+            state = _read_unit_state_i32(scanner, u_ptr)
+            if state is None or state not in VALID_UNIT_STATES:
+                continue
+        if FILTER_ZERO_POS_UNITS and _is_zero_unit_pos(scanner, u_ptr):
+            continue
         refined.append((u_ptr, is_air))
     return refined
 
