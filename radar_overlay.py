@@ -3322,7 +3322,6 @@ class ESPOverlay(QOpenGLWidget):
                     resolved_name = unit_name
                 if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
                     resolved_name = profile.get("display_name") or "unknown"
-                resolved_name = f"{resolved_name} [S:{u_state}]"
 
                 runtime_filter_blob = " ".join((
                     (resolved_name or ""),
