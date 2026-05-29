@@ -60,8 +60,6 @@ OFF_GROUND_UNITS    = (0x358, False)
 OFF_GROUND_MOVEMENT = 0x1118
 OFF_GROUND_VEL      = 0x00FC
 OFF_GROUND_OMEGA    = 0
-FILTER_UNITS_BY_STATE = False
-VALID_UNIT_STATES = (0,)
 FILTER_ZERO_POS_UNITS = True
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก Deep Scan ล่าสุด)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
@@ -877,14 +875,6 @@ def get_unit_pos(scanner, u_ptr):
     if not (math.isfinite(val1) and math.isfinite(val2) and math.isfinite(val3)): return None
     return (val1, val2, val3)
 
-def _read_unit_state_i32(scanner, u_ptr):
-    if not OFF_UNIT_STATE:
-        return 0
-    raw = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 4)
-    if not raw or len(raw) < 4:
-        return None
-    return struct.unpack("<i", raw)[0]
-
 def _is_zero_unit_pos(scanner, u_ptr):
     pos = get_unit_pos(scanner, u_ptr)
     if not pos:
@@ -926,10 +916,6 @@ def get_all_units(scanner, cgame_base):
             is_air = False
         else:
             continue
-        if FILTER_UNITS_BY_STATE:
-            state = _read_unit_state_i32(scanner, u_ptr)
-            if state is None or state not in VALID_UNIT_STATES:
-                continue
         if FILTER_ZERO_POS_UNITS and _is_zero_unit_pos(scanner, u_ptr):
             continue
         refined.append((u_ptr, is_air))
