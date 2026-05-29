@@ -223,6 +223,9 @@ COLOR_CLASS_ICON_AIR            = (120, 220, 255, 235)
 BULLET_GRAVITY       = 9.80665   
 BOMB_CCIP_DRAG_K     = 0.0000175  # Small drag trim: 0.0001 was too much, 0.0 was slightly too little.
 
+MAX_FPS = 80
+FRAME_TIMER_INTERVAL_MS = math.floor(1000 / MAX_FPS)
+
 GROUND_LEADMARK_TOP_N = 3  # <=0 = OFF/ALL visible ground targets
 
 DEBUG_DRAW_LOCAL_AXES = False
@@ -2493,7 +2496,7 @@ class ESPOverlay(QOpenGLWidget):
         self.timer = QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
         self.timer.timeout.connect(self.update)
-        self.timer.start(16)
+        self.timer.start(FRAME_TIMER_INTERVAL_MS)
 
 
         
@@ -3233,8 +3236,9 @@ class ESPOverlay(QOpenGLWidget):
                             world_y = my_pos[1] + (c[0] * my_rot[1] + c[1] * my_rot[4] + c[2] * my_rot[7])
                             world_z = my_pos[2] + (c[0] * my_rot[2] + c[1] * my_rot[5] + c[2] * my_rot[8])
                             scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
-                            if scr and scr[2] > 0:
-                                my_pts.append((int(scr[0]), int(scr[1])))
+                            scr_pts = _screen_int_tuple(scr[0], scr[1]) if scr and scr[2] > 0 else None
+                            if scr_pts:
+                                my_pts.append(scr_pts)
                             else:
                                 my_pts.append(None)
                         if my_pts.count(None) == 0:
@@ -3245,7 +3249,9 @@ class ESPOverlay(QOpenGLWidget):
                             ]
                             painter.setPen(QPen(QColor(*COLOR_BOX_MY_UNIT), 1.5))
                             for p1, p2 in my_edges:
-                                painter.drawLine(my_pts[p1][0], my_pts[p1][1], my_pts[p2][0], my_pts[p2][1])
+                                line_pts = _screen_int_tuple(my_pts[p1][0], my_pts[p1][1], my_pts[p2][0], my_pts[p2][1])
+                                if line_pts:
+                                    painter.drawLine(*line_pts)
                 except Exception:
                     pass
 
@@ -3572,18 +3578,19 @@ class ESPOverlay(QOpenGLWidget):
 
                     if ESP_POINT_ONLY_MODE:
                         res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
-                        if res_pos and res_pos[2] > 0:
+                        res_pts = _screen_int_tuple(res_pos[0], res_pos[1]) if res_pos and res_pos[2] > 0 else None
+                        if res_pts:
                             point_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
                             painter.setPen(QPen(point_color, 2))
-                            painter.drawEllipse(int(res_pos[0] - 4), int(res_pos[1] - 4), 8, 8)
-                            painter.drawLine(int(res_pos[0] - 8), int(res_pos[1]), int(res_pos[0] + 8), int(res_pos[1]))
-                            painter.drawLine(int(res_pos[0]), int(res_pos[1] - 8), int(res_pos[0]), int(res_pos[1] + 8))
-                            avg_x, avg_y, min_y = res_pos[0], res_pos[1], res_pos[1] - 8
+                            painter.drawEllipse(res_pts[0] - 4, res_pts[1] - 4, 8, 8)
+                            painter.drawLine(res_pts[0] - 8, res_pts[1], res_pts[0] + 8, res_pts[1])
+                            painter.drawLine(res_pts[0], res_pts[1] - 8, res_pts[0], res_pts[1] + 8)
+                            avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - 8
                             target_box_rect = (
-                                res_pos[0] - 8.0,
-                                res_pos[1] - 8.0,
-                                res_pos[0] + 8.0,
-                                res_pos[1] + 8.0,
+                                res_pts[0] - 8.0,
+                                res_pts[1] - 8.0,
+                                res_pts[0] + 8.0,
+                                res_pts[1] + 8.0,
                             )
                             has_valid_box = True
 
@@ -3616,8 +3623,9 @@ class ESPOverlay(QOpenGLWidget):
                                 
                                 # 3. แปลงลงหน้าจอ
                                 scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
-                                if scr and scr[2] > 0:
-                                    pts.append((int(scr[0]), int(scr[1])))
+                                scr_pts = _screen_int_tuple(scr[0], scr[1]) if scr and scr[2] > 0 else None
+                                if scr_pts:
+                                    pts.append(scr_pts)
                                 else:
                                     pts.append(None)
                                     
@@ -3636,7 +3644,9 @@ class ESPOverlay(QOpenGLWidget):
                                     
                                 painter.setPen(QPen(box_color, 1.5))
                                 for p1, p2 in edges:
-                                    painter.drawLine(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
+                                    line_pts = _screen_int_tuple(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
+                                    if line_pts:
+                                        painter.drawLine(*line_pts)
 
                                 # 5. คำนวณข้อมูลสำหรับระบบล็อกเป้าและระยะทาง
                                 valid_pts = [p for p in pts if p]
@@ -3653,17 +3663,18 @@ class ESPOverlay(QOpenGLWidget):
 
                     if (not ESP_POINT_ONLY_MODE) and not has_valid_box:
                         res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
-                        if res_pos and res_pos[2] > 0:
+                        res_pts = _screen_int_tuple(res_pos[0], res_pos[1]) if res_pos and res_pos[2] > 0 else None
+                        if res_pts:
                             box_w = max(20, int(3000 / (dist + 1))) if is_air_target else max(30, int(4000 / (dist + 1)))
                             box_h = box_w * 0.8 if is_air_target else box_w * 0.6
                             painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
-                            painter.drawRect(int(res_pos[0] - box_w/2), int(res_pos[1] - box_h/2), int(box_w), int(box_h))
-                            avg_x, avg_y, min_y = res_pos[0], res_pos[1], res_pos[1] - box_h/2
+                            painter.drawRect(int(res_pts[0] - box_w/2), int(res_pts[1] - box_h/2), int(box_w), int(box_h))
+                            avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - box_h/2
                             target_box_rect = (
-                                res_pos[0] - (box_w * 0.5),
-                                res_pos[1] - (box_h * 0.5),
-                                res_pos[0] + (box_w * 0.5),
-                                res_pos[1] + (box_h * 0.5),
+                                res_pts[0] - (box_w * 0.5),
+                                res_pts[1] - (box_h * 0.5),
+                                res_pts[0] + (box_w * 0.5),
+                                res_pts[1] + (box_h * 0.5),
                             )
                             has_valid_box = True
 
@@ -3844,17 +3855,13 @@ class ESPOverlay(QOpenGLWidget):
                                     self.screen_width,
                                     self.screen_height,
                                 )
-                                if end_scr and end_scr[2] > 0:
+                                axis_pts = _screen_int_tuple(axis_origin[0], axis_origin[1], end_scr[0], end_scr[1]) if end_scr and end_scr[2] > 0 else None
+                                if axis_pts:
                                     painter.setPen(QPen(QColor(*axis_color), 3))
-                                    painter.drawLine(
-                                        int(axis_origin[0]),
-                                        int(axis_origin[1]),
-                                        int(end_scr[0]),
-                                        int(end_scr[1]),
-                                    )
+                                    painter.drawLine(*axis_pts)
                                     painter.drawText(
-                                        int(end_scr[0] + 4),
-                                        int(end_scr[1] - 4),
+                                        axis_pts[2] + 4,
+                                        axis_pts[3] - 4,
                                         axis_labels.get(axis_name, axis_name),
                                     )
 
@@ -3862,10 +3869,11 @@ class ESPOverlay(QOpenGLWidget):
                     if barrel_data:
                         res_p1 = world_to_screen(view_matrix, barrel_data[0][0], barrel_data[0][1], barrel_data[0][2], self.screen_width, self.screen_height)
                         res_p2 = world_to_screen(view_matrix, barrel_data[1][0], barrel_data[1][1], barrel_data[1][2], self.screen_width, self.screen_height)
-                        if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0:
+                        barrel_pts = _screen_int_tuple(res_p1[0], res_p1[1], res_p2[0], res_p2[1]) if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0 else None
+                        if barrel_pts:
                             painter.setPen(QPen(QColor(*COLOR_BARREL_LINE), 2)) 
-                            painter.drawLine(int(res_p1[0]), int(res_p1[1]), int(res_p2[0]), int(res_p2[1]))
-                            barrel_base_2d = res_p1
+                            painter.drawLine(*barrel_pts)
+                            barrel_base_2d = (barrel_pts[0], barrel_pts[1])
 
                     has_reload_bar = (not overlay_is_air and (0 <= reload_val < 500))
                     dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
@@ -3911,16 +3919,20 @@ class ESPOverlay(QOpenGLWidget):
                                 QColor(*COLOR_THREAD_TEXT),
                                 max(1, OUTLINE_OVERLAY_TEXT_PX),
                             )
-                            painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING), 5, Qt.DashLine))
-                            painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
-                            painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING2), 2, Qt.DashLine))
-                            painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
+                            thread_pts = _screen_int_tuple(self.center_x, self.screen_height, line_dest_x, line_dest_y)
+                            if thread_pts:
+                                painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING), 5, Qt.DashLine))
+                                painter.drawLine(*thread_pts)
+                                painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING2), 2, Qt.DashLine))
+                                painter.drawLine(*thread_pts)
                             
                         elif warning_level == 1:
-                            painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT), 5))
-                            painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
-                            painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT2), 2))
-                            painter.drawLine(int(self.center_x), self.screen_height, int(line_dest_x), int(line_dest_y))
+                            thread_pts = _screen_int_tuple(self.center_x, self.screen_height, line_dest_x, line_dest_y)
+                            if thread_pts:
+                                painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT), 5))
+                                painter.drawLine(*thread_pts)
+                                painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT2), 2))
+                                painter.drawLine(*thread_pts)
 
                     painter.setPen(QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND))
                     if DRAW_UNIT_FAMILY_OVERLAY_DEBUG:
@@ -4210,8 +4222,9 @@ class ESPOverlay(QOpenGLWidget):
                                 self.screen_height,
                             )
                             
-                            if bomb_screen and bomb_screen[2] > 0:
-                                b_sx, b_sy = int(bomb_screen[0]), int(bomb_screen[1])
+                            bomb_pts = _screen_int_tuple(bomb_screen[0], bomb_screen[1]) if bomb_screen and bomb_screen[2] > 0 else None
+                            if bomb_pts:
+                                b_sx, b_sy = bomb_pts
                                 
                                 ccip_color = QColor(*COLOR_CCIP_TARGET)
                                 painter.setPen(QPen(ccip_color, 2))
@@ -4669,12 +4682,16 @@ class ESPOverlay(QOpenGLWidget):
                     p_z = c_pos[2] + (c_v[2] * t_sim) + (0.5 * c_a[2] * (t_sim ** 2))
                     
                     scr = world_to_screen(view_matrix, p_x, p_y, p_z, self.screen_width, self.screen_height)
-                    if scr and scr[2] > 0: path_pts.append((scr[0], scr[1]))
+                    scr_pts = _screen_int_tuple(scr[0], scr[1]) if scr and scr[2] > 0 else None
+                    if scr_pts:
+                        path_pts.append(scr_pts)
                 
                 if len(path_pts) > 1:
                     painter.setPen(QPen(QColor(*COLOR_FLIGHT_PATH), 2, Qt.DotLine))
                     for i in range(len(path_pts) - 1):
-                        painter.drawLine(int(path_pts[i][0]), int(path_pts[i][1]), int(path_pts[i+1][0]), int(path_pts[i+1][1]))
+                        line_pts = _screen_int_tuple(path_pts[i][0], path_pts[i][1], path_pts[i+1][0], path_pts[i+1][1])
+                        if line_pts:
+                            painter.drawLine(*line_pts)
 
             # ========================================================
             # 🔝 FRONT LAYER RENDERER
