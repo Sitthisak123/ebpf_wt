@@ -819,8 +819,7 @@ def init_dynamic_offsets(scanner, base_address):
         valid_smart = [v for v in smart_cands if 0x1D00 <= v <= 0x1F00]
         if valid_smart:
             top_smart, votes = Counter(valid_smart).most_common(1)[0]
-            mul.OFF_GROUND_MOVEMENT = top_smart
-            print(f"  [+] ✅ BINGO! GROUND_SMART = {hex(top_smart)} (โหวต {votes} เสียง)")
+            print(f"  [+] ✅ BINGO! GROUND_SMART = {hex(top_smart)} (โหวต {votes} เสียง, debug only)")
     else:
         print(f"  [!] ⚠️ หา GROUND_SMART ไม่เจอ ใช้ค่า Persistence: 0x1df8")
 
