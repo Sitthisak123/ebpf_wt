@@ -2948,9 +2948,15 @@ class ESPOverlay(QOpenGLWidget):
             # Ground units often have tiny noisy vectors around zero.
             idle_speed_enter = 0.22  # m/s (~0.8 km/h)
             idle_speed_exit = 0.38
+            stale_raw_idle_max = 2.0  # m/s; ground mem velocity can hold stale low-speed values after stopping.
             prev_motion_state = prev_meta.get("ground_motion_state", "")
             idle_speed = idle_speed_exit if prev_motion_state == "idle" else idle_speed_enter
             chosen_planar_mag = math.hypot(chosen_vel[0], chosen_vel[2])
+            pos_confirms_idle = (
+                pos_vel is not None
+                and pos_mag <= idle_speed_enter
+                and raw_mag <= stale_raw_idle_max
+            )
             can_enter_idle = (
                 raw_mag <= idle_speed_enter
                 and (pos_vel is None or pos_mag <= idle_speed_enter)
@@ -2961,7 +2967,7 @@ class ESPOverlay(QOpenGLWidget):
                 and (pos_vel is None or pos_mag <= idle_speed_exit)
                 and chosen_planar_mag <= idle_speed_exit
             )
-            if can_enter_idle or (prev_motion_state == "idle" and can_stay_idle):
+            if pos_confirms_idle or can_enter_idle or (prev_motion_state == "idle" and can_stay_idle):
                 chosen_vel = (0.0, 0.0, 0.0)
                 source = "ground_idle"
             else:
