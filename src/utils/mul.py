@@ -391,13 +391,6 @@ def get_unit_filter_profile(scanner, u_ptr):
         skip = True
         reason = "path_block"
 
-    # Extra guard for static/non-combat objects that may occasionally bypass tag/path parsing.
-    if not skip and kind == "ground":
-        mov_ptr = _read_ptr(scanner, u_ptr + OFF_GROUND_MOVEMENT)
-        if not is_valid_ptr(mov_ptr):
-            skip = True
-            reason = "no_ground_mov"
-
     display_name = unit_key
     profile = {
         "skip": skip,
@@ -411,7 +404,7 @@ def get_unit_filter_profile(scanner, u_ptr):
 
     # Cache only when enough source data is readable. This avoids poisoning cache
     # with transient empty reads during map/match transitions.
-    cacheable = bool(tag or path or unit_key or skip or kind) and reason != "no_ground_mov"
+    cacheable = bool(tag or path or unit_key or skip or kind)
     if cacheable:
         UNIT_FILTER_CACHE[info_ptr] = {"sig": info_sig, "profile": profile.copy()}
     else:
@@ -437,8 +430,8 @@ VELOCITY_PROFILES = {
         "requested_label": "GROUND",
         "primary": {
             "label": "GROUND_PRIMARY",
-            "mov_off": OFF_GROUND_MOVEMENT,
-            "vel_off": OFF_GROUND_VEL,
+            "mov_off": lambda: OFF_GROUND_MOVEMENT,
+            "vel_off": lambda: OFF_GROUND_VEL,
             "fmt": "fff",
             "max_speed": 500.0,
             "shuffle": (0, 1, 2),

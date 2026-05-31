@@ -2861,6 +2861,7 @@ class ESPOverlay(QOpenGLWidget):
                 pos_vel = (dx / dt, dy / dt, dz / dt)
                 if not is_air:
                     prev_pos_filtered = prev_meta.get("pos_vel_filtered")
+                    # World-space ground lead uses X/Z as horizontal motion; Y is height and must stay zero.
                     planar_pos_vel = (pos_vel[0], 0.0, pos_vel[2])
                     if prev_pos_filtered and len(prev_pos_filtered) == 3:
                         pos_vel = (
@@ -2878,8 +2879,7 @@ class ESPOverlay(QOpenGLWidget):
             raw_mag = math.sqrt(raw_vel[0]**2 + raw_vel[1]**2 + raw_vel[2]**2)
             pos_mag = math.sqrt(pos_vel[0]**2 + pos_vel[1]**2 + pos_vel[2]**2) if pos_vel else 0.0
         else:
-            # Ground lead should react to planar movement only. Suspension / axis-layout noise on Y
-            # was leaking into source selection, then getting zeroed afterwards, which caused flapping.
+            # Ground lead should react to horizontal X/Z motion only. Y is height/slope noise.
             raw_mag = math.hypot(raw_vel[0], raw_vel[2])
             pos_mag = math.hypot(pos_vel[0], pos_vel[2]) if pos_vel else 0.0
         max_jump = 90.0 if is_air else 12.0
@@ -2965,7 +2965,7 @@ class ESPOverlay(QOpenGLWidget):
                 chosen_vel = (0.0, 0.0, 0.0)
                 source = "ground_idle"
             else:
-                # Ground lead solver should not react to suspension / axis-layout noise as vertical motion.
+                # Ground lead solver should not react to height/slope noise as vertical motion.
                 chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
             chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
 
@@ -3181,14 +3181,7 @@ class ESPOverlay(QOpenGLWidget):
                 my_vel = (0.0, 0.0, 0.0)
             else:
                 if my_unit:
-                    # 🚀 ใช้ get_my_air_velocity (DOUBLE) ที่เราสร้างใหม่ใน mul.py
-                    if my_is_air:
-                        raw_my_vel = get_my_air_velocity(self.scanner, my_unit)
-                    else:
-                        raw_my_vel = get_ground_velocity(self.scanner, my_unit)
-                    
-                    # นำ raw_my_vel ไปใช้งานต่อ (เช่น เข้า EMA Filter หรือใช้ตรงๆ)
-                    my_vel = raw_my_vel 
+                    my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t)
                 else:
                     my_vel = (0.0, 0.0, 0.0)
                 
