@@ -8,5 +8,3 @@
 
 
 #python3 tools/sub/vertical_baseline_config_builder.py --distance-step 50
-
-- My Air VEL not work

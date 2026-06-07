@@ -53,8 +53,8 @@ OFF_AIR_UNITS       = (0x340, True)
 OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kinematics dumpers
 OFF_AIR_VEL         = 0x0318      # 🎯 Velocity (FLOAT Vector 12-byte)
 OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)
-OFF_MY_AIR_VEL      = 0x068       # 🎯 My Velocity (สำหรับ Air Lead, FLOAT Vector 12-byte
-OFF_MY_AIR_MOVEMENT = 0xD18       # 🎯 My Movement Ptr (สำหรับ Air Lead, อัปเดตจากการสแกนล่าสุด)
+OFF_MY_AIR_VEL      = 0x0068      # My air velocity: DOUBLE vec3 at move_ptr + 0x0068 (47.5Hz)
+OFF_MY_AIR_MOVEMENT = 0x0D10      # My air movement pointer from tick-rate scan
 
 OFF_GROUND_UNITS    = (0x358, False)
 OFF_GROUND_MOVEMENT = 0x1118

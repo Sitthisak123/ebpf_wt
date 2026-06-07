@@ -3187,7 +3187,21 @@ class ESPOverlay(QOpenGLWidget):
                 my_vel = (0.0, 0.0, 0.0)
             else:
                 if my_unit:
-                    my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t)
+                    if my_is_air:
+                        my_vel = get_my_air_velocity(self.scanner, my_unit)
+                        my_speed_raw = math.sqrt(my_vel[0]**2 + my_vel[1]**2 + my_vel[2]**2)
+                        self.last_velocity_meta[my_unit] = {
+                            'source': 'my_air_0d10_0068',
+                            'raw_vel': my_vel,
+                            'raw_mag': my_speed_raw,
+                            'pos_vel': None,
+                            'pos_vel_filtered': None,
+                            'pos_mag': 0.0,
+                            'chosen_vel': my_vel,
+                            'ground_motion_state': "",
+                        }
+                    else:
+                        my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t)
                 else:
                     my_vel = (0.0, 0.0, 0.0)
                 
