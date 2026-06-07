@@ -3905,7 +3905,12 @@ class ESPOverlay(QOpenGLWidget):
                     debug_label_y = icon_y - CLASS_ICON_DEBUG_TEXT_GAP
                     overlay_debug_y = debug_label_y - UNIT_FAMILY_OVERLAY_DEBUG_GAP
 
-                    if effective_my_team != 0 and ((not is_recon_drone) or self._is_recon_alert_ready(u_ptr, curr_t)):
+                    if (
+                        effective_my_team != 0
+                        and u_ptr != my_unit
+                        and not my_spawn_in_grace
+                        and ((not is_recon_drone) or self._is_recon_alert_ready(u_ptr, curr_t))
+                    ):
                         self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
 
                     # ========================================================
@@ -4252,7 +4257,9 @@ class ESPOverlay(QOpenGLWidget):
                                 painter.drawEllipse(b_sx - 2, b_sy - 2, 4, 4)
 
                     leadmark_min_tof_ok = (
-                        MIN_TOF_LEADMARK <= 0.0 or best_t >= float(MIN_TOF_LEADMARK)
+                        physics_is_air
+                        or MIN_TOF_LEADMARK <= 0.0
+                        or best_t >= float(MIN_TOF_LEADMARK)
                     )
                     leadmark_tof_ok = (
                         (leadmark_tof_limit <= 0.0 or best_t <= leadmark_tof_limit)
@@ -4338,7 +4345,9 @@ class ESPOverlay(QOpenGLWidget):
                             f"{leadmark_tof_limit:.2f}s" if leadmark_tof_limit > 0.0 else "OFF"
                         )
                         tof_min_text = (
-                            f"{float(MIN_TOF_LEADMARK):.2f}s" if float(MIN_TOF_LEADMARK) > 0.0 else "OFF"
+                            "OFF(AIR)"
+                            if physics_is_air else
+                            (f"{float(MIN_TOF_LEADMARK):.2f}s" if float(MIN_TOF_LEADMARK) > 0.0 else "OFF")
                         )
                         out += f"📏 Distance   : {dist:>6.1f} m      | TOF: {best_t:>6.3f} s\n"
                         out += f"🚀 Velocity   : {target_speed:>6.1f} km/h | V:({vx:>6.2f}, {vy:>6.2f}, {vz:>6.2f}) | SRC:{vel_source}\n"
