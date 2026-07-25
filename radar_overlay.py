@@ -228,8 +228,8 @@ FRAME_TIMER_INTERVAL_MS = math.floor(1000 / MAX_FPS)
 
 GROUND_LEADMARK_TOP_N = 3  # <=0 = OFF/ALL visible ground targets
 
-DEBUG_DRAW_LOCAL_AXES = True
-DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = True
+DEBUG_DRAW_LOCAL_AXES = False
+DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = False
 DEBUG_AXIS_LENGTH_GROUND = 2.4
 DEBUG_AXIS_LENGTH_AIR = 8.0
 DEBUG_AXIS_LABELS_GROUND = {
@@ -2251,8 +2251,9 @@ def _make_ballistic_model(profile, altitude):
 
 def _get_leadmark_range_limit(profile):
     max_distance = max(profile.get("max_distance", 0.0), 0.0)
-    if max_distance <= 1.0:
-        return 0.0
+    # 🎯 Fallback to 5000 if reading garbage data or 0
+    if not math.isfinite(max_distance) or max_distance <= 1.0 or max_distance > 50000.0:
+        max_distance = 5000.0
     return max_distance * LEADMARK_RANGE_LIMIT_RATIO
 
 
