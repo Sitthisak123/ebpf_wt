@@ -5,7 +5,7 @@ import time
 # Debug control
 # ==========================================
 DEBUG_MODE = False
-DEBUG_THROTTLE = 1.0
+DEBUG_THROTTLE = 1
 
 # Sticky dashboard mode: avoid printing large periodic debug blocks
 # to keep terminal output readable.

@@ -16,11 +16,11 @@ BALLISTIC_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "ballistic_lay
 DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
 
 MUZZLE_VELOCITY_OFF = 0x2048
-WEAPON_SCAN_START = 0x2030
-WEAPON_SCAN_END = 0x20B0
+WEAPON_SCAN_START = 0x1000
+WEAPON_SCAN_END = 0x3000
 WEAPON_SCAN_STEP = 4
-PROPS_BASE_SCAN_START = 0x2040
-PROPS_BASE_SCAN_END = 0x2080
+PROPS_BASE_SCAN_START = 0x1000
+PROPS_BASE_SCAN_END = 0x3000
 PROPS_BASE_SCAN_STEP = 4
 SEMANTIC_BLOCK_PRE = 0x10
 SEMANTIC_BLOCK_POST = 0x40
@@ -32,7 +32,7 @@ CHAIN_PROBE_BYTES = 0x40
 CHAIN_SECOND_LEVEL_PTR_LIMIT = 4
 
 WEAPON_PTR_SCAN_START = 0x300
-WEAPON_PTR_SCAN_END = 0x600
+WEAPON_PTR_SCAN_END = 0x2000
 WEAPON_PTR_SCAN_STEP = 8
 
 FIELD_RULES = {
@@ -458,6 +458,9 @@ def is_plausible_weapon_block(scanner, weapon_ptr):
     nonzero = sum(1 for b in raw if b != 0)
     layouts = collect_layout_candidates(scanner, weapon_ptr)
     best_layout = layouts[0] if layouts else None
+    
+    # We no longer strictly read muzzle velocity from a hardcoded offset,
+    # as the offset shifts frequently between updates.
     muzzle_velocity = read_f32(scanner, weapon_ptr + MUZZLE_VELOCITY_OFF)
 
     ok = False
@@ -469,7 +472,7 @@ def is_plausible_weapon_block(scanner, weapon_ptr):
         ok = True
 
     return ok, {
-        "muzzle_velocity": muzzle_velocity,
+        "muzzle_velocity": muzzle_velocity if is_reasonable_float(muzzle_velocity, 50.0, 3000.0) else 0.0,
         "nonzero_bytes": nonzero,
         "best_layout_score": best_layout["score"] if best_layout else -999,
         "best_layout": best_layout,
