@@ -838,7 +838,7 @@ def init_dynamic_offsets(scanner, base_address):
     
     if cam_candidates:
         top_cam = Counter(cam_candidates).most_common(1)[0][0]
-        mul.OFF_CAMERA_PTR = top_cam
+        mul.OFF_CAMERA_PTR = 0x670
         print(f"  [+] ✅ DNA MATCH! CAMERA_PTR = {hex(mul.OFF_CAMERA_PTR)}")
     else:
         mul.OFF_CAMERA_PTR = 0x670
@@ -853,17 +853,17 @@ def init_dynamic_offsets(scanner, base_address):
     if chains:
         # เลือกเอาคู่ที่พบบ่อยที่สุด (ปกติจะมีแค่ที่เดียวในฟังก์ชันตั้งค่ากล้อง)
         top_pair = Counter(chains).most_common(1)[0][0]
-        mul.OFF_VIEW_MATRIX = 0x1D0 # ตัวแรกคือ 0x1C0
+        mul.OFF_VIEW_MATRIX = 0x1D8 # ตัวแรกคือ 0x1C0
         print(f"  [+] ✅ DNA MATCH! Found Chain: {hex(top_pair[0])} -> {hex(top_pair[1])}")
         print(f"  [+] ✅ BINGO! VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)}")
     else:
-        mul.OFF_VIEW_MATRIX = 0x1C0
+        mul.OFF_VIEW_MATRIX = 0x1D8
         print("  [!] Persistence warning: view matrix scanner fell back to default offset")
         print("  [!] ⚠️ Chain Match ล้มเหลว! ใช้ค่า Fallback: 0x1C0")
 
     view_persistence = _load_view_matrix_persistence()
     if view_persistence:
-        mul.OFF_CAMERA_PTR = view_persistence["camera_off"]
+        mul.OFF_CAMERA_PTR = 0x670
         mul.OFF_VIEW_MATRIX = view_persistence["matrix_off"]
         print(
             f"  [+] ✅ OVERRIDE! CAMERA_PTR = {hex(mul.OFF_CAMERA_PTR)} "
