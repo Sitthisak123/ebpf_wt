@@ -19,12 +19,12 @@ MANAGER_CANDIDATE_OFFSETS = []
 DAT_CONTROLLED_UNIT = 0x981dfc8
 
 OFF_CAMERA_PTR      = 0x670
-OFF_VIEW_MATRIX     = 0x1D0
+OFF_VIEW_MATRIX     = 0x1D8
 
 OFF_UNIT_X          = 0x0D00
 OFF_UNIT_ROTATION   = OFF_UNIT_X - 0x24
-OFF_UNIT_BBMIN      = 0x0238
-OFF_UNIT_BBMAX      = 0x0244
+OFF_UNIT_BBMIN      = 0x0258
+OFF_UNIT_BBMAX      = 0x0264
 _BBOX_FALLBACK_LOGGED = set()
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
@@ -1022,12 +1022,6 @@ def get_local_axes_from_rotation(R, is_air=False):
     ay = normalize(ay)
     az = normalize(az)
 
-    # Ground mapping confirmed in-game:
-    # X = front, Z = left, Y = height
-    # Current raw matrix comes in swapped for X/Z, so fix it here once.
-    if not is_air:
-        ax, az = az, ax
-
     return ax, ay, az
 def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
     try:
@@ -1337,11 +1331,7 @@ def get_air_velocity(scanner, u_ptr):
 
         return (0.0, 0.0, 0.0)
     except Exception as e:
-        try:
-            from src.utils.debug import dprint
-            dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=AIR | error={e}", force=False)
-        except:
-            pass
+        dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=AIR | error={e}", force=False)
         return (0.0, 0.0, 0.0)
 
 def get_my_air_velocity(scanner, my_unit_ptr):

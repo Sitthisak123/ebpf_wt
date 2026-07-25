@@ -228,8 +228,8 @@ FRAME_TIMER_INTERVAL_MS = math.floor(1000 / MAX_FPS)
 
 GROUND_LEADMARK_TOP_N = 3  # <=0 = OFF/ALL visible ground targets
 
-DEBUG_DRAW_LOCAL_AXES = False
-DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = False
+DEBUG_DRAW_LOCAL_AXES = True
+DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = True
 DEBUG_AXIS_LENGTH_GROUND = 2.4
 DEBUG_AXIS_LENGTH_AIR = 8.0
 DEBUG_AXIS_LABELS_GROUND = {
@@ -1676,24 +1676,34 @@ def _blend_ground_lead_x(center_x, solver_x, target_vel_mag, distance_to_target,
         return solver_x
 
 
-def _project_target_box_rect(view_matrix, box_data, screen_width, screen_height):
+def _project_target_box_rect(view_matrix, box_data, screen_width, screen_height, is_air=False):
     if not box_data or not view_matrix:
         return None
     pos, bmin, bmax, rot = box_data
     if not pos or not bmin or not bmax or not rot:
         return None
 
+    w = abs(bmax[0] - bmin[0])
+    h = abs(bmax[1] - bmin[1])
+    l = abs(bmax[2] - bmin[2])
+    
+    # Center the bounding box around (0,0,0) local for X and Z, but keep Y as is!
+    c_bmin = [-w/2.0, bmin[1], -l/2.0]
+    c_bmax = [ w/2.0, bmax[1],  l/2.0]
+
     corners = [
-        (bmin[0], bmin[1], bmin[2]), (bmin[0], bmin[1], bmax[2]),
-        (bmin[0], bmax[1], bmin[2]), (bmin[0], bmax[1], bmax[2]),
-        (bmax[0], bmin[1], bmin[2]), (bmax[0], bmin[1], bmax[2]),
-        (bmax[0], bmax[1], bmin[2]), (bmax[0], bmax[1], bmax[2]),
+        (c_bmin[0], c_bmin[1], c_bmin[2]), (c_bmin[0], c_bmin[1], c_bmax[2]),
+        (c_bmin[0], c_bmax[1], c_bmin[2]), (c_bmin[0], c_bmax[1], c_bmax[2]),
+        (c_bmax[0], c_bmin[1], c_bmin[2]), (c_bmax[0], c_bmin[1], c_bmax[2]),
+        (c_bmax[0], c_bmax[1], c_bmin[2]), (c_bmax[0], c_bmax[1], c_bmax[2]),
     ]
     pts = []
+    ax, ay, az = get_local_axes_from_rotation(rot, is_air)
+    
     for c in corners:
-        world_x = pos[0] + (c[0] * rot[0] + c[1] * rot[3] + c[2] * rot[6])
-        world_y = pos[1] + (c[0] * rot[1] + c[1] * rot[4] + c[2] * rot[7])
-        world_z = pos[2] + (c[0] * rot[2] + c[1] * rot[5] + c[2] * rot[8])
+        world_x = pos[0] + (c[0] * ax[0] + c[1] * ay[0] + c[2] * az[0])
+        world_y = pos[1] + (c[0] * ax[1] + c[1] * ay[1] + c[2] * az[1])
+        world_z = pos[2] + (c[0] * ax[2] + c[1] * ay[2] + c[2] * az[2])
         scr = world_to_screen(view_matrix, world_x, world_y, world_z, screen_width, screen_height)
         if not scr or scr[2] <= 0:
             return None
@@ -3237,17 +3247,26 @@ class ESPOverlay(QOpenGLWidget):
                     my_bmin, my_bmax = get_unit_bbox(self.scanner, my_unit)
                     my_rot = get_unit_rotation(self.scanner, my_unit)
                     if my_bmin and my_bmax and my_rot:
+                        
+                        my_w = abs(my_bmax[0] - my_bmin[0])
+                        my_h = abs(my_bmax[1] - my_bmin[1])
+                        my_l = abs(my_bmax[2] - my_bmin[2])
+                        my_c_bmin = [-my_w/2.0, my_bmin[1], -my_l/2.0]
+                        my_c_bmax = [ my_w/2.0, my_bmax[1],  my_l/2.0]
+
                         my_corners = [
-                            (my_bmin[0], my_bmin[1], my_bmin[2]), (my_bmin[0], my_bmin[1], my_bmax[2]),
-                            (my_bmin[0], my_bmax[1], my_bmin[2]), (my_bmin[0], my_bmax[1], my_bmax[2]),
-                            (my_bmax[0], my_bmin[1], my_bmin[2]), (my_bmax[0], my_bmin[1], my_bmax[2]),
-                            (my_bmax[0], my_bmax[1], my_bmin[2]), (my_bmax[0], my_bmax[1], my_bmax[2]),
+                            (my_c_bmin[0], my_c_bmin[1], my_c_bmin[2]), (my_c_bmin[0], my_c_bmin[1], my_c_bmax[2]),
+                            (my_c_bmin[0], my_c_bmax[1], my_c_bmin[2]), (my_c_bmin[0], my_c_bmax[1], my_c_bmax[2]),
+                            (my_c_bmax[0], my_c_bmin[1], my_c_bmin[2]), (my_c_bmax[0], my_c_bmin[1], my_c_bmax[2]),
+                            (my_c_bmax[0], my_c_bmax[1], my_c_bmin[2]), (my_c_bmax[0], my_c_bmax[1], my_c_bmax[2]),
                         ]
                         my_pts = []
+                        m_ax, m_ay, m_az = get_local_axes_from_rotation(my_rot, False)
                         for c in my_corners:
-                            world_x = my_pos[0] + (c[0] * my_rot[0] + c[1] * my_rot[3] + c[2] * my_rot[6])
-                            world_y = my_pos[1] + (c[0] * my_rot[1] + c[1] * my_rot[4] + c[2] * my_rot[7])
-                            world_z = my_pos[2] + (c[0] * my_rot[2] + c[1] * my_rot[5] + c[2] * my_rot[8])
+                            world_x = my_pos[0] + (c[0] * m_ax[0] + c[1] * m_ay[0] + c[2] * m_az[0])
+                            world_y = my_pos[1] + (c[0] * m_ax[1] + c[1] * m_ay[1] + c[2] * m_az[1])
+                            world_z = my_pos[2] + (c[0] * m_ax[2] + c[1] * m_ay[2] + c[2] * m_az[2])
+
                             scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
                             scr_pts = _screen_int_tuple(scr[0], scr[1]) if scr and scr[2] > 0 else None
                             if scr_pts:
@@ -3463,6 +3482,7 @@ class ESPOverlay(QOpenGLWidget):
                             select_box_data,
                             self.screen_width,
                             self.screen_height,
+                            is_air=is_air_target
                         )
                         ground_aim_point = _get_ground_target_aim_point(select_box_data, pos, dist_to_me)
                         if ground_aim_point:
@@ -3619,20 +3639,28 @@ class ESPOverlay(QOpenGLWidget):
                         rot = get_unit_rotation(self.scanner, u_ptr)
                         
                         if bmin and bmax and rot:
-                            # 1. สร้างมุมกล่องทั้ง 8 มุมแบบ Local
+                            
+                            # 1. สร้างมุมกล่องทั้ง 8 มุมแบบ Local (Centered for X/Z, Original Y!)
+                            w_box = abs(bmax[0] - bmin[0])
+                            h_box = abs(bmax[1] - bmin[1])
+                            l_box = abs(bmax[2] - bmin[2])
+                            c_bmin = [-w_box/2.0, bmin[1], -l_box/2.0]
+                            c_bmax = [ w_box/2.0, bmax[1],  l_box/2.0]
+
                             corners = [
-                                (bmin[0], bmin[1], bmin[2]), (bmin[0], bmin[1], bmax[2]),
-                                (bmin[0], bmax[1], bmin[2]), (bmin[0], bmax[1], bmax[2]),
-                                (bmax[0], bmin[1], bmin[2]), (bmax[0], bmin[1], bmax[2]),
-                                (bmax[0], bmax[1], bmin[2]), (bmax[0], bmax[1], bmax[2])
+                                (c_bmin[0], c_bmin[1], c_bmin[2]), (c_bmin[0], c_bmin[1], c_bmax[2]),
+                                (c_bmin[0], c_bmax[1], c_bmin[2]), (c_bmin[0], c_bmax[1], c_bmax[2]),
+                                (c_bmax[0], c_bmin[1], c_bmin[2]), (c_bmax[0], c_bmin[1], c_bmax[2]),
+                                (c_bmax[0], c_bmax[1], c_bmin[2]), (c_bmax[0], c_bmax[1], c_bmax[2])
                             ]
                             
                             pts = []
+                            ax, ay, az = get_local_axes_from_rotation(rot, is_air_target)
                             # 2. หมุนกล่องตามองศารถถัง (Rotation) + ย้ายไปตำแหน่งจริง (Translation)
                             for c in corners:
-                                world_x = pos[0] + (c[0]*rot[0] + c[1]*rot[3] + c[2]*rot[6])
-                                world_y = pos[1] + (c[0]*rot[1] + c[1]*rot[4] + c[2]*rot[7])
-                                world_z = pos[2] + (c[0]*rot[2] + c[1]*rot[5] + c[2]*rot[8])
+                                world_x = pos[0] + (c[0]*ax[0] + c[1]*ay[0] + c[2]*az[0])
+                                world_y = pos[1] + (c[0]*ax[1] + c[1]*ay[1] + c[2]*az[1])
+                                world_z = pos[2] + (c[0]*ax[2] + c[1]*ay[2] + c[2]*az[2])
                                 
                                 # 3. แปลงลงหน้าจอ
                                 scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
@@ -4518,6 +4546,7 @@ class ESPOverlay(QOpenGLWidget):
                                             fallback_box_data,
                                             self.screen_width,
                                             self.screen_height,
+                                            is_air=False
                                         ) if fallback_box_data else None
                                         if fallback_box_rect:
                                             compare_base_hitpoint = _map_aim_to_target_box_hitpoint(

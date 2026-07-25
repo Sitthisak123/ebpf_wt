@@ -4,7 +4,7 @@ import time
 # ==========================================
 # Debug control
 # ==========================================
-DEBUG_MODE = True
+DEBUG_MODE = False
 DEBUG_THROTTLE = 1.0
 
 # Sticky dashboard mode: avoid printing large periodic debug blocks
