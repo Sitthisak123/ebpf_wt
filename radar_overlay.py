@@ -302,7 +302,7 @@ AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น Fals
 DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
-SHOW_MY_UNIT_BOX = True
+SHOW_MY_UNIT_BOX = False
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
@@ -756,8 +756,11 @@ def _load_unit_bbox_persistence():
             print("[!] Persistence warning: bbox ignored due to invalid offset range")
             return False
         OFF_UNIT_BBMIN = bbmin_off
-        OFF_UNIT_BBMAX = bbmax_off
+        # OFF_UNIT_BBMAX = bbmax_off
+        # mul.OFF_UNIT_BBMIN = bbmin_off
+        # mul.OFF_UNIT_BBMAX = bbmax_off
         print("[*] 📦 Loaded BBox Persistence")
+
         print(
             f"    bbmin={hex(OFF_UNIT_BBMIN)} | bbmax={hex(OFF_UNIT_BBMAX)}"
         )
@@ -3294,15 +3297,17 @@ class ESPOverlay(QOpenGLWidget):
                         if my_barrel_data:
                             my_ground_shot_origin = my_barrel_data[1] or my_barrel_data[0] or my_pos
                             b_start, b_end = my_barrel_data
-                            scr_b = world_to_screen(view_matrix, b_start[0], b_start[1], b_start[2], self.screen_width, self.screen_height)
-                            scr_e = world_to_screen(view_matrix, b_end[0], b_end[1], b_end[2], self.screen_width, self.screen_height)
-                            if scr_b and scr_e and scr_b[2] > 0 and scr_e[2] > 0:
-                                b_pts = _screen_int_tuple(scr_b[0], scr_b[1], scr_e[0], scr_e[1])
-                                if b_pts:
-                                    painter.setPen(QPen(QColor(0, 255, 255), 2.5))
-                                    painter.drawLine(*b_pts)
-                                    painter.setBrush(QBrush(QColor(0, 255, 255)))
-                                    painter.drawEllipse(int(scr_e[0]) - 3, int(scr_e[1]) - 3, 6, 6)
+                            if SHOW_MY_UNIT_BOX:
+                                scr_b = world_to_screen(view_matrix, b_start[0], b_start[1], b_start[2], self.screen_width, self.screen_height)
+                                scr_e = world_to_screen(view_matrix, b_end[0], b_end[1], b_end[2], self.screen_width, self.screen_height)
+                                if scr_b and scr_e and scr_b[2] > 0 and scr_e[2] > 0:
+                                    b_pts = _screen_int_tuple(scr_b[0], scr_b[1], scr_e[0], scr_e[1])
+                                    if b_pts:
+                                        painter.setPen(QPen(QColor(0, 255, 255), 2.5))
+                                        painter.drawLine(*b_pts)
+                                        painter.setBrush(QBrush(QColor(0, 255, 255)))
+                                        painter.drawEllipse(int(scr_e[0]) - 3, int(scr_e[1]) - 3, 6, 6)
+
                         my_dynamic_geometry = _get_dynamic_my_geometry(self.scanner, cgame_base, my_unit, my_box_data)
                 except Exception:
                     my_ground_shot_origin = my_pos
@@ -3697,7 +3702,26 @@ class ESPOverlay(QOpenGLWidget):
                         (not is_air_target and GROUND_USE_SIMPLE_SCREEN_BOX)
                         or (is_air_target and AIR_USE_SIMPLE_SCREEN_BOX)
                     )
+                    if (not ESP_POINT_ONLY_MODE) and use_simple_screen_box:
+                        res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
+                        res_pts = _screen_int_tuple(res_pos[0], res_pos[1]) if res_pos and res_pos[2] > 0 else None
+                        if res_pts:
+                            box_w = max(20, int(3000 / (dist + 1))) if is_air_target else max(30, int(4000 / (dist + 1)))
+                            box_h = box_w * 0.8 if is_air_target else box_w * 0.6
+                            box_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
+                            painter.setPen(QPen(box_color, 2))
+                            painter.drawRect(int(res_pts[0] - box_w/2), int(res_pts[1] - box_h/2), int(box_w), int(box_h))
+                            avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - box_h/2
+                            target_box_rect = (
+                                res_pts[0] - (box_w * 0.5),
+                                res_pts[1] - (box_h * 0.5),
+                                res_pts[0] + (box_w * 0.5),
+                                res_pts[1] + (box_h * 0.5),
+                            )
+                            has_valid_box = True
+
                     if (not ESP_POINT_ONLY_MODE) and not use_simple_screen_box:
+
                         # ========================================================
                         # 📦 3D BOUNDING BOX RENDERER (PERFECT ROTATION)
                         # ========================================================
