@@ -620,11 +620,12 @@ def _load_ballistic_layout_persistence():
         BALLISTIC_VEL_RANGE_X_OFF = int(layout["vel_range_x_off"])
         BALLISTIC_VEL_RANGE_Y_OFF = int(layout["vel_range_y_off"])
 
-        # Sync constants with mul module
+        # Sync with mul module
         mul.OFF_BULLET_SPEED = BALLISTIC_SPEED_OFF
         mul.OFF_BULLET_MASS = BALLISTIC_MASS_OFF
         mul.OFF_BULLET_CALIBER = BALLISTIC_CALIBER_OFF
         mul.OFF_BULLET_CD = BALLISTIC_CX_OFF
+
 
         print("[*] 📦 Loaded Ballistic Persistence")
 

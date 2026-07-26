@@ -2,16 +2,19 @@ import os
 import sys
 import struct
 import time
-from main import MemoryScanner, get_game_pid, get_game_base_address
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
+import src.utils.mul as mul
 
 def clear_screen():
     os.system('clear' if os.name == 'posix' else 'cls')
 
 def get_cgame_base(scanner, base_addr):
-    # DAT_MANAGER Offset: 0x093924e0 - 0x400000 = 0x8F924E0
-    raw = scanner.read_mem(base_addr + 0x8F924E0, 8)
-    if raw: return struct.unpack("<Q", raw)[0]
-    return 0
+    return mul.get_cgame_base(scanner, base_addr)
 
 def main():
     pid = get_game_pid()
@@ -21,6 +24,7 @@ def main():
         
     base_addr = get_game_base_address(pid)
     scanner = MemoryScanner(pid)
+    init_dynamic_offsets(scanner, base_addr)
     
     while True:
         try:
@@ -35,19 +39,19 @@ def main():
                 time.sleep(1)
                 continue
                 
-            w_ptr_raw = scanner.read_mem(cgame_base + 0x0408, 8)
+            w_ptr_raw = scanner.read_mem(cgame_base + mul.OFF_WEAPON_PTR, 8)
             if not w_ptr_raw: 
                 continue
             weapon_ptr = struct.unpack("<Q", w_ptr_raw)[0]
             
-            if weapon_ptr < 0x10000:
+            if not mul.is_valid_ptr(weapon_ptr):
                 print("[-] กรุณาเข้า Test Drive และเกิดรถถังให้เรียบร้อย...")
                 time.sleep(1)
                 continue
 
-            # 🎯 กวาดข้อมูลแบบปูพรม 80 Bytes ตั้งแต่ 0x1F00 ถึง 0x1F50
-            start_off = 0x1F00
-            scan_size = 80 
+            # 🎯 กวาดข้อมูลแบบปูพรม 112 Bytes ตั้งแต่ 0x2030 ถึง 0x20A0
+            start_off = 0x2030
+            scan_size = 112 
             data = scanner.read_mem(weapon_ptr + start_off, scan_size)
             
             if data:
@@ -61,17 +65,23 @@ def main():
                     val = struct.unpack_from("<f", data, i)[0]
                     
                     remarks = ""
-                    # มาร์คจุดที่เรารู้แล้ว
-                    if current_off == 0x1F20:
-                        remarks = "⭐⭐ BULLET SPEED (มัซเซิล 100%!)"
-                    # คัดกรองตัวเลขที่น่าจะเป็น Mass (ปกติ 0.5kg ถึง 50.0kg)
-                    elif 0.5 <= val <= 50.0:
-                        remarks = "<-- 🎯 อาจจะเป็น MASS (ลองเปลี่ยนกระสุนดู!)"
-                    # คัดกรอง Caliber (ปกติ 0.05m ถึง 0.15m)
-                    elif 0.02 <= val <= 0.20:
-                        remarks = "<-- 📏 อาจจะเป็น CALIBER/DIAMETER"
+                    if current_off in (0x2048, 0x2050):
+                        remarks = "⭐⭐ BULLET SPEED (มัซเซิล)"
+                    elif current_off in (0x2054, 0x205C):
+                        remarks = "<-- 🎯 อาจจะเป็น MASS"
+                    elif current_off in (0x2058, 0x2060):
+                        remarks = "<-- 📏 อาจจะเป็น CALIBER"
+                    elif current_off in (0x205C, 0x2064):
+                        remarks = "<-- 💨 อาจจะเป็น DRAG Cx"
+                    elif 0.5 <= val <= 200.0:
+                        remarks = "<-- 🎯 อาจจะเป็น MASS / WEIGHT"
+                    elif 0.001 <= val <= 0.50:
+                        remarks = "<-- 📏 อาจจะเป็น CALIBER / DIAMETER"
+                    elif 0.01 <= val <= 3.0:
+                        remarks = "<-- 💨 อาจจะเป็น DRAG Cx"
                         
                     print(f"0x{current_off:04X}     | {val:<15.4f} | {remarks}")
+
                     
             print("===========================================================")
             print("💡 ยุทธวิธีปฏิบัติการ:")

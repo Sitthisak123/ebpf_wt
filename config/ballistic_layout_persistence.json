@@ -1,24 +1,34 @@
 {
-  "updated_at": "2026-07-25T15:59:59",
+  "updated_at": "2026-07-26T14:55:35.052737",
+  "pid": 4100,
+  "image_base": 4194304,
+  "weapon_source": "cgame+OFF_WEAPON_PTR",
   "build_fingerprint": {
     "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
     "size": 163458208,
     "mtime_ns": 1784804220000000000
   },
-  "weapon_source": "runtime_effective_offsets",
-  "best_layout_score": 0,
-  "source": "radar_overlay_auto_ballistic",
-  "updated_by_tool": "radar_overlay",
-  "confidence": 0.68,
+  "updated_by_tool": "ballistic_layout_dumper",
+  "confidence": 0.92,
+  "best_layout_score": 61,
   "layout": {
     "layout_name": "layout_old_guess",
-    "base_off": 8280,
-    "speed_off": 8272,
-    "mass_off": 8284,
-    "caliber_off": 8288,
-    "cx_off": 8292,
-    "max_distance_off": 8296,
-    "vel_range_x_off": 8316,
-    "vel_range_y_off": 8320
+    "base_off": 8424,
+    "speed_off": 8416,
+    "mass_off": 8428,
+    "caliber_off": 8432,
+    "cx_off": 8436,
+    "max_distance_off": 8440,
+    "vel_range_x_off": 8460,
+    "vel_range_y_off": 8464
+  },
+  "best_layout_snapshot": {
+    "speed": 1120.0,
+    "mass": 0.30399999022483826,
+    "caliber": 0.017999999225139618,
+    "cx": 0.11999999731779099,
+    "maxDistance": 7000.0,
+    "velRange_x": 500.0,
+    "velRange_y": 700.0
   }
 }
