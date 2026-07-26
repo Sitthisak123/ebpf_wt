@@ -20,8 +20,9 @@ except ImportError:
     HAS_KEYBOARD = False
 
 from PyQt5.QtWidgets import QApplication, QOpenGLWidget, QWidget
-from PyQt5.QtCore import Qt, QTimer, QUrl
+from PyQt5.QtCore import Qt, QTimer, QUrl, QCoreApplication
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QSurfaceFormat
+
 try:
     from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
     HAS_QT_MULTIMEDIA = True
@@ -5215,10 +5216,12 @@ class ESPOverlay(QOpenGLWidget):
 
 if __name__ == '__main__':
     try:
-        # 🎯 เพิ่มบรรทัดนี้: ปิดระบบ OS Display Scaling ให้จอ 2560x1440 แมปพิกเซลแบบ 1:1 เสมอ
+        # 🎯 บังคับใช้ Desktop OpenGL สำหรับ Hardware Acceleration เต็มรูปแบบผ่าน GPU
+        QCoreApplication.setAttribute(Qt.AA_UseDesktopOpenGL, True)
         QApplication.setAttribute(Qt.AA_DisableHighDpiScaling, True)
 
         pid = get_game_pid()
+
         base_addr = get_game_base_address(pid)
         if base_addr == 0:
             raise RuntimeError(
