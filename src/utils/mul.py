@@ -54,7 +54,8 @@ OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kine
 OFF_AIR_VEL         = 0x0318      # 🎯 Velocity (FLOAT Vector 12-byte)
 OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)
 OFF_MY_AIR_VEL      = 0x0068      # My air velocity: DOUBLE vec3 at move_ptr + 0x0068 (47.5Hz)
-OFF_MY_AIR_MOVEMENT = 0x0D10      # My air movement pointer from tick-rate scan
+OFF_MY_AIR_MOVEMENT = 0x0D28      # My air movement pointer from tick-rate scan (0x0D28 / 0x0D30)
+
 
 OFF_GROUND_UNITS    = (0x358, False)
 OFF_GROUND_MOVEMENT = 0x1118
