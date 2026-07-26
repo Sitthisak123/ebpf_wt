@@ -1,12 +1,8 @@
 *venv
-
-
-GEMINI.md
-GhidrAssistMCP
-codex*.log
-gemini*.log
 dumps
 .gemini
 datamine/
+ghidra
+chat_history
 __pycache__
 

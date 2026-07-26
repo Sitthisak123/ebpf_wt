@@ -15,6 +15,7 @@
 - `config/view_matrix_persistence.json`
 - `config/unit_bbox_persistence.json`
 - `config/ballistic_layout_persistence.json`
+- `config/barrel_offset_persistence.json`
 
 ## Schema หลัก
 
@@ -43,9 +44,11 @@
 
 - `find_real_matrix` = `0.95`
 - `bbox_dumper` = `0.95`
+- `barrel_offset_dumper` = `0.95`
 - `ballistic_layout_dumper` = `0.92`
 - `scanner_auto_view_matrix` = `0.78`
 - `scanner_auto_bbox` = `0.72`
+- `scanner_auto_barrel` = `0.70`
 - `radar_overlay_auto_ballistic` = `0.68`
 
 ## Tools ที่ใช้ใน Persistence System
@@ -55,6 +58,7 @@
 - `tools/find_real_matrix.py`
 - `tools/bbox_dumper.py`
 - `tools/ballistic_layout_dumper.py`
+- `tools/barrel_offset_dumper.py`
 
 หน้าที่:
 
@@ -69,6 +73,11 @@
 - `ballistic_layout_dumper.py`
   - ยืนยัน ballistic layout
   - เขียน `ballistic_layout_persistence.json`
+
+- `barrel_offset_dumper.py`
+  - ยืนยัน AnimChar bone tree, WTM array และ Barrel matrix offsets
+  - เขียน `barrel_offset_persistence.json`
+
 
 ## Runtime Writers
 
