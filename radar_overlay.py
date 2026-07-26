@@ -37,6 +37,7 @@ from src.utils.mul import *
 from src.utils.debug import *
 from src.utils.kalman import KinematicKalmanFilter
 from src.utils.ammo_family import resolve_ammo_family
+from src.worker.data_pump import DataPumpWorker, FrameSnapshot, TargetSnapshot
 
 
 def _console_supports_sticky_dashboard():
@@ -2568,8 +2569,33 @@ class ESPOverlay(QOpenGLWidget):
         self.timer.timeout.connect(self.update)
         self.timer.start(FRAME_TIMER_INTERVAL_MS)
 
+        # 🚀 Worker Thread: ย้าย Memory Read + Computation ออกจาก GUI Thread
+        self._latest_snapshot = FrameSnapshot()
+        self._data_pump = DataPumpWorker(
+            scanner=scanner,
+            base_address=base_address,
+            target_fps=MAX_FPS,
+            read_ballistic_profile_fn=_read_ballistic_profile,
+            get_dynamic_target_box_data_fn=_get_dynamic_target_box_data,
+            get_dynamic_my_geometry_fn=_get_dynamic_my_geometry,
+            stabilize_velocity_fn=self._stabilize_velocity,
+            resolve_is_air_fn=_resolve_is_air_now,
+            is_boat_like_fn=_is_boat_like,
+            is_recon_drone_fn=_is_recon_drone_like,
+            filter_constants={
+                "NON_PLAYABLE_RUNTIME_HINTS": NON_PLAYABLE_RUNTIME_HINTS,
+                "MAX_GROUND_TARGET_DISTANCE": MAX_GROUND_TARGET_DISTANCE,
+                "MAX_AIR_TARGET_DISTANCE": MAX_AIR_TARGET_DISTANCE,
+                "ORIGIN_GHOST_RADIUS": ORIGIN_GHOST_RADIUS,
+                "ORIGIN_GHOST_MY_DIST_MIN": ORIGIN_GHOST_MY_DIST_MIN,
+                "IGNORE_ALL_BOATS": IGNORE_ALL_BOATS,
+                "NAME_PREFIXES": NAME_PREFIXES,
+            },
+        )
+        self._data_pump.new_frame.connect(self._on_worker_frame)
+        # 🚧 Worker ยังไม่เริ่มจนกว่า paintGL จะ migrate ไปใช้ snapshot
+        # self._data_pump.start()
 
-        
 
     def _fatal_shutdown(self, reason, detail=""):
         if self.shutdown_requested:
@@ -2600,6 +2626,10 @@ class ESPOverlay(QOpenGLWidget):
         except Exception:
             pass
         try:
+            self._data_pump.request_stop()
+        except Exception:
+            pass
+        try:
             self.scanner.close()
         except Exception:
             pass
@@ -2616,6 +2646,11 @@ class ESPOverlay(QOpenGLWidget):
         app = QApplication.instance()
         if app is not None:
             app.quit()
+
+    def _on_worker_frame(self, snapshot):
+        """Slot: receives FrameSnapshot from DataPumpWorker on each cycle."""
+        self._latest_snapshot = snapshot
+
 
     def _play_alert_sound(self, sound_key, sound_path, curr_t):
         if not ALERT_AUDIO_ON:
