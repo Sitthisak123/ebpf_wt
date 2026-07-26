@@ -1,8 +1,7 @@
 *venv
 dumps
+ghidra
 .gemini
 datamine/
-ghidra
 chat_history
 __pycache__
-

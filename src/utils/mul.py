@@ -61,12 +61,13 @@ OFF_GROUND_MOVEMENT = 0x1118
 OFF_GROUND_VEL      = 0x00FC
 OFF_GROUND_OMEGA    = 0
 FILTER_ZERO_POS_UNITS = True
-# 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก layout_old_guess Persistence)
+# 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก layout_old_guess Persistence ล่าสุด)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
-OFF_BULLET_SPEED    = 0x2050     # 🎯 ความเร็วต้น (Muzzle Velocity - 8272)
-OFF_BULLET_MASS     = 0x205C      # ⚖️ มวลกระสุน (8284)
-OFF_BULLET_CALIBER  = 0x2060   # 📏 Caliber (8288)
-OFF_BULLET_CD       = 0x2064        # 💨 Drag Coeff (8292)
+OFF_BULLET_SPEED    = 0x20E0     # 🎯 ความเร็วต้น (Muzzle Velocity - 8416 / 0x20E0)
+OFF_BULLET_MASS     = 0x20EC      # ⚖️ มวลกระสุน (8428 / 0x20EC)
+OFF_BULLET_CALIBER  = 0x20F0   # 📏 Caliber (8432 / 0x20F0)
+OFF_BULLET_CD       = 0x20F4        # 💨 Drag Coeff (8436 / 0x20F4)
+
 
 OFF_WEAPON_BARREL   = 0x480  # 🎯 ตัวคูณทิศทางลำกล้อง
 PROJECTION_MODES = (
