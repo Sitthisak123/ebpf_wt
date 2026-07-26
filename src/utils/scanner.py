@@ -46,6 +46,7 @@ PAT_MATRIX_CHAIN  = "41 88 B4 14 ?? ?? ?? ?? 41 88 B4 14 ?? ?? ?? ??"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BBOX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "unit_bbox_persistence.json")
 VIEW_MATRIX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "view_matrix_persistence.json")
+BARREL_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "barrel_offset_persistence.json")
 DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
 
 
@@ -173,7 +174,70 @@ def _load_view_matrix_persistence():
         return None
 
 
+def _load_barrel_persistence():
+    if not os.path.exists(BARREL_PERSISTENCE_PATH):
+        return None
+    try:
+        with open(BARREL_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            print("  [!] Persistence warning: barrel offset ignored due to build fingerprint mismatch")
+            return None
+        return {
+            "animchar_off": int(doc.get("animchar_off", 0) or 0),
+            "bone_tree_off": int(doc.get("bone_tree_off", 0) or 0),
+            "sub_off": int(doc.get("sub_off", 0) or 0),
+            "wtm_off": int(doc.get("wtm_off", 0) or 0),
+            "bone_idx": int(doc.get("bone_idx", 0) or 0),
+            "bone_name": doc.get("bone_name", ""),
+            "source": doc.get("source", "unknown"),
+            "updated_by_tool": doc.get("updated_by_tool", "unknown"),
+            "confidence": float(doc.get("confidence", 0.0) or 0.0),
+        }
+    except Exception:
+        return None
+
+
+def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bone_idx, bone_name, source, updated_by_tool, confidence):
+    try:
+        if not _can_overwrite_persistence(BARREL_PERSISTENCE_PATH, confidence):
+            print("  [*] Skip auto-save barrel persistence: existing confidence is higher")
+            return None
+        os.makedirs(os.path.dirname(BARREL_PERSISTENCE_PATH), exist_ok=True)
+        payload = {
+            "updated_at": __import__("datetime").datetime.now().isoformat(),
+            "animchar_off": int(animchar_off),
+            "bone_tree_off": int(bone_tree_off),
+            "sub_off": int(sub_off),
+            "wtm_off": int(wtm_off),
+            "bone_idx": int(bone_idx),
+            "bone_name": str(bone_name),
+            "row0_forward_offset": 0x00,
+            "row3_position_offset": 0x30,
+            "source": source,
+            "updated_by_tool": updated_by_tool,
+            "confidence": float(confidence),
+            "build_fingerprint": _get_binary_fingerprint(),
+        }
+        with open(BARREL_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        return BARREL_PERSISTENCE_PATH
+    except Exception:
+        return None
+
+
+def _needs_barrel_persistence_update(animchar_off, bone_idx):
+    current = _load_barrel_persistence()
+    if not current:
+        return True
+    return (
+        int(current.get("animchar_off", -1)) != int(animchar_off)
+        or int(current.get("bone_idx", -1)) != int(bone_idx)
+    )
+
+
 def _can_overwrite_persistence(path, new_confidence):
+
     try:
         if not os.path.exists(path):
             return True

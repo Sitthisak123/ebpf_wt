@@ -302,7 +302,7 @@ AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น Fals
 DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
-SHOW_MY_UNIT_BOX = False
+SHOW_MY_UNIT_BOX = True
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
@@ -619,7 +619,15 @@ def _load_ballistic_layout_persistence():
         BALLISTIC_MAX_DISTANCE_OFF = int(layout["max_distance_off"])
         BALLISTIC_VEL_RANGE_X_OFF = int(layout["vel_range_x_off"])
         BALLISTIC_VEL_RANGE_Y_OFF = int(layout["vel_range_y_off"])
+
+        # Sync constants with mul module
+        mul.OFF_BULLET_SPEED = BALLISTIC_SPEED_OFF
+        mul.OFF_BULLET_MASS = BALLISTIC_MASS_OFF
+        mul.OFF_BULLET_CALIBER = BALLISTIC_CALIBER_OFF
+        mul.OFF_BULLET_CD = BALLISTIC_CX_OFF
+
         print("[*] 📦 Loaded Ballistic Persistence")
+
         print(
             f"    layout={layout.get('layout_name', 'unknown')} | "
             f"base={hex(BALLISTIC_STRUCT_BASE_OFF)} | "
@@ -2005,7 +2013,7 @@ def _scan_ballistic_profile(scanner, weapon_ptr, fallback_cx=0.0):
             best_score = score
             best_candidate = candidate
 
-    if best_candidate is None or best_score < 6:
+    if best_candidate is None or best_score < 3:
         return {
             "speed": speed if 50.0 <= speed <= 3000.0 else 0.0,
             "mass": 0.0,
@@ -2016,6 +2024,7 @@ def _scan_ballistic_profile(scanner, weapon_ptr, fallback_cx=0.0):
         }
 
     best_candidate["speed"] = speed if 50.0 <= speed <= 3000.0 else 0.0
+
     return best_candidate
 
 
@@ -2124,14 +2133,15 @@ def _read_ballistic_profile(scanner, cgame_base):
     props_cx = _read_f32_fast(scanner, props_base + 0x0C, 0.0)
     props_max_distance = _read_f32_fast(scanner, props_base + 0x10, 0.0)
     bullet_type_idx = _read_current_bullet_type_index(scanner, weapon_ptr)
-    if 0.005 <= props_mass <= 200.0 and not (0.005 <= mass <= 200.0):
+    if 0.005 <= props_mass <= 200.0 and (not (0.005 <= mass <= 200.0) or mass == 0.0):
         mass = props_mass
-    if 0.001 <= props_caliber <= 0.5 and not (0.001 <= caliber <= 0.5):
+    if 0.001 <= props_caliber <= 0.5 and (not (0.001 <= caliber <= 0.5) or caliber == 0.0):
         caliber = props_caliber
-    if 0.01 <= props_cx <= 3.0 and not (0.01 <= cx <= 3.0):
+    if 0.01 <= props_cx <= 3.0 and (not (0.01 <= cx <= 3.0) or cx == 0.0):
         cx = props_cx
-    if 100.0 <= props_max_distance <= 50000.0 and not (100.0 <= max_distance <= 50000.0):
+    if 100.0 <= props_max_distance <= 50000.0 and (not (100.0 <= max_distance <= 50000.0) or max_distance == 0.0):
         max_distance = props_max_distance
+
 
     slot_vel_min, slot_vel_max, slot_vel_addr = _read_slot_vel_range(scanner, weapon_ptr, bullet_type_idx, speed)
     generic_mem_vel = (
@@ -3235,9 +3245,19 @@ class ESPOverlay(QOpenGLWidget):
                 try:
                     my_box_data = get_unit_3d_box_data(self.scanner, my_unit, False)
                     if my_box_data:
-                        my_barrel_data = get_weapon_barrel(self.scanner, my_unit, my_box_data[0], my_box_data[3])
+                        my_barrel_data = get_weapon_barrel(self.scanner, my_unit, my_box_data[0], my_box_data[3], should_log=False)
                         if my_barrel_data:
                             my_ground_shot_origin = my_barrel_data[1] or my_barrel_data[0] or my_pos
+                            b_start, b_end = my_barrel_data
+                            scr_b = world_to_screen(view_matrix, b_start[0], b_start[1], b_start[2], self.screen_width, self.screen_height)
+                            scr_e = world_to_screen(view_matrix, b_end[0], b_end[1], b_end[2], self.screen_width, self.screen_height)
+                            if scr_b and scr_e and scr_b[2] > 0 and scr_e[2] > 0:
+                                b_pts = _screen_int_tuple(scr_b[0], scr_b[1], scr_e[0], scr_e[1])
+                                if b_pts:
+                                    painter.setPen(QPen(QColor(0, 255, 255), 2.5))
+                                    painter.drawLine(*b_pts)
+                                    painter.setBrush(QBrush(QColor(0, 255, 255)))
+                                    painter.drawEllipse(int(scr_e[0]) - 3, int(scr_e[1]) - 3, 6, 6)
                         my_dynamic_geometry = _get_dynamic_my_geometry(self.scanner, cgame_base, my_unit, my_box_data)
                 except Exception:
                     my_ground_shot_origin = my_pos
@@ -3604,7 +3624,7 @@ class ESPOverlay(QOpenGLWidget):
                     barrel_base_2d = None
                     barrel_data = None
                     if box_data:
-                        barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, box_data[3])
+                        barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, box_data[3], should_log=True)
                         
                     has_valid_box = False
                     avg_x, avg_y, min_y = 0, 0, 0
