@@ -16,6 +16,7 @@
 - `config/unit_bbox_persistence.json`
 - `config/ballistic_layout_persistence.json`
 - `config/barrel_offset_persistence.json`
+- `config/ground_subclass_persistence.json`
 
 ## Schema หลัก
 
@@ -44,6 +45,7 @@
 
 - `find_real_matrix` = `0.95`
 - `bbox_dumper` = `0.95`
+- `subclass_offset_dumper` = `0.95`
 - `barrel_offset_dumper` = `0.95`
 - `ballistic_layout_dumper` = `0.92`
 - `scanner_auto_view_matrix` = `0.78`
@@ -59,6 +61,7 @@
 - `tools/bbox_dumper.py`
 - `tools/ballistic_layout_dumper.py`
 - `tools/barrel_offset_dumper.py`
+- `tools/subclass_offset_dumper.py`
 
 หน้าที่:
 
@@ -77,6 +80,11 @@
 - `barrel_offset_dumper.py`
   - ยืนยัน AnimChar bone tree, WTM array และ Barrel matrix offsets
   - เขียน `barrel_offset_persistence.json`
+
+- `subclass_offset_dumper.py`
+  - ยืนยัน Ground Unit Subclass Enum Offsets (`LT`, `MT`, `HT`, `TD`, `AA`)
+  - เขียน `ground_subclass_persistence.json`
+
 
 
 ## Runtime Writers

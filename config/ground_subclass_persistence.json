@@ -1,0 +1,20 @@
+{
+  "subclass_off": 3912,
+  "subclass_mask": 7936,
+  "source": "subclass_offset_dumper",
+  "updated_by_tool": "subclass_offset_dumper",
+  "confidence": 0.95,
+  "notes": "Auto-dumper for Ground Unit Subclass Enum Offsets",
+  "build_fingerprint": {
+    "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
+    "size": 163458208,
+    "mtime_ns": 1784804220000000000
+  },
+  "layout": {
+    "0x100": "LIGHT_TANK",
+    "0x200": "MEDIUM_TANK",
+    "0x400": "HEAVY_TANK",
+    "0x800": "TANK_DESTROYER",
+    "0x1000": "SPAA"
+  }
+}

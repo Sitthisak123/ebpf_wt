@@ -348,7 +348,9 @@ BALLISTIC_VEL_RANGE_X_OFF = 0x207C
 BALLISTIC_VEL_RANGE_Y_OFF = 0x2080
 BALLISTIC_PERSISTENCE_PATH = os.path.join("config", "ballistic_layout_persistence.json")
 BBOX_PERSISTENCE_PATH = os.path.join("config", "unit_bbox_persistence.json")
+SUBCLASS_PERSISTENCE_PATH = os.path.join("config", "ground_subclass_persistence.json")
 VIEW_CANDIDATE_PERSISTENCE_PATH = os.path.join("config", "view_matrix_candidate_persistence.json")
+
 VIEW_CANDIDATE_PERSISTENCE_ENABLE = False
 DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
 GUN_BULLET_LIST_PTR_OFF = 0x358
@@ -771,6 +773,46 @@ def _load_unit_bbox_persistence():
 
 
 _load_unit_bbox_persistence()
+
+
+def _load_ground_subclass_persistence():
+    global GROUND_SUBCLASS_ENUM_OFF
+    global GROUND_SUBCLASS_ENUM_MASK
+
+    if not os.path.exists(SUBCLASS_PERSISTENCE_PATH):
+        return False
+
+    try:
+        with open(SUBCLASS_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        if not _fingerprint_matches(doc):
+            print("[!] Persistence warning: subclass ignored due to build fingerprint mismatch")
+            return False
+        subclass_off = int(doc.get("subclass_off", 0) or 0)
+        subclass_mask = int(doc.get("subclass_mask", 0) or 0)
+        if subclass_off <= 0:
+            print("[!] Persistence warning: subclass ignored due to invalid offset")
+            return False
+        GROUND_SUBCLASS_ENUM_OFF = subclass_off
+        if subclass_mask > 0:
+            GROUND_SUBCLASS_ENUM_MASK = subclass_mask
+        print("[*] 📦 Loaded Ground Subclass Persistence")
+        print(
+            f"    off={hex(GROUND_SUBCLASS_ENUM_OFF)} | mask={hex(GROUND_SUBCLASS_ENUM_MASK)}"
+        )
+        print(
+            f"    source={doc.get('source', 'unknown')} | "
+            f"tool={doc.get('updated_by_tool', 'unknown')} | "
+            f"conf={float(doc.get('confidence', 0.0) or 0.0):.2f}"
+        )
+        return True
+    except Exception as e:
+        print(f"[!] Persistence warning: subclass load failed: {e}")
+        return False
+
+
+_load_ground_subclass_persistence()
+
 
 
 def _log_view_matrix_persistence_preflight():
@@ -1262,8 +1304,9 @@ def _is_boat_like(family_name, profile_tag, profile_path, unit_key="", name_key=
     ))
 
 
-GROUND_SUBCLASS_ENUM_OFF = 0xF30
+GROUND_SUBCLASS_ENUM_OFF = 0xF48
 GROUND_SUBCLASS_ENUM_MASK = 0x1F00
+
 GROUND_SUBCLASS_ENUM_MAP = {
     0x100: UNIT_FAMILY_GROUND_LIGHT_TANK,
     0x200: UNIT_FAMILY_GROUND_MEDIUM_TANK,
@@ -1312,7 +1355,8 @@ def _resolve_dynamic_ground_subclass(scanner, u_ptr, family_tag):
     if family_tag != "exp_tank":
         return None
 
-    return UNIT_FAMILY_GROUND_MEDIUM_TANK
+    return None
+
 
 
 def _resolve_unit_family_enum(family_name, profile_tag, profile_path, unit_key, name_key, short_name, is_air, scanner=None, u_ptr=0):
