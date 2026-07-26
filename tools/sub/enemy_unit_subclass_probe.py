@@ -169,7 +169,9 @@ def main():
         ("my_unit", 0x580),
         ("my_unit", 0x6A8),
         ("my_unit", 0xF30),
+        ("my_unit", 0xF48),
         ("my_unit", 0xF60),
+
         ("info_ptr", 0x60),
         ("info_ptr", 0xF0),
         ("info_ptr", 0x290),
