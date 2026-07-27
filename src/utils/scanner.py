@@ -237,7 +237,6 @@ def _needs_barrel_persistence_update(animchar_off, bone_idx):
 
 
 def _can_overwrite_persistence(path, new_confidence):
-
     try:
         if not os.path.exists(path):
             return True
@@ -246,6 +245,42 @@ def _can_overwrite_persistence(path, new_confidence):
         if not _fingerprint_matches(doc):
             return True
         current_confidence = float(doc.get("confidence", 0.0) or 0.0)
+        return float(new_confidence) >= current_confidence
+    except Exception:
+        return True
+
+# ==========================================
+# 🛠️ คลาสสำหรับอ่าน Memory & Pattern Scanning
+# ==========================================
+class MemoryScanner:
+    def __init__(self, pid):
+        self.pid = pid
+        self.closed = False
+        self.last_error = ""
+        self.mem_fd = -1
+        self.mem_fd = os.open(f"/proc/{pid}/mem", os.O_RDONLY)
+
+    def read_mem(self, address, size):
+        if self.closed:
+            self.last_error = "scanner_closed"
+            return None
+        if address is None or address <= 0x10000:
+            return None
+        try:
+            os.lseek(self.mem_fd, address, os.SEEK_SET)
+            return os.read(self.mem_fd, size)
+        except OSError as e:
+            self.last_error = f"{e.__class__.__name__}: errno={getattr(e, 'errno', '?')} msg={e}"
+            if getattr(e, "errno", None) in (errno.ESRCH, errno.EBADF):
+                self.close()
+            return None
+        except Exception as e:
+            self.last_error = f"{e.__class__.__name__}: {e}"
+            return None
+
+    def is_alive(self):
+        if self.closed:
+            return False
         try:
             os.kill(self.pid, 0)
             return os.path.exists(f"/proc/{self.pid}/mem")
