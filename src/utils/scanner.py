@@ -749,24 +749,12 @@ def init_dynamic_offsets(scanner, base_address):
             f" tool:{bbox_persistence['updated_by_tool']} conf:{bbox_persistence['confidence']:.2f})"
         )
     else:
-        mul.OFF_UNIT_BBMIN = 0x0238
-        mul.OFF_UNIT_BBMAX = 0x0244
+        mul.OFF_UNIT_BBMIN = 0x0 #fallback scanner 
+        mul.OFF_UNIT_BBMAX = 0x0 #fallback scanner
         print("  [!] Persistence warning: bbox fallback is active")
         print(f"  [+] 📦 FALLBACK BBOX! BBMIN = {hex(mul.OFF_UNIT_BBMIN)}")
         print(f"  [+] 📦 FALLBACK BBOX! BBMAX = {hex(mul.OFF_UNIT_BBMAX)}")
-    if _needs_bbox_persistence_update(mul.OFF_UNIT_BBMIN, mul.OFF_UNIT_BBMAX):
-        saved = _write_bbox_persistence(
-            mul.OFF_UNIT_BBMIN,
-            mul.OFF_UNIT_BBMAX,
-            "scanner_auto_bbox",
-            "scanner",
-            0.72,
-        )
-        if saved:
-            print(
-                f"  [+] 💾 AUTO-SAVED! BBMIN = {hex(mul.OFF_UNIT_BBMIN)} "
-                f"BBMAX = {hex(mul.OFF_UNIT_BBMAX)}"
-            )
+
 
     # ---------------------------------------------------------
     # 🎯 Phase 4: สแกนหาข้อมูลสถานะ (State, Team, Info, Reload)
