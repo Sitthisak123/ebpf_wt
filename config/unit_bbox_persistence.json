@@ -1,1 +1,13 @@
-{"updated_at": "2026-07-25T14:43:41.105123", "bbmin_off": 600, "bbmax_off": 612, "source": "bbox_dumper_manual_write", "updated_by_tool": "bbox_dumper", "confidence": 0.72, "build_fingerprint": {"path": "/home/xda-7/MyGames/WarThunder/linux64/aces", "size": 163458208, "mtime_ns": 1784804220000000000}}
+{
+  "updated_at": "2026-07-27T14:20:00.000000",
+  "bbmin_off": 600,
+  "bbmax_off": 612,
+  "source": "bbox_dumper_manual_write",
+  "updated_by_tool": "bbox_dumper",
+  "confidence": 0.72,
+  "build_fingerprint": {
+    "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
+    "size": 163458208,
+    "mtime_ns": 1784847846000000000
+  }
+}
