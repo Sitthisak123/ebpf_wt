@@ -340,14 +340,15 @@ VERTICAL_BASELINE_LAST_MATCH = {
 DYNAMIC_PARALLAX_SCALE = 1
 DYNAMIC_WORLDSPACE_ENABLE = True
 
-BALLISTIC_STRUCT_BASE_OFF = 0x2058
-BALLISTIC_SPEED_OFF = 0x2050
-BALLISTIC_MASS_OFF = 0x205C
-BALLISTIC_CALIBER_OFF = 0x2060
-BALLISTIC_CX_OFF = 0x2064
-BALLISTIC_MAX_DISTANCE_OFF = 0x2068
-BALLISTIC_VEL_RANGE_X_OFF = 0x207C
-BALLISTIC_VEL_RANGE_Y_OFF = 0x2080
+BALLISTIC_STRUCT_BASE_OFF = 0x20f0
+BALLISTIC_SPEED_OFF = 0x20e8
+BALLISTIC_MASS_OFF = 0x20f4
+BALLISTIC_CALIBER_OFF = 0x20f8
+BALLISTIC_CX_OFF = 0x20fc
+BALLISTIC_MAX_DISTANCE_OFF = 0x2100
+BALLISTIC_VEL_RANGE_X_OFF = 0x2114
+BALLISTIC_VEL_RANGE_Y_OFF = 0x2118
+
 BALLISTIC_PERSISTENCE_PATH = os.path.join("config", "ballistic_layout_persistence.json")
 BBOX_PERSISTENCE_PATH = os.path.join("config", "unit_bbox_persistence.json")
 SUBCLASS_PERSISTENCE_PATH = os.path.join("config", "ground_subclass_persistence.json")
@@ -480,11 +481,9 @@ def _fingerprint_matches(doc):
     current = _get_binary_fingerprint()
     if not current:
         return False
-    return (
-        os.path.realpath(str(persisted.get("path", ""))) == current["path"]
-        and int(persisted.get("size", -1)) == current["size"]
-        and int(persisted.get("mtime_ns", -1)) == current["mtime_ns"]
-    )
+    # 🎯 ผ่อนปรน mtime_ns/size เพื่อไม่ให้ persistence พังทุกครั้งที่แพตช์เล็กลง
+    return os.path.realpath(str(persisted.get("path", ""))) == current["path"]
+
 
 
 def _can_overwrite_persistence(path, new_confidence):
@@ -736,7 +735,14 @@ def _write_ballistic_layout_persistence(source="radar_overlay_auto_ballistic"):
 
 _ballistic_persistence_loaded = _load_ballistic_layout_persistence()
 if not _ballistic_persistence_loaded:
-    _write_ballistic_layout_persistence()
+    print("\n" + "=" * 60)
+    print("❌ [STARTUP ERROR] Ballistic Layout Persistence is missing or invalid!")
+    print("   โปรดรัน dumper (tools/ballistic_layout_dumper.py) เพื่ออัปเดต persistence ล่าสุด")
+    print("=" * 60 + "\n")
+    import sys
+    sys.exit(1)
+
+
 
 
 def _load_unit_bbox_persistence():
@@ -777,7 +783,15 @@ def _load_unit_bbox_persistence():
         return False
 
 
-_load_unit_bbox_persistence()
+_bbox_persistence_loaded = _load_unit_bbox_persistence()
+if not _bbox_persistence_loaded:
+    print("\n" + "=" * 60)
+    print("❌ [STARTUP ERROR] Bounding Box Persistence is missing or invalid!")
+    print("   โปรดรัน dumper (tools/bbox_dumper.py) เพื่ออัปเดต persistence ล่าสุด")
+    print("=" * 60 + "\n")
+    import sys
+    sys.exit(1)
+
 
 
 def _load_ground_subclass_persistence():
