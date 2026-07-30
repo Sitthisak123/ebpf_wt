@@ -70,11 +70,10 @@ def _fingerprint_matches(doc):
     current = _get_binary_fingerprint()
     if not current:
         return False
-    return (
-        os.path.realpath(str(persisted.get("path", ""))) == current["path"]
-        and int(persisted.get("size", -1)) == current["size"]
-        and int(persisted.get("mtime_ns", -1)) == current["mtime_ns"]
-    )
+    # 🎯 ผ่อนปรน mtime_ns/size เพื่อไม่ให้ persistence พังทุกครั้งที่แพตช์เล็กลง
+    # ตรวจสอบแค่ว่าไฟล์เกมหลักยังคงเป็น path เดียวกันและมีอยู่จริง
+    return os.path.realpath(str(persisted.get("path", ""))) == current["path"]
+
 
 
 def _load_bbox_persistence():
@@ -784,11 +783,13 @@ def init_dynamic_offsets(scanner, base_address):
             f" tool:{bbox_persistence['updated_by_tool']} conf:{bbox_persistence['confidence']:.2f})"
         )
     else:
-        mul.OFF_UNIT_BBMIN = 0x0 #fallback scanner 
-        mul.OFF_UNIT_BBMAX = 0x0 #fallback scanner
-        print("  [!] Persistence warning: bbox fallback is active")
-        print(f"  [+] 📦 FALLBACK BBOX! BBMIN = {hex(mul.OFF_UNIT_BBMIN)}")
-        print(f"  [+] 📦 FALLBACK BBOX! BBMAX = {hex(mul.OFF_UNIT_BBMAX)}")
+        print("\n" + "=" * 60)
+        print("❌ [STARTUP ERROR] Bounding Box Persistence is missing or invalid!")
+        print("   โปรดรัน dumper (tools/bbox_dumper.py) เพื่ออัปเดต persistence ล่าสุด")
+        print("=" * 60 + "\n")
+        import sys
+        sys.exit(1)
+
 
 
     # ---------------------------------------------------------
