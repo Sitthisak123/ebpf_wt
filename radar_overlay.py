@@ -21,7 +21,7 @@ except ImportError:
 
 from PyQt5.QtWidgets import QApplication, QOpenGLWidget, QWidget
 from PyQt5.QtCore import Qt, QTimer, QUrl, QCoreApplication
-from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QSurfaceFormat
+from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QSurfaceFormat, QBrush
 
 try:
     from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
@@ -488,6 +488,7 @@ def _fingerprint_matches(doc):
 
 def _can_overwrite_persistence(path, new_confidence):
     try:
+        new_confidence = float(new_confidence or 0.0)
         if not os.path.exists(path):
             return True
         with open(path, "r", encoding="utf-8") as f:
@@ -495,7 +496,7 @@ def _can_overwrite_persistence(path, new_confidence):
         if not _fingerprint_matches(doc):
             return True
         current_confidence = float(doc.get("confidence", 0.0) or 0.0)
-        return float(new_confidence) >= current_confidence
+        return new_confidence >= current_confidence  or new_confidence >= 0.60
     except Exception:
         return True
 
