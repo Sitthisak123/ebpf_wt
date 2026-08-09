@@ -169,7 +169,6 @@ class DataPumpWorker(QThread):
 
         # ----- Worker-owned caches -----
         self.profile_cache: Dict[int, dict] = {}
-        self.dead_unit_latch: Dict[int, dict] = {}
         self.last_my_unit: int = 0
         self.last_my_team: int = 0
         self.last_cgame_base: int = 0
@@ -254,14 +253,6 @@ class DataPumpWorker(QThread):
         all_units_data = get_all_units(self.scanner, cgame_base)
         snap.all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
 
-        # Clean dead_unit_latch
-        if self.dead_unit_latch:
-            self.dead_unit_latch = {
-                ptr: meta
-                for ptr, meta in self.dead_unit_latch.items()
-                if ptr in snap.all_unit_ptrs
-            }
-
         # --- 5. My Unit ---
         my_unit, my_team = get_local_team(self.scanner, self.base_address)
         if my_team:
@@ -277,7 +268,6 @@ class DataPumpWorker(QThread):
         if my_unit != self.last_my_unit:
             reset_runtime_caches(clear_view=True)
             self.profile_cache = {}
-            self.dead_unit_latch = {}
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
 
@@ -366,28 +356,8 @@ class DataPumpWorker(QThread):
 
             u_team, u_state, unit_name, reload_val = status
 
-            # Dead unit latch
-            latch_meta = self.dead_unit_latch.get(u_ptr)
             if u_state >= 1:
-                self.dead_unit_latch[u_ptr] = {
-                    "info_ptr": info_ptr_now if is_valid_ptr(info_ptr_now) else 0,
-                    "latched_at": now,
-                }
                 continue
-            if latch_meta:
-                latched_info_ptr = int(latch_meta.get("info_ptr") or 0)
-                info_ptr_changed = (
-                    is_valid_ptr(info_ptr_now)
-                    and is_valid_ptr(latched_info_ptr)
-                    and info_ptr_now != latched_info_ptr
-                )
-                info_ptr_reborn = (
-                    is_valid_ptr(info_ptr_now) and not is_valid_ptr(latched_info_ptr)
-                )
-                if info_ptr_changed or info_ptr_reborn:
-                    del self.dead_unit_latch[u_ptr]
-                else:
-                    continue
 
             # Team filter
             if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team):

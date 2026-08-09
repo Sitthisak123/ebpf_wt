@@ -2531,7 +2531,6 @@ class ESPOverlay(QOpenGLWidget):
         self.q_pressed_last = False
         self.last_debug_log_time = 0.0
         self.console_initialized = False
-        self.dead_unit_latch = {}
         self.air_alert_seen = {}
         self.recon_spawn_watch = {}
         self.offscreen_indicator_alpha = {}
@@ -3256,13 +3255,6 @@ class ESPOverlay(QOpenGLWidget):
 
             all_units_data = get_all_units(self.scanner, cgame_base)
             all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
-            if self.dead_unit_latch:
-                self.dead_unit_latch = {
-                    ptr: meta
-                    for ptr, meta in self.dead_unit_latch.items()
-                    if ptr in all_unit_ptrs
-                }
-
             my_unit, my_team = get_local_team(self.scanner, self.base_address)
             if my_team:
                 self.last_my_team = my_team
@@ -3278,7 +3270,6 @@ class ESPOverlay(QOpenGLWidget):
                 self.velocity_cache = {}
                 self.last_velocity_meta = {}
                 self.ai_ghost_queue = []
-                self.dead_unit_latch = {}
                 self.recon_spawn_watch = {}
                 self.live_velocity_debug = None
                 self.last_my_unit = my_unit
@@ -3433,28 +3424,8 @@ class ESPOverlay(QOpenGLWidget):
                 
                 u_team, u_state, unit_name, reload_val = cached_prof['status']
 
-                latch_meta = self.dead_unit_latch.get(u_ptr)
                 if u_state >= 1:
-                    self.dead_unit_latch[u_ptr] = {
-                        "info_ptr": info_ptr_now if is_valid_ptr(info_ptr_now) else 0,
-                        "latched_at": curr_t,
-                    }
                     continue
-                if latch_meta:
-                    latched_info_ptr = int(latch_meta.get("info_ptr") or 0)
-                    info_ptr_changed = (
-                        is_valid_ptr(info_ptr_now)
-                        and is_valid_ptr(latched_info_ptr)
-                        and info_ptr_now != latched_info_ptr
-                    )
-                    info_ptr_reborn = (
-                        is_valid_ptr(info_ptr_now)
-                        and not is_valid_ptr(latched_info_ptr)
-                    )
-                    if info_ptr_changed or info_ptr_reborn:
-                        del self.dead_unit_latch[u_ptr]
-                    else:
-                        continue
                 if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team): continue
 
                 profile = cached_prof['profile']
