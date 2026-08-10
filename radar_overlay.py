@@ -2693,6 +2693,14 @@ class ESPOverlay(QOpenGLWidget):
                         env["PULSE_SINK"] = sink_name
 
                     command_variants = []
+                    pw_play = shutil.which("pw-play")
+                    if pw_play:
+                        vol_scale = max(0.0, min(1.0, volume / 100.0))
+                        command_variants.append([pw_play, f"--volume={vol_scale:.2f}", sound_path])
+                    paplay = shutil.which("paplay")
+                    if paplay:
+                        pa_vol = int(65536 * max(0.0, min(1.0, volume / 100.0)))
+                        command_variants.append([paplay, f"--volume={pa_vol}", sound_path])
                     ffplay = shutil.which("ffplay")
                     if ffplay:
                         command_variants.append([ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet", "-volume", str(volume), sound_path])
@@ -2702,23 +2710,11 @@ class ESPOverlay(QOpenGLWidget):
                     gst_play = shutil.which("gst-play-1.0")
                     if gst_play:
                         command_variants.append([gst_play, sound_path])
+                    aplay = shutil.which("aplay")
+                    if aplay:
+                        command_variants.append([aplay, "-q", sound_path])
 
-                    for base_cmd in command_variants:
-                        cmd = list(base_cmd)
-                        if run_as_user:
-                            sudo_cmd = [
-                                "sudo",
-                                "--preserve-env=HOME,XDG_RUNTIME_DIR,PULSE_SINK",
-                                "-u",
-                                run_as_user,
-                                "--",
-                                "env",
-                                f"HOME={env.get('HOME', '')}",
-                                f"XDG_RUNTIME_DIR={env.get('XDG_RUNTIME_DIR', '')}",
-                            ]
-                            if env.get("PULSE_SINK"):
-                                sudo_cmd.append(f"PULSE_SINK={env['PULSE_SINK']}")
-                            cmd = sudo_cmd + cmd
+                    for cmd in command_variants:
                         proc = subprocess.Popen(
                             cmd,
                             stdin=subprocess.DEVNULL,
