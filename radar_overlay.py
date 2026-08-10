@@ -63,12 +63,35 @@ def _get_default_pulse_sink_name():
 def _get_desktop_audio_env():
     env = os.environ.copy()
     run_as_user = None
+    if os.geteuid() != 0:
+        return env, run_as_user
+    # Detect the real desktop user — supports both sudo and pkexec
     sudo_user = (env.get("SUDO_USER") or "").strip()
-    if os.geteuid() == 0 and sudo_user and sudo_user != "root":
+    if not sudo_user or sudo_user == "root":
+        # pkexec sets PKEXEC_UID instead of SUDO_USER
+        pkexec_uid = (env.get("PKEXEC_UID") or "").strip()
+        if pkexec_uid and pkexec_uid != "0":
+            try:
+                sudo_user = pwd.getpwuid(int(pkexec_uid)).pw_name
+            except Exception:
+                sudo_user = ""
+    if not sudo_user or sudo_user == "root":
+        # Last resort: find the user who owns uid 1000+ on this display
+        try:
+            for entry in pwd.getpwall():
+                if 1000 <= entry.pw_uid < 60000 and os.path.isdir(f"/run/user/{entry.pw_uid}"):
+                    sudo_user = entry.pw_name
+                    break
+        except Exception:
+            pass
+    if sudo_user and sudo_user != "root":
         try:
             pw = pwd.getpwnam(sudo_user)
+            uid = pw.pw_uid
             env["HOME"] = pw.pw_dir
-            env["XDG_RUNTIME_DIR"] = f"/run/user/{pw.pw_uid}"
+            env["XDG_RUNTIME_DIR"] = f"/run/user/{uid}"
+            env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path=/run/user/{uid}/bus"
+            env["PULSE_SERVER"] = f"unix:/run/user/{uid}/pulse/native"
             run_as_user = sudo_user
         except Exception:
             run_as_user = None
@@ -2714,7 +2737,20 @@ class ESPOverlay(QOpenGLWidget):
                     if aplay:
                         command_variants.append([aplay, "-q", sound_path])
 
-                    for cmd in command_variants:
+                    for base_cmd in command_variants:
+                        if run_as_user:
+                            xdg = env.get("XDG_RUNTIME_DIR", "")
+                            dbus = env.get("DBUS_SESSION_BUS_ADDRESS", "")
+                            pulse = env.get("PULSE_SERVER", "")
+                            cmd = [
+                                "sudo", "-u", run_as_user, "-n",
+                                "env",
+                                f"XDG_RUNTIME_DIR={xdg}",
+                                f"DBUS_SESSION_BUS_ADDRESS={dbus}",
+                                f"PULSE_SERVER={pulse}",
+                            ] + base_cmd
+                        else:
+                            cmd = base_cmd
                         proc = subprocess.Popen(
                             cmd,
                             stdin=subprocess.DEVNULL,
@@ -2769,7 +2805,7 @@ class ESPOverlay(QOpenGLWidget):
         else:
             return
         if u_ptr in self.air_alert_seen:
-            return
+            return  # normal dedup - no spam
         self.air_alert_seen[u_ptr] = curr_t
         self._play_alert_sound(sound_key, sound_path, curr_t)
 
@@ -3966,6 +4002,16 @@ class ESPOverlay(QOpenGLWidget):
                     if OFFSCREEN_AIR_INDICATOR_ONLY and overlay_is_air and indicator_alpha > 0.03:
                         draw_inline_air_overlay = False
 
+                    # 🔊 ต้องเรียกเสียงแจ้งเตือน ก่ อ N box validation
+                    # ไม่งั้นเครื่องบินนอกจอ (no valid box) จะข้ามไปเลย
+                    if (
+                        effective_my_team != 0
+                        and u_ptr != my_unit
+                        and not my_spawn_in_grace
+                        and ((not is_recon_drone) or self._is_recon_alert_ready(u_ptr, curr_t))
+                    ):
+                        self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
+
                     if not has_valid_box:
                         if overlay_is_air and DRAW_OFFSCREEN_AIR_INDICATOR:
                             # Air/Recon ที่อยู่นอกจอให้ indicator handle ต่อไป
@@ -4041,13 +4087,7 @@ class ESPOverlay(QOpenGLWidget):
                     debug_label_y = icon_y - CLASS_ICON_DEBUG_TEXT_GAP
                     overlay_debug_y = debug_label_y - UNIT_FAMILY_OVERLAY_DEBUG_GAP
 
-                    if (
-                        effective_my_team != 0
-                        and u_ptr != my_unit
-                        and not my_spawn_in_grace
-                        and ((not is_recon_drone) or self._is_recon_alert_ready(u_ptr, curr_t))
-                    ):
-                        self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
+                    # 🔊 (ย้ายขึ้นไปก่อน has_valid_box continue แล้ว)
 
                     # ========================================================
                     # 🚨 THREAT WARNING SYSTEM (แจ้งเตือนภัยคุกคาม)
