@@ -4194,6 +4194,25 @@ class ESPOverlay(QOpenGLWidget):
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
                     vel = pre_vel if (pre_vel and not physics_is_air) else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
+
+                    # ✈️ Air Speed display below bbox
+                    if overlay_is_air and vel and target_box_rect and (draw_inline_air_overlay):
+                        vx, vy, vz = vel
+                        speed_ms = math.sqrt(vx * vx + vy * vy + vz * vz)
+                        if speed_ms > 0.5:  # threshold to avoid jitter near zero
+                            speed_kmh = speed_ms * 3.6
+                            speed_text = f"{int(speed_kmh)} km/h"
+                            speed_w = fm.boundingRect(speed_text).width()
+                            speed_y = int(target_box_rect[3] + 14)  # below max_y of bbox
+                            _draw_outlined_text(
+                                painter,
+                                int(avg_x - speed_w / 2),
+                                speed_y,
+                                speed_text,
+                                QColor(*COLOR_TEXT_AIR),
+                                QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
+                                max(1, OUTLINE_OVERLAY_TEXT_PX),
+                            )
                     is_turning = False 
                     
                     if not vel or current_bullet_speed <= 0 or not my_pos or dist <= 10.0: continue
