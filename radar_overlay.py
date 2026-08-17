@@ -288,10 +288,6 @@ MAX_AIR_TARGET_DISTANCE = 28000.0
 ORIGIN_GHOST_RADIUS = 35.0
 ORIGIN_GHOST_MY_DIST_MIN = 250.0
 
-# 🎯 TURN BOOST: ตัวคูณช่วยดึงเป้าไปทางที่เลี้ยว
-# 1.0 = ปกติ (ตามที่ AI คำนวณ)
-# 1.15 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 15%
-# 1.30 = ดึงเป้าเผื่อเลี้ยวเพิ่มขึ้น 30%
 DEBUG_LOG_INTERVAL = 0.5
 INVALID_RUNTIME_FRAME_LIMIT = 20
 STARTUP_LOADING_GRACE_SECONDS = 20.0
@@ -436,6 +432,9 @@ DRAG_BAND_TRANSONIC_MIN = 0.78
 DRAG_BAND_TRANSONIC_MAX = 1.22
 DRAG_BAND_SUPERSONIC_MIN = 1.15
 DRAG_BAND_SUPERSONIC_MAX = 2.6
+DRAG_M0_TRANSONIC_MACH_LO = 0.85  # Mach ที่เริ่ม transonic drag rise สำหรับ model0_direct
+DRAG_M0_TRANSONIC_MACH_HI = 1.15  # Mach ที่ transonic drag rise เต็มที่
+DRAG_M0_TRANSONIC_PEAK = 0.22     # drag เพิ่มขึ้นสูงสุดกี่ % เมื่อเข้า transonic (0.22 = +22%)
 PROJECTILE_SIM_MAX_TIME = 12.0  # เพิ่มถ้าจะรองรับยิงไกลมาก
 PROJECTILE_SIM_MIN_SPEED = 25.0  # ต่ำลง = sim ต่อได้นานขึ้น
 PROJECTILE_SIM_DT_MIN = 0.003  # ลด = ละเอียดขึ้นแต่หนักขึ้น
@@ -2373,6 +2372,12 @@ def _drag_band_factor(model, speed):
                 (caliber_bias * BALLISTIC_MODEL0_SUBCAL_CALIBER_GAIN)
             )
             factor = max(BALLISTIC_MODEL0_SUBCAL_MIN, min(BALLISTIC_MODEL0_SUBCAL_MAX, factor))
+        # Transonic drag rise: กระสุนที่เข้าสู่ transonic regime (Mach 0.8–1.2)
+        # จะมี drag coefficient เพิ่มขึ้นมาก ทำให้ช้าลงเร็วกว่า linear
+        # สำคัญมากสำหรับ SPAA small-caliber ที่ระยะไกล
+        mach = speed / 343.0
+        transonic_rise = _smoothstep(DRAG_M0_TRANSONIC_MACH_LO, DRAG_M0_TRANSONIC_MACH_HI, mach)
+        factor *= (1.0 + DRAG_M0_TRANSONIC_PEAK * transonic_rise)
         return factor
     vel_lo = model["vel_lo"]
     vel_hi = model["vel_hi"]
