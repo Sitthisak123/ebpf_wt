@@ -3154,6 +3154,8 @@ class ESPOverlay(QOpenGLWidget):
 
         chosen_vel = raw_vel
         source = "raw"
+        raw_mag = math.sqrt(raw_vel[0]**2 + raw_vel[1]**2 + raw_vel[2]**2) if raw_vel else 0.0
+        pos_mag = math.sqrt(pos_vel[0]**2 + pos_vel[1]**2 + pos_vel[2]**2) if pos_vel else 0.0
 
         if is_air:
             # ✈️ AIR & HELI: ใช้ความเร็วจาก Physics ของเกม (raw_vel) 100% เสมอหากอ่านค่าได้
@@ -3168,8 +3170,8 @@ class ESPOverlay(QOpenGLWidget):
                 chosen_vel = raw_vel
                 source = "raw_air_default"
         else:
-            raw_mag = math.hypot(raw_vel[0], raw_vel[2])
-            pos_mag = math.hypot(pos_vel[0], pos_vel[2]) if pos_vel else 0.0
+            raw_mag_planar = math.hypot(raw_vel[0], raw_vel[2])
+            pos_mag_planar = math.hypot(pos_vel[0], pos_vel[2]) if pos_vel else 0.0
             max_jump = 12.0
 
             if pos_vel:
