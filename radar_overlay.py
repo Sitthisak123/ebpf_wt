@@ -287,7 +287,7 @@ DEBUG_AXIS_LENGTH_AIR = 8.0
 
 # 🚀 ROCKET CCIP OVERLAY FLAGS
 ENABLE_ROCKET_CCIP               = True   # Set to False to turn OFF Air-to-Ground Rocket CCIP
-ROCKET_CCIP_SMOOTHING_ALPHA      = 1.00   # Set to 1.0 (Raw instant/unfiltered) to eliminate movement lag
+ROCKET_CCIP_SMOOTHING_ALPHA      = 1   # Smoothing factor (1.0=instant/raw, 0.30=smooth EMA filtering)
 DEBUG_DRAW_ROCKET_TRAJECTORY     = True   # Draw 3D rocket flightpath arc line
 DEBUG_DRAW_ROCKET_LAUNCH_RAY    = True   # Draw 3D ray along launcher vector (rkt_fwd)
 DEBUG_DRAW_ROCKET_WORLD_VEL_ARROW = True  # Draw 3D arrow showing aircraft world velocity direction & magnitude
@@ -4680,27 +4680,31 @@ class ESPOverlay(QOpenGLWidget):
                                     (cos_p * cam_fwd[1]) + (sin_p * my_up[1]),
                                     (cos_p * cam_fwd[2]) + (sin_p * my_up[2]),
                                 )
-                                sim_res = _simulate_rocket_impact(
-                                    my_pos,
-                                    rkt_world_vel,
-                                    rkt_fwd_vec,
-                                    t_y,
-                                    burn_time=HELI_ROCKET_MOTOR_BURN_TIME,
-                                    motor_accel=HELI_ROCKET_MOTOR_ACCEL,
-                                    drag_k_hi=HELI_ROCKET_DRAG_K_HI,
-                                    drag_k_lo=HELI_ROCKET_DRAG_K_LO,
-                                    drag_v_lo=HELI_ROCKET_DRAG_V_LO,
-                                    drag_v_hi=HELI_ROCKET_DRAG_V_HI,
-                                    return_details=True,
-                                )
-                            else:
-                                sim_res = _simulate_rocket_impact(
-                                    my_pos,
-                                    rkt_world_vel,
-                                    cam_fwd,
-                                    t_y,
-                                    return_details=True,
-                                )
+
+                            # 🚀 ปรับทิศทาง Rocket Pod ให้ได้รับผลกระทบจากความเร็วพาหนะ (Velocity Influence Vector Blend)
+                            w_v_mag = math.sqrt(rkt_world_vx**2 + rkt_world_vy**2 + rkt_world_vz**2)
+                            if w_v_mag > 1.0:
+                                v_exit = 280.0  # Muzzle exit speed (m/s)
+                                eff_fx = (rkt_fwd_vec[0] * v_exit) + rkt_world_vx
+                                eff_fy = (rkt_fwd_vec[1] * v_exit) + rkt_world_vy
+                                eff_fz = (rkt_fwd_vec[2] * v_exit) + rkt_world_vz
+                                eff_len = math.sqrt(eff_fx**2 + eff_fy**2 + eff_fz**2)
+                                if eff_len > 1e-6:
+                                    rkt_fwd_vec = (eff_fx / eff_len, eff_fy / eff_len, eff_fz / eff_len)
+
+                            sim_res = _simulate_rocket_impact(
+                                my_pos,
+                                rkt_world_vel,
+                                rkt_fwd_vec,
+                                t_y,
+                                burn_time=HELI_ROCKET_MOTOR_BURN_TIME if my_is_heli else None,
+                                motor_accel=HELI_ROCKET_MOTOR_ACCEL if my_is_heli else None,
+                                drag_k_hi=HELI_ROCKET_DRAG_K_HI if my_is_heli else None,
+                                drag_k_lo=HELI_ROCKET_DRAG_K_LO if my_is_heli else None,
+                                drag_v_lo=HELI_ROCKET_DRAG_V_LO if my_is_heli else None,
+                                drag_v_hi=HELI_ROCKET_DRAG_V_HI if my_is_heli else None,
+                                return_details=True,
+                            )
 
                             rocket_impact_pos, rkt_path_pts, rkt_tof, rkt_max_speed = sim_res if sim_res else (None, [], 0.0, 0.0)
 
