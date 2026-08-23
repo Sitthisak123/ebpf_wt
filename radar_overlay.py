@@ -214,7 +214,7 @@ def _match_pragmatic_unit_family_code(family_tag, token):
 COLOR_INFO_TEXT                 = (255, 228, 64, 255)   
 COLOR_BARREL_LINE               = (0, 255, 0, 255)      
 COLOR_BOX_TARGET                = (255, 255, 0, 200)
-COLOR_BOX_SELECT_TARGET         = (255, 255, 0, 200)
+COLOR_BOX_SELECT_TARGET         = (255, 0, 255, 200)
 COLOR_BOX_MY_UNIT               = (80, 220, 255, 220)
 COLOR_TEXT_GROUND               = (255, 196, 20, 200)    
 COLOR_TEXT_AIR                  = (255, 196, 20, 230)   
@@ -287,6 +287,7 @@ DEBUG_AXIS_LENGTH_AIR = 8.0
 
 # 🚀 ROCKET CCIP OVERLAY FLAGS
 ENABLE_ROCKET_CCIP               = True   # Set to False to turn OFF Air-to-Ground Rocket CCIP
+ROCKET_CCIP_VEL_SCALE            = 1.9    # ตัวคูณผลกระทบ velocity ต่อ CCIP (1.0=raw, เพิ่มถ้า CCIP ไม่เบี่ยงพอ)
 DEBUG_DRAW_ROCKET_TRAJECTORY     = True   # Draw 3D rocket flightpath arc line
 DEBUG_DRAW_ROCKET_LAUNCH_RAY    = True   # Draw 3D ray along launcher vector (rkt_fwd)
 DEBUG_SHOW_ROCKET_TELEMETRY_HUD = True   # Show on-screen debug info box (Dist, TOF, Speed, Density)
@@ -2682,6 +2683,8 @@ class ESPOverlay(QOpenGLWidget):
         
         self.target_cycle_index = 0
         self.q_pressed_last = False
+        self.target_locked_ptr = 0       # 🔒 TAB-lock: ptr ของ target ที่ถูกล็อค (0=ไม่ล็อค)
+        self.tab_pressed_last = False    # 🔒 TAB debounce
         self.last_debug_log_time = 0.0
         self.console_initialized = False
         self.air_alert_seen = {}
@@ -3002,6 +3005,19 @@ class ESPOverlay(QOpenGLWidget):
             print(f"[CALIB] saved -> {CALIBRATION_SAVE_PATH}")
         except Exception as e:
             print(f"[CALIB] save failed: {e}")
+
+    def _handle_target_lock_toggle(self, active_target_ptr):
+        """TAB toggle: กด TAB เพื่อล็อค/ปลดล็อค active target"""
+        tab_now = self._keyboard_down("tab")
+        if tab_now and not self.tab_pressed_last:
+            if self.target_locked_ptr != 0:
+                # ปลดล็อค
+                self.target_locked_ptr = 0
+            else:
+                # ล็อคที่ target ปัจจุบัน
+                if active_target_ptr != 0:
+                    self.target_locked_ptr = active_target_ptr
+        self.tab_pressed_last = tab_now
 
     def _handle_compare_visibility_toggle(self):
         if not DEBUG_COMPARE_DYNAMIC_GEOMETRY:
@@ -3771,7 +3787,23 @@ class ESPOverlay(QOpenGLWidget):
             ground_leadmark_allow_ptrs = None
             if visible_targets:
                 visible_targets.sort(key=lambda item: item[0])
-                active_target_ptr = visible_targets[0][1]
+                auto_target_ptr = visible_targets[0][1]
+
+                # 🔒 TAB-Lock: ถ้าล็อคอยู่ ตรวจว่า locked target ยังอยู่ใน visible list ไหม
+                if self.target_locked_ptr != 0:
+                    locked_still_visible = any(vt[1] == self.target_locked_ptr for vt in visible_targets)
+                    if locked_still_visible:
+                        active_target_ptr = self.target_locked_ptr
+                    else:
+                        # target หายจากหน้าจอ → ปลดล็อค
+                        self.target_locked_ptr = 0
+                        active_target_ptr = auto_target_ptr
+                else:
+                    active_target_ptr = auto_target_ptr
+
+                # Handle TAB toggle
+                self._handle_target_lock_toggle(active_target_ptr)
+
                 if GROUND_LEADMARK_TOP_N > 0:
                     ordered_ground = [
                         u_ptr
@@ -3781,6 +3813,7 @@ class ESPOverlay(QOpenGLWidget):
                     ground_leadmark_allow_ptrs = set(ordered_ground[:GROUND_LEADMARK_TOP_N])
             else:
                 self.target_cycle_index = 0
+                self.target_locked_ptr = 0  # ไม่มี target เลย → ปลดล็อค
 
             # ========================================================
             # 🧠 AI EVALUATION STEP (ประเมินผล 6 สมมติฐาน)
@@ -4578,6 +4611,10 @@ class ESPOverlay(QOpenGLWidget):
                             my_fwd = (my_rot[0], my_rot[1], my_rot[2])
                             my_up = (my_rot[3], my_rot[4], my_rot[5])
 
+                            # 🔄 Scale velocity สำหรับ CCIP — เพิ่มผลกระทบจาก Moving Velocity
+                            # Raw velocity ทิศทางถูกแล้ว แต่ in-game rocket ได้รับผลจาก vel มากกว่า sim
+                            rkt_vel = (my_vx * ROCKET_CCIP_VEL_SCALE, my_vy * ROCKET_CCIP_VEL_SCALE, my_vz * ROCKET_CCIP_VEL_SCALE)
+
                             # 🚁 เช็คว่าเป็นเฮลิคอปเตอร์หรือไม่ (Robust Helicopter Detection)
                             my_is_heli = False
                             if my_unit:
@@ -4609,7 +4646,7 @@ class ESPOverlay(QOpenGLWidget):
                                 )
                                 sim_res = _simulate_rocket_impact(
                                     my_pos,
-                                    (my_vx, my_vy, my_vz),
+                                    rkt_vel,
                                     rkt_fwd_vec,
                                     t_y,
                                     burn_time=HELI_ROCKET_MOTOR_BURN_TIME,
@@ -4623,7 +4660,7 @@ class ESPOverlay(QOpenGLWidget):
                             else:
                                 sim_res = _simulate_rocket_impact(
                                     my_pos,
-                                    (my_vx, my_vy, my_vz),
+                                    rkt_vel,
                                     my_fwd,
                                     t_y,
                                     return_details=True,
@@ -4792,7 +4829,8 @@ class ESPOverlay(QOpenGLWidget):
                         out += f"🟢 [MY UNIT]  : {hex(my_unit)}\n"
                         out += f"🚀 Velocity   : {my_speed:>6.1f} km/h | V:({my_vx:>6.2f}, {my_vy:>6.2f}, {my_vz:>6.2f}) | SRC:{my_vel_source}\n"
                         out += "-" * 64 + "\n"
-                        out += f"🎯 [TARGET]   : {clean_name.upper()} {'[LOCKED]':>35}\n"
+                        lock_label = '[🔒 LOCKED]' if self.target_locked_ptr != 0 else '[AUTO]'
+                        out += f"🎯 [TARGET]   : {clean_name.upper()} {lock_label:>35}\n"
                         out += f"🧷 Ptr/Off    : UNIT:{hex(u_ptr)} | INFO:{hex(info_ptr) if info_ptr else '0x0'} | MOV:{hex(mov_ptr) if mov_ptr else '0x0'} @ {hex(mov_off)}\n"
                         
                         # 🧬 [DNA] ดึงและแสดงข้อมูลเชิงลึก
