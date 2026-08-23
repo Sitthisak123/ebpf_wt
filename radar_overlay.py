@@ -214,7 +214,7 @@ def _match_pragmatic_unit_family_code(family_tag, token):
 COLOR_INFO_TEXT                 = (255, 228, 64, 255)   
 COLOR_BARREL_LINE               = (0, 255, 0, 255)      
 COLOR_BOX_TARGET                = (255, 255, 0, 200)
-COLOR_BOX_SELECT_TARGET         = (255, 0, 255, 200)
+COLOR_BOX_SELECT_TARGET         = (255, 255, 0, 255)
 COLOR_BOX_MY_UNIT               = (80, 220, 255, 220)
 COLOR_TEXT_GROUND               = (255, 196, 20, 200)    
 COLOR_TEXT_AIR                  = (255, 196, 20, 230)   
@@ -287,7 +287,7 @@ DEBUG_AXIS_LENGTH_AIR = 8.0
 
 # 🚀 ROCKET CCIP OVERLAY FLAGS
 ENABLE_ROCKET_CCIP               = True   # Set to False to turn OFF Air-to-Ground Rocket CCIP
-ROCKET_CCIP_SMOOTHING_ALPHA      = 1   # Smoothing factor (1.0=instant/raw, 0.30=smooth EMA filtering)
+ROCKET_CCIP_SMOOTHING_ALPHA      = 0.3   # Smoothing factor (1.0=instant/raw, 0.30=smooth EMA filtering)
 DEBUG_DRAW_ROCKET_TRAJECTORY     = True   # Draw 3D rocket flightpath arc line
 DEBUG_DRAW_ROCKET_LAUNCH_RAY    = False   # Draw 3D ray along launcher vector (rkt_fwd)
 DEBUG_DRAW_ROCKET_WORLD_VEL_ARROW = False  # Draw 3D arrow showing aircraft world velocity direction & magnitude
@@ -3878,6 +3878,7 @@ class ESPOverlay(QOpenGLWidget):
             
             active_sniper_data = None
 
+            locked_ground_target_y = None
             for (
                 u_ptr,
                 raw_name,
@@ -4466,6 +4467,8 @@ class ESPOverlay(QOpenGLWidget):
                         if not ground_aim_point:
                             continue
                         t_x, t_y, t_z = ground_aim_point
+                        if u_ptr == active_target_ptr:
+                            locked_ground_target_y = t_y
 
                     process_ground_leadmark = (
                         physics_is_air or
@@ -4590,293 +4593,7 @@ class ESPOverlay(QOpenGLWidget):
                     final_y -= (my_vy * best_t)
                     final_z -= (my_vz * best_t)
 
-                    # 🎯 วางตรงนี้ครับท่านนายพล! (ตรวจสอบเงื่อนไข CCIP)
-                    # =========================================================
-                    # 💣 AIR-TO-GROUND BOMB CCIP (จุดตกกระทบระเบิด)
-                    # =========================================================
-                    if my_is_air and u_ptr == active_target_ptr and not is_air_target:
-                        # ใช้ความสูงเป้าหมาย (t_y) เป็นพื้นดินอ้างอิง
-                        bomb_impact_pos = _simulate_bomb_impact(
-                            my_pos,
-                            (my_vx, my_vy, my_vz),
-                            t_y,
-                            drag_k=BOMB_CCIP_DRAG_K,
-                        )
-                        
-                        if bomb_impact_pos:
-                            bomb_screen = world_to_screen(
-                                view_matrix,
-                                bomb_impact_pos[0],
-                                bomb_impact_pos[1],
-                                bomb_impact_pos[2],
-                                self.screen_width,
-                                self.screen_height,
-                            )
-                            
-                            bomb_pts = _screen_int_tuple(bomb_screen[0], bomb_screen[1]) if bomb_screen and bomb_screen[2] > 0 else None
-                            if bomb_pts:
-                                b_sx, b_sy = bomb_pts
-                                
-                                ccip_color = QColor(*COLOR_CCIP_TARGET)
-                                painter.setPen(QPen(ccip_color, 2))
-                                painter.setBrush(Qt.NoBrush)
-                                
-                                radius = 75
-                                painter.drawEllipse(b_sx - radius, b_sy - radius, radius * 2, radius * 2)
-                                painter.drawLine(b_sx, b_sy - radius, b_sx, b_sy + radius)
-                                painter.drawLine(b_sx - radius, b_sy, b_sx + radius, b_sy)
-                                
-                                painter.setBrush(ccip_color)
-                                painter.drawEllipse(b_sx - 2, b_sy - 2, 4, 4)
 
-                        # =========================================================
-                        # 🚀 AIR-TO-GROUND ROCKET CCIP (จุดตก rocket)
-                        # =========================================================
-                        if ENABLE_ROCKET_CCIP:
-                            my_fwd = (my_rot[0], my_rot[1], my_rot[2])
-                            my_up = (my_rot[3], my_rot[4], my_rot[5])
-
-                            # 🚀 จากการสแกนสด 100% Candidate #10 (0x0D28->0x0068 / 0x0D10->0x0068) 
-                            # เป็น 3D World Space Velocity อยู่แล้วแบบ 0.0° Error!
-                            # ใช้ my_vel ได้โดยตรงโดยไม่ต้องแปลงผ่าน rotation matrix
-                            rkt_world_vel = my_vel
-                            rkt_world_vx, rkt_world_vy, rkt_world_vz = my_vel
-
-                            # 🚁 เช็คว่าเป็นเฮลิคอปเตอร์หรือไม่ (Robust Helicopter Detection)
-                            my_is_heli = False
-                            if my_unit:
-                                my_profile = get_unit_filter_profile(self.scanner, my_unit)
-                                token_str = " ".join(str(v) for v in my_profile.values()).lower()
-                                if any(k in token_str for k in (
-                                    "helicopter", "heli", "exp_helicopter",
-                                    "uh_1", "ah_1", "ah_64", "mi_24", "mi_28", "ka_50", "ka_52",
-                                    "bo_105", "tiger", "lynx", "gynx", "eurocopter", "alouette", "scout", "wasp", "z_10", "z_19"
-                                )):
-                                    my_is_heli = True
-                                elif my_is_air and ("rotary" in token_str or "rotor" in token_str):
-                                    my_is_heli = True
-                                elif my_is_air:
-                                    # Fallback for air units: default to heli pitch offset if moving slow < 80 m/s
-                                    heli_speed_check = math.sqrt(my_vx*my_vx + my_vy*my_vy + my_vz*my_vz)
-                                    if heli_speed_check < 80.0:
-                                        my_is_heli = True
-
-                            # 🎥 ดึง Camera Forward Vector (ทิศทางสายตากล้อง/ศูนย์เล็งจริง) จาก view_matrix
-                            # ป้องกันปัญหา Helicopter Pitch Parallax (ตัวลำก้มหัวขณะบินเร็ว แต่สายตากล้องมองไปที่เป้าหมาย)
-                            cam_fwd = my_fwd
-                            if view_matrix and len(view_matrix) >= 16:
-                                cfx, cfy, cfz = view_matrix[2], view_matrix[6], view_matrix[10]
-                                c_len = math.sqrt(cfx*cfx + cfy*cfy + cfz*cfz)
-                                if c_len > 1e-6:
-                                    cam_fwd = (cfx / c_len, cfy / c_len, cfz / c_len)
-
-                            rkt_fwd_vec = cam_fwd
-                            if my_is_heli:
-                                # 📐 Helicopter Rocket Launcher Pitch Offset:
-                                pitch_rad = math.radians(HELI_ROCKET_LAUNCHER_PITCH_OFFSET_DEG)
-                                cos_p, sin_p = math.cos(pitch_rad), math.sin(pitch_rad)
-                                rkt_fwd_vec = (
-                                    (cos_p * cam_fwd[0]) + (sin_p * my_up[0]),
-                                    (cos_p * cam_fwd[1]) + (sin_p * my_up[1]),
-                                    (cos_p * cam_fwd[2]) + (sin_p * my_up[2]),
-                                )
-
-                            # 🚀 ปรับทิศทาง Rocket Pod ให้ได้รับผลกระทบจากความเร็วพาหนะ (Velocity Influence Vector Blend)
-                            w_v_mag = math.sqrt(rkt_world_vx**2 + rkt_world_vy**2 + rkt_world_vz**2)
-                            if w_v_mag > 1.0:
-                                v_exit = 255.0  # Perfect Muzzle exit speed (m/s) for 0.0% Error match
-                                eff_fx = (rkt_fwd_vec[0] * v_exit) + rkt_world_vx
-                                eff_fy = (rkt_fwd_vec[1] * v_exit) + rkt_world_vy
-                                eff_fz = (rkt_fwd_vec[2] * v_exit) + rkt_world_vz
-                                eff_len = math.sqrt(eff_fx**2 + eff_fy**2 + eff_fz**2)
-                                if eff_len > 1e-6:
-                                    rkt_fwd_vec = (eff_fx / eff_len, eff_fy / eff_len, eff_fz / eff_len)
-
-                            sim_res = _simulate_rocket_impact(
-                                my_pos,
-                                rkt_world_vel,
-                                rkt_fwd_vec,
-                                t_y,
-                                burn_time=HELI_ROCKET_MOTOR_BURN_TIME if my_is_heli else None,
-                                motor_accel=HELI_ROCKET_MOTOR_ACCEL if my_is_heli else None,
-                                drag_k_hi=HELI_ROCKET_DRAG_K_HI if my_is_heli else None,
-                                drag_k_lo=HELI_ROCKET_DRAG_K_LO if my_is_heli else None,
-                                drag_v_lo=HELI_ROCKET_DRAG_V_LO if my_is_heli else None,
-                                drag_v_hi=HELI_ROCKET_DRAG_V_HI if my_is_heli else None,
-                                return_details=True,
-                            )
-
-                            rocket_impact_pos, rkt_path_pts, rkt_tof, rkt_max_speed = sim_res if sim_res else (None, [], 0.0, 0.0)
-
-                            if rocket_impact_pos:
-                                # 🌊 Smooth 3D CCIP Impact Position (EMA filter) เพื่อให้นุ่มนวลเหมือน HUD ในเกม
-                                if self.last_rocket_impact_pos is None or ROCKET_CCIP_SMOOTHING_ALPHA >= 1.0:
-                                    self.last_rocket_impact_pos = rocket_impact_pos
-                                else:
-                                    alpha = max(0.01, min(1.0, ROCKET_CCIP_SMOOTHING_ALPHA))
-                                    self.last_rocket_impact_pos = (
-                                        self.last_rocket_impact_pos[0] * (1.0 - alpha) + rocket_impact_pos[0] * alpha,
-                                        self.last_rocket_impact_pos[1] * (1.0 - alpha) + rocket_impact_pos[1] * alpha,
-                                        self.last_rocket_impact_pos[2] * (1.0 - alpha) + rocket_impact_pos[2] * alpha,
-                                    )
-                                draw_impact_pos = self.last_rocket_impact_pos
-
-                                rkt_screen = world_to_screen(
-                                    view_matrix,
-                                    draw_impact_pos[0],
-                                    draw_impact_pos[1],
-                                    draw_impact_pos[2],
-                                    self.screen_width,
-                                    self.screen_height,
-                                )
-                                # 🟡 DEBUG OVERLAY: 3D Rocket Launch Vector Ray
-                                if DEBUG_DRAW_ROCKET_LAUNCH_RAY and rkt_fwd_vec:
-                                    ray_len = 50.0
-                                    ray_end_3d = (
-                                        my_pos[0] + (rkt_fwd_vec[0] * ray_len),
-                                        my_pos[1] + (rkt_fwd_vec[1] * ray_len),
-                                        my_pos[2] + (rkt_fwd_vec[2] * ray_len),
-                                    )
-                                    scr_start = world_to_screen(view_matrix, my_pos[0], my_pos[1], my_pos[2], self.screen_width, self.screen_height)
-                                    scr_end = world_to_screen(view_matrix, ray_end_3d[0], ray_end_3d[1], ray_end_3d[2], self.screen_width, self.screen_height)
-                                    if scr_start and scr_end and scr_start[2] > 0 and scr_end[2] > 0:
-                                        ray_pts = _screen_int_tuple(scr_start[0], scr_start[1], scr_end[0], scr_end[1])
-                                        if ray_pts:
-                                            painter.setPen(QPen(QColor(*COLOR_DEBUG_ROCKET_RAY), 2, Qt.DashLine))
-                                            painter.drawLine(*ray_pts)
-
-                                # 🩵 DEBUG OVERLAY: 3D World Velocity Vector Arrow (ทิศทางความเร็วโลก)
-                                if DEBUG_DRAW_ROCKET_WORLD_VEL_ARROW:
-                                    w_v_mag = math.sqrt(rkt_world_vx**2 + rkt_world_vy**2 + rkt_world_vz**2)
-                                    if w_v_mag > 0.5:
-                                        # ความยาวลูกศรแปรผันตามความเร็ว (Scale 0.35m ต่อ 1m/s, max 35m)
-                                        arrow_len_3d = min(35.0, max(5.0, w_v_mag * 0.35))
-                                        w_vx_norm = rkt_world_vx / w_v_mag
-                                        w_vy_norm = rkt_world_vy / w_v_mag
-                                        w_vz_norm = rkt_world_vz / w_v_mag
-
-                                        vel_end_3d = (
-                                            my_pos[0] + (w_vx_norm * arrow_len_3d),
-                                            my_pos[1] + (w_vy_norm * arrow_len_3d),
-                                            my_pos[2] + (w_vz_norm * arrow_len_3d),
-                                        )
-
-                                        v_scr_start = world_to_screen(view_matrix, my_pos[0], my_pos[1], my_pos[2], self.screen_width, self.screen_height)
-                                        v_scr_end = world_to_screen(view_matrix, vel_end_3d[0], vel_end_3d[1], vel_end_3d[2], self.screen_width, self.screen_height)
-
-                                        if v_scr_start and v_scr_end and v_scr_start[2] > 0 and v_scr_end[2] > 0:
-                                            v_pts = _screen_int_tuple(v_scr_start[0], v_scr_start[1], v_scr_end[0], v_scr_end[1])
-                                            if v_pts:
-                                                x1, y1, x2, y2 = v_pts
-                                                arrow_pen = QPen(QColor(*COLOR_DEBUG_ROCKET_VEL_ARROW), 3, Qt.SolidLine)
-                                                painter.setPen(arrow_pen)
-                                                painter.drawLine(x1, y1, x2, y2)
-
-                                                # วาดหัวลูกศร (Arrowhead 2D)
-                                                angle = math.atan2(y2 - y1, x2 - x1)
-                                                arrow_size = 10
-                                                head_p1_x = int(x2 - arrow_size * math.cos(angle - math.pi / 6))
-                                                head_p1_y = int(y2 - arrow_size * math.sin(angle - math.pi / 6))
-                                                head_p2_x = int(x2 - arrow_size * math.cos(angle + math.pi / 6))
-                                                head_p2_y = int(y2 - arrow_size * math.sin(angle + math.pi / 6))
-
-                                                painter.drawLine(x2, y2, head_p1_x, head_p1_y)
-                                                painter.drawLine(x2, y2, head_p2_x, head_p2_y)
-
-                                                # ตัวหนังสือบอกความเร็ว World Speed ข้างหัวลูกศร
-                                                font = painter.font()
-                                                font.setPixelSize(10)
-                                                font.setBold(True)
-                                                painter.setFont(font)
-                                                painter.setPen(QPen(QColor(*COLOR_DEBUG_ROCKET_VEL_ARROW)))
-                                                painter.drawText(x2 + 8, y2 + 4, f"W-VEL: {w_v_mag*3.6:.0f}km/h")
-
-                                # 🟠 DEBUG OVERLAY: 3D Rocket Trajectory Arc Line (EMA Smoothed)
-                                if DEBUG_DRAW_ROCKET_TRAJECTORY and len(rkt_path_pts) > 1:
-                                    if (self.last_rkt_path_pts is None 
-                                        or len(self.last_rkt_path_pts) != len(rkt_path_pts) 
-                                        or ROCKET_CCIP_SMOOTHING_ALPHA >= 1.0):
-                                        self.last_rkt_path_pts = rkt_path_pts
-                                    else:
-                                        alpha = max(0.01, min(1.0, ROCKET_CCIP_SMOOTHING_ALPHA))
-                                        smoothed_pts = []
-                                        for old_p, new_p in zip(self.last_rkt_path_pts, rkt_path_pts):
-                                            sm_p = (
-                                                old_p[0] * (1.0 - alpha) + new_p[0] * alpha,
-                                                old_p[1] * (1.0 - alpha) + new_p[1] * alpha,
-                                                old_p[2] * (1.0 - alpha) + new_p[2] * alpha,
-                                            )
-                                            smoothed_pts.append(sm_p)
-                                        self.last_rkt_path_pts = smoothed_pts
-
-                                    draw_path_pts = self.last_rkt_path_pts
-                                    arc_pen = QPen(QColor(*COLOR_DEBUG_ROCKET_TRAJECTORY), 2, Qt.DotLine)
-                                    painter.setPen(arc_pen)
-                                    prev_scr_pt = None
-                                    for p_idx, pt in enumerate(draw_path_pts):
-                                        if p_idx % 2 != 0 and p_idx != len(draw_path_pts) - 1:
-                                            continue  # Step sampling for smooth performance
-                                        p_scr = world_to_screen(view_matrix, pt[0], pt[1], pt[2], self.screen_width, self.screen_height)
-                                        if p_scr and p_scr[2] > 0:
-                                            if prev_scr_pt:
-                                                painter.drawLine(int(prev_scr_pt[0]), int(prev_scr_pt[1]), int(p_scr[0]), int(p_scr[1]))
-                                            prev_scr_pt = p_scr
-                                        else:
-                                            prev_scr_pt = None
-
-                                rkt_pts = _screen_int_tuple(rkt_screen[0], rkt_screen[1]) if rkt_screen and rkt_screen[2] > 0 else None
-                                if rkt_pts:
-                                    r_sx, r_sy = rkt_pts
-
-                                    rkt_color = QColor(*COLOR_ROCKET_CCIP)
-                                    painter.setPen(QPen(rkt_color, 2))
-                                    painter.setBrush(Qt.NoBrush)
-
-                                    rkt_r = ROCKET_CCIP_RETICLE_RADIUS
-                                    painter.drawEllipse(r_sx - rkt_r, r_sy - rkt_r, rkt_r * 2, rkt_r * 2)
-                                    # กากบาทแบบ diamond (หมุน 45°)
-                                    d = int(rkt_r * 0.7)
-                                    painter.drawLine(r_sx, r_sy - d, r_sx + d, r_sy)
-                                    painter.drawLine(r_sx + d, r_sy, r_sx, r_sy + d)
-                                    # 📊 DEBUG OVERLAY: On-Screen Rocket Telemetry HUD Box
-                                    if DEBUG_SHOW_ROCKET_TELEMETRY_HUD:
-                                        rkt_dist = math.dist(my_pos, rocket_impact_pos)
-                                        heli_speed_kmh = (math.sqrt(my_vx*my_vx + my_vy*my_vy + my_vz*my_vz)) * 3.6
-                                        rho_rel = _air_density_from_altitude(my_pos[1]) / 1.225
-
-                                        hud_lines = [
-                                            f"🚀 ROCKET CCIP {'[HELI]' if my_is_heli else '[AIR]'}",
-                                            f"Dist: {rkt_dist:.0f} m | TOF: {rkt_tof:.2f} s",
-                                            f"Body Vel : ({my_vx:.1f}, {my_vy:.1f}, {my_vz:.1f}) {heli_speed_kmh:.0f}km/h",
-                                            f"World Vel: ({rkt_world_vx:.1f}, {rkt_world_vy:.1f}, {rkt_world_vz:.1f})",
-                                            f"Tilt: {HELI_ROCKET_LAUNCHER_PITCH_OFFSET_DEG:.1f}° | ρ: {rho_rel:.2f}",
-                                        ]
-
-                                        hud_x = r_sx + rkt_r + 12
-                                        hud_y = r_sy - 30
-                                        hud_w = 265
-                                        hud_h = len(hud_lines) * 16 + 10
-
-                                        # Draw translucent background panel
-                                        painter.setPen(Qt.NoPen)
-                                        painter.setBrush(QBrush(QColor(15, 20, 30, 200)))
-                                        painter.drawRoundedRect(hud_x, hud_y, hud_w, hud_h, 6, 6)
-                                        painter.setPen(QPen(QColor(255, 140, 0, 230), 1))
-                                        painter.drawRoundedRect(hud_x, hud_y, hud_w, hud_h, 6, 6)
-
-                                        # Draw text lines
-                                        font = painter.font()
-                                        font.setPixelSize(11)
-                                        font.setBold(True)
-                                        painter.setFont(font)
-                                        for line_i, line_text in enumerate(hud_lines):
-                                            painter.drawText(hud_x + 8, hud_y + 16 + (line_i * 16), line_text)
-
-                                    painter.setBrush(rkt_color)
-                                    painter.drawEllipse(r_sx - 3, r_sy - 3, 6, 6)
-                            else:
-                                self.last_rocket_impact_pos = None
-                                self.last_rkt_path_pts = None
 
                     leadmark_min_tof_ok = (
                         physics_is_air
@@ -5312,7 +5029,261 @@ class ESPOverlay(QOpenGLWidget):
                 except Exception as e:
                     if "NaN" not in str(e):
                         print(f"Main processing error: {e}")
-                    pass
+            # =========================================================
+            # 💣 & 🚀 AIR-TO-GROUND CCIP (BOMB & ROCKET SIMULATION)
+            # =========================================================
+            if my_is_air and my_pos:
+                # 🎯 ใช้ความสูงเป้าหมายที่ล็อคไว้ (ถ้ามี) หรือใช้ 0.0 (ระดับน้ำทะเล) หากไม่ได้ล็อคเป้าหมาย
+                target_ground_y = locked_ground_target_y if locked_ground_target_y is not None else 0.0
+
+                # 💣 AIR-TO-GROUND BOMB CCIP
+                bomb_impact_pos = _simulate_bomb_impact(
+                    my_pos,
+                    (my_vx, my_vy, my_vz),
+                    target_ground_y,
+                    drag_k=BOMB_CCIP_DRAG_K,
+                )
+                if bomb_impact_pos:
+                    bomb_screen = world_to_screen(
+                        view_matrix,
+                        bomb_impact_pos[0],
+                        bomb_impact_pos[1],
+                        bomb_impact_pos[2],
+                        self.screen_width,
+                        self.screen_height,
+                    )
+                    bomb_pts = _screen_int_tuple(bomb_screen[0], bomb_screen[1]) if bomb_screen and bomb_screen[2] > 0 else None
+                    if bomb_pts:
+                        b_sx, b_sy = bomb_pts
+                        ccip_color = QColor(*COLOR_CCIP_TARGET)
+                        painter.setPen(QPen(ccip_color, 2))
+                        painter.setBrush(Qt.NoBrush)
+                        radius = 75
+                        painter.drawEllipse(b_sx - radius, b_sy - radius, radius * 2, radius * 2)
+                        painter.drawLine(b_sx, b_sy - radius, b_sx, b_sy + radius)
+                        painter.drawLine(b_sx - radius, b_sy, b_sx + radius, b_sy)
+                        painter.setBrush(ccip_color)
+                        painter.drawEllipse(b_sx - 2, b_sy - 2, 4, 4)
+
+                # 🚀 AIR-TO-GROUND ROCKET CCIP
+                if ENABLE_ROCKET_CCIP:
+                    my_rot = get_unit_rotation(self.scanner, my_unit) if my_unit else None
+                    if not my_rot:
+                        my_rot = (1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0)
+                    my_fwd = (my_rot[0], my_rot[1], my_rot[2])
+                    my_up = (my_rot[3], my_rot[4], my_rot[5])
+
+                    rkt_world_vel = my_vel
+                    rkt_world_vx, rkt_world_vy, rkt_world_vz = my_vel
+
+                    my_is_heli = False
+                    if my_unit:
+                        my_profile = get_unit_filter_profile(self.scanner, my_unit)
+                        token_str = " ".join(str(v) for v in my_profile.values()).lower()
+                        if any(k in token_str for k in (
+                            "helicopter", "heli", "exp_helicopter",
+                            "uh_1", "ah_1", "ah_64", "mi_24", "mi_28", "ka_50", "ka_52",
+                            "bo_105", "tiger", "lynx", "gynx", "eurocopter", "alouette", "scout", "wasp", "z_10", "z_19"
+                        )):
+                            my_is_heli = True
+                        elif my_is_air and ("rotary" in token_str or "rotor" in token_str):
+                            my_is_heli = True
+                        elif my_is_air:
+                            heli_speed_check = math.sqrt(my_vx*my_vx + my_vy*my_vy + my_vz*my_vz)
+                            if heli_speed_check < 80.0:
+                                my_is_heli = True
+
+                    cam_fwd = my_fwd
+                    if view_matrix and len(view_matrix) >= 16:
+                        cfx, cfy, cfz = view_matrix[2], view_matrix[6], view_matrix[10]
+                        c_len = math.sqrt(cfx*cfx + cfy*cfy + cfz*cfz)
+                        if c_len > 1e-6:
+                            cam_fwd = (cfx / c_len, cfy / c_len, cfz / c_len)
+
+                    rkt_fwd_vec = cam_fwd
+                    if my_is_heli:
+                        pitch_rad = math.radians(HELI_ROCKET_LAUNCHER_PITCH_OFFSET_DEG)
+                        cos_p, sin_p = math.cos(pitch_rad), math.sin(pitch_rad)
+                        rkt_fwd_vec = (
+                            (cos_p * cam_fwd[0]) + (sin_p * my_up[0]),
+                            (cos_p * cam_fwd[1]) + (sin_p * my_up[1]),
+                            (cos_p * cam_fwd[2]) + (sin_p * my_up[2]),
+                        )
+
+                    w_v_mag = math.sqrt(rkt_world_vx**2 + rkt_world_vy**2 + rkt_world_vz**2)
+                    if w_v_mag > 1.0:
+                        v_exit = 255.0
+                        eff_fx = (rkt_fwd_vec[0] * v_exit) + rkt_world_vx
+                        eff_fy = (rkt_fwd_vec[1] * v_exit) + rkt_world_vy
+                        eff_fz = (rkt_fwd_vec[2] * v_exit) + rkt_world_vz
+                        eff_len = math.sqrt(eff_fx**2 + eff_fy**2 + eff_fz**2)
+                        if eff_len > 1e-6:
+                            rkt_fwd_vec = (eff_fx / eff_len, eff_fy / eff_len, eff_fz / eff_len)
+
+                    sim_res = _simulate_rocket_impact(
+                        my_pos,
+                        rkt_world_vel,
+                        rkt_fwd_vec,
+                        target_ground_y,
+                        burn_time=HELI_ROCKET_MOTOR_BURN_TIME if my_is_heli else None,
+                        motor_accel=HELI_ROCKET_MOTOR_ACCEL if my_is_heli else None,
+                        drag_k_hi=HELI_ROCKET_DRAG_K_HI if my_is_heli else None,
+                        drag_k_lo=HELI_ROCKET_DRAG_K_LO if my_is_heli else None,
+                        drag_v_lo=HELI_ROCKET_DRAG_V_LO if my_is_heli else None,
+                        drag_v_hi=HELI_ROCKET_DRAG_V_HI if my_is_heli else None,
+                        return_details=True,
+                    )
+
+                    rocket_impact_pos, rkt_path_pts, rkt_tof, rkt_max_speed = sim_res if sim_res else (None, [], 0.0, 0.0)
+
+                    if rocket_impact_pos:
+                        if self.last_rocket_impact_pos is None or ROCKET_CCIP_SMOOTHING_ALPHA >= 1.0:
+                            self.last_rocket_impact_pos = rocket_impact_pos
+                        else:
+                            alpha = max(0.01, min(1.0, ROCKET_CCIP_SMOOTHING_ALPHA))
+                            self.last_rocket_impact_pos = (
+                                self.last_rocket_impact_pos[0] * (1.0 - alpha) + rocket_impact_pos[0] * alpha,
+                                self.last_rocket_impact_pos[1] * (1.0 - alpha) + rocket_impact_pos[1] * alpha,
+                                self.last_rocket_impact_pos[2] * (1.0 - alpha) + rocket_impact_pos[2] * alpha,
+                            )
+                        draw_impact_pos = self.last_rocket_impact_pos
+
+                        rkt_screen = world_to_screen(
+                            view_matrix,
+                            draw_impact_pos[0],
+                            draw_impact_pos[1],
+                            draw_impact_pos[2],
+                            self.screen_width,
+                            self.screen_height,
+                        )
+
+                        if DEBUG_DRAW_ROCKET_LAUNCH_RAY and rkt_fwd_vec:
+                            ray_len = 50.0
+                            ray_end_3d = (
+                                my_pos[0] + (rkt_fwd_vec[0] * ray_len),
+                                my_pos[1] + (rkt_fwd_vec[1] * ray_len),
+                                my_pos[2] + (rkt_fwd_vec[2] * ray_len),
+                            )
+                            scr_start = world_to_screen(view_matrix, my_pos[0], my_pos[1], my_pos[2], self.screen_width, self.screen_height)
+                            scr_end = world_to_screen(view_matrix, ray_end_3d[0], ray_end_3d[1], ray_end_3d[2], self.screen_width, self.screen_height)
+                            if scr_start and scr_end and scr_start[2] > 0 and scr_end[2] > 0:
+                                ray_pts = _screen_int_tuple(scr_start[0], scr_start[1], scr_end[0], scr_end[1])
+                                if ray_pts:
+                                    painter.setPen(QPen(QColor(*COLOR_DEBUG_ROCKET_RAY), 2, Qt.DashLine))
+                                    painter.drawLine(*ray_pts)
+
+                        if DEBUG_DRAW_ROCKET_WORLD_VEL_ARROW:
+                            w_v_mag = math.sqrt(rkt_world_vx**2 + rkt_world_vy**2 + rkt_world_vz**2)
+                            if w_v_mag > 0.5:
+                                arrow_len_3d = min(35.0, max(5.0, w_v_mag * 0.35))
+                                w_vx_norm = rkt_world_vx / w_v_mag
+                                w_vy_norm = rkt_world_vy / w_v_mag
+                                w_vz_norm = rkt_world_vz / w_v_mag
+                                vel_end_3d = (
+                                    my_pos[0] + (w_vx_norm * arrow_len_3d),
+                                    my_pos[1] + (w_vy_norm * arrow_len_3d),
+                                    my_pos[2] + (w_vz_norm * arrow_len_3d),
+                                )
+                                v_scr_start = world_to_screen(view_matrix, my_pos[0], my_pos[1], my_pos[2], self.screen_width, self.screen_height)
+                                v_scr_end = world_to_screen(view_matrix, vel_end_3d[0], vel_end_3d[1], vel_end_3d[2], self.screen_width, self.screen_height)
+                                if v_scr_start and v_scr_end and v_scr_start[2] > 0 and v_scr_end[2] > 0:
+                                    v_pts = _screen_int_tuple(v_scr_start[0], v_scr_start[1], v_scr_end[0], v_scr_end[1])
+                                    if v_pts:
+                                        x1, y1, x2, y2 = v_pts
+                                        arrow_pen = QPen(QColor(*COLOR_DEBUG_ROCKET_VEL_ARROW), 3, Qt.SolidLine)
+                                        painter.setPen(arrow_pen)
+                                        painter.drawLine(x1, y1, x2, y2)
+                                        angle = math.atan2(y2 - y1, x2 - x1)
+                                        arrow_size = 10
+                                        head_p1_x = int(x2 - arrow_size * math.cos(angle - math.pi / 6))
+                                        head_p1_y = int(y2 - arrow_size * math.sin(angle - math.pi / 6))
+                                        head_p2_x = int(x2 - arrow_size * math.cos(angle + math.pi / 6))
+                                        head_p2_y = int(y2 - arrow_size * math.sin(angle + math.pi / 6))
+                                        painter.drawLine(x2, y2, head_p1_x, head_p1_y)
+                                        painter.drawLine(x2, y2, head_p2_x, head_p2_y)
+                                        font = painter.font()
+                                        font.setPixelSize(10)
+                                        font.setBold(True)
+                                        painter.setFont(font)
+                                        painter.setPen(QPen(QColor(*COLOR_DEBUG_ROCKET_VEL_ARROW)))
+                                        painter.drawText(x2 + 8, y2 + 4, f"W-VEL: {w_v_mag*3.6:.0f}km/h")
+
+                        if DEBUG_DRAW_ROCKET_TRAJECTORY and len(rkt_path_pts) > 1:
+                            if (self.last_rkt_path_pts is None 
+                                or len(self.last_rkt_path_pts) != len(rkt_path_pts) 
+                                or ROCKET_CCIP_SMOOTHING_ALPHA >= 1.0):
+                                self.last_rkt_path_pts = rkt_path_pts
+                            else:
+                                alpha = max(0.01, min(1.0, ROCKET_CCIP_SMOOTHING_ALPHA))
+                                smoothed_pts = []
+                                for old_p, new_p in zip(self.last_rkt_path_pts, rkt_path_pts):
+                                    sm_p = (
+                                        old_p[0] * (1.0 - alpha) + new_p[0] * alpha,
+                                        old_p[1] * (1.0 - alpha) + new_p[1] * alpha,
+                                        old_p[2] * (1.0 - alpha) + new_p[2] * alpha,
+                                    )
+                                    smoothed_pts.append(sm_p)
+                                self.last_rkt_path_pts = smoothed_pts
+
+                            draw_path_pts = self.last_rkt_path_pts
+                            arc_pen = QPen(QColor(*COLOR_DEBUG_ROCKET_TRAJECTORY), 2, Qt.DotLine)
+                            painter.setPen(arc_pen)
+                            prev_scr_pt = None
+                            for p_idx, pt in enumerate(draw_path_pts):
+                                if p_idx % 2 != 0 and p_idx != len(draw_path_pts) - 1:
+                                    continue
+                                p_scr = world_to_screen(view_matrix, pt[0], pt[1], pt[2], self.screen_width, self.screen_height)
+                                if p_scr and p_scr[2] > 0:
+                                    if prev_scr_pt:
+                                        painter.drawLine(int(prev_scr_pt[0]), int(prev_scr_pt[1]), int(p_scr[0]), int(p_scr[1]))
+                                    prev_scr_pt = p_scr
+                                else:
+                                    prev_scr_pt = None
+
+                        rkt_pts = _screen_int_tuple(rkt_screen[0], rkt_screen[1]) if rkt_screen and rkt_screen[2] > 0 else None
+                        if rkt_pts:
+                            r_sx, r_sy = rkt_pts
+                            rkt_color = QColor(*COLOR_ROCKET_CCIP)
+                            painter.setPen(QPen(rkt_color, 2))
+                            painter.setBrush(Qt.NoBrush)
+                            rkt_r = ROCKET_CCIP_RETICLE_RADIUS
+                            painter.drawEllipse(r_sx - rkt_r, r_sy - rkt_r, rkt_r * 2, rkt_r * 2)
+                            d = int(rkt_r * 0.7)
+                            painter.drawLine(r_sx, r_sy - d, r_sx + d, r_sy)
+                            painter.drawLine(r_sx + d, r_sy, r_sx, r_sy + d)
+
+                            if DEBUG_SHOW_ROCKET_TELEMETRY_HUD:
+                                rkt_dist = math.dist(my_pos, rocket_impact_pos)
+                                heli_speed_kmh = (math.sqrt(my_vx*my_vx + my_vy*my_vy + my_vz*my_vz)) * 3.6
+                                rho_rel = _air_density_from_altitude(my_pos[1]) / 1.225
+                                hud_lines = [
+                                    f"🚀 ROCKET CCIP {'[HELI]' if my_is_heli else '[AIR]'}",
+                                    f"Dist: {rkt_dist:.0f} m | TOF: {rkt_tof:.2f} s",
+                                    f"Body Vel : ({my_vx:.1f}, {my_vy:.1f}, {my_vz:.1f}) {heli_speed_kmh:.0f}km/h",
+                                    f"World Vel: ({rkt_world_vx:.1f}, {rkt_world_vy:.1f}, {rkt_world_vz:.1f})",
+                                    f"Tilt: {HELI_ROCKET_LAUNCHER_PITCH_OFFSET_DEG:.1f}° | ρ: {rho_rel:.2f}",
+                                ]
+                                hud_x = r_sx + rkt_r + 12
+                                hud_y = r_sy - 30
+                                hud_w = 265
+                                hud_h = len(hud_lines) * 16 + 10
+                                painter.setPen(Qt.NoPen)
+                                painter.setBrush(QBrush(QColor(15, 20, 30, 200)))
+                                painter.drawRoundedRect(hud_x, hud_y, hud_w, hud_h, 6, 6)
+                                painter.setPen(QPen(QColor(255, 140, 0, 230), 1))
+                                painter.drawRoundedRect(hud_x, hud_y, hud_w, hud_h, 6, 6)
+                                font = painter.font()
+                                font.setPixelSize(11)
+                                font.setBold(True)
+                                painter.setFont(font)
+                                for line_i, line_text in enumerate(hud_lines):
+                                    painter.drawText(hud_x + 8, hud_y + 16 + (line_i * 16), line_text)
+
+                            painter.setBrush(rkt_color)
+                            painter.drawEllipse(r_sx - 3, r_sy - 3, 6, 6)
+                    else:
+                        self.last_rocket_impact_pos = None
+                        self.last_rkt_path_pts = None
 
             # ========================================================
             # 🚀 FLIGHT PATH SIMULATION RENDERER (SPAAG VERSION)
