@@ -286,7 +286,7 @@ DEBUG_AXIS_LENGTH_GROUND = 2.4
 DEBUG_AXIS_LENGTH_AIR = 8.0
 
 # 🚀 ROCKET CCIP OVERLAY FLAGS
-ENABLE_ROCKET_CCIP               = False   # Set to False to turn OFF Air-to-Ground Rocket CCIP
+ENABLE_ROCKET_CCIP               = True   # Set to False to turn OFF Air-to-Ground Rocket CCIP
 DEBUG_DRAW_ROCKET_TRAJECTORY     = True   # Draw 3D rocket flightpath arc line
 DEBUG_DRAW_ROCKET_LAUNCH_RAY    = True   # Draw 3D ray along launcher vector (rkt_fwd)
 DEBUG_SHOW_ROCKET_TELEMETRY_HUD = True   # Show on-screen debug info box (Dist, TOF, Speed, Density)
