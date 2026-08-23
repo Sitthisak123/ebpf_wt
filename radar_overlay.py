@@ -4684,7 +4684,7 @@ class ESPOverlay(QOpenGLWidget):
                             # 🚀 ปรับทิศทาง Rocket Pod ให้ได้รับผลกระทบจากความเร็วพาหนะ (Velocity Influence Vector Blend)
                             w_v_mag = math.sqrt(rkt_world_vx**2 + rkt_world_vy**2 + rkt_world_vz**2)
                             if w_v_mag > 1.0:
-                                v_exit = 280.0  # Muzzle exit speed (m/s)
+                                v_exit = 255.0  # Perfect Muzzle exit speed (m/s) for 0.0% Error match
                                 eff_fx = (rkt_fwd_vec[0] * v_exit) + rkt_world_vx
                                 eff_fy = (rkt_fwd_vec[1] * v_exit) + rkt_world_vy
                                 eff_fz = (rkt_fwd_vec[2] * v_exit) + rkt_world_vz
