@@ -289,9 +289,9 @@ DEBUG_AXIS_LENGTH_AIR = 8.0
 ENABLE_ROCKET_CCIP               = True   # Set to False to turn OFF Air-to-Ground Rocket CCIP
 ROCKET_CCIP_SMOOTHING_ALPHA      = 1   # Smoothing factor (1.0=instant/raw, 0.30=smooth EMA filtering)
 DEBUG_DRAW_ROCKET_TRAJECTORY     = True   # Draw 3D rocket flightpath arc line
-DEBUG_DRAW_ROCKET_LAUNCH_RAY    = True   # Draw 3D ray along launcher vector (rkt_fwd)
-DEBUG_DRAW_ROCKET_WORLD_VEL_ARROW = True  # Draw 3D arrow showing aircraft world velocity direction & magnitude
-DEBUG_SHOW_ROCKET_TELEMETRY_HUD = True   # Show on-screen debug info box (Dist, TOF, Speed, Density)
+DEBUG_DRAW_ROCKET_LAUNCH_RAY    = False   # Draw 3D ray along launcher vector (rkt_fwd)
+DEBUG_DRAW_ROCKET_WORLD_VEL_ARROW = False  # Draw 3D arrow showing aircraft world velocity direction & magnitude
+DEBUG_SHOW_ROCKET_TELEMETRY_HUD = False   # Show on-screen debug info box (Dist, TOF, Speed, Density)
 COLOR_DEBUG_ROCKET_TRAJECTORY   = (255, 140, 0, 210) # Orange trajectory arc
 COLOR_DEBUG_ROCKET_RAY          = (255, 235, 0, 220) # Bright yellow launch ray
 COLOR_DEBUG_ROCKET_VEL_ARROW    = (0, 230, 255, 240) # Bright cyan world velocity vector arrow
