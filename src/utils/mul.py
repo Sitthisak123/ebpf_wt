@@ -64,6 +64,7 @@ OFF_GROUND_OMEGA    = 0
 FILTER_ZERO_POS_UNITS = True
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก layout_old_guess Persistence ล่าสุด)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
+OFF_CCIP_IMPACT     = 0x1C9C       # 🎯 vec3_t (x, y, z) CCIP Impact Point จาก Dagor Engine
 OFF_BULLET_SPEED    = 0x20E0     # 🎯 ความเร็วต้น (Muzzle Velocity - 8416 / 0x20E0)
 OFF_BULLET_MASS     = 0x20EC      # ⚖️ มวลกระสุน (8428 / 0x20EC)
 OFF_BULLET_CALIBER  = 0x20F0   # 📏 Caliber (8432 / 0x20F0)
@@ -1551,3 +1552,95 @@ def get_bullet_cd(scanner, cgame_base):
             if math.isfinite(cd) and 0.05 <= cd <= 2.0: return cd
         return 0.0
     except: return 0.0
+
+_LAST_IMPACT_RAW = None
+_LAST_IMPACT_CHANGE_TIME = 0.0
+_LAST_MY_POS_FOR_CCIP = None
+_LAST_SPEED_GOOD_TIME = 0.0
+
+def get_direct_bomb_impact(scanner, cgame_base, unit_ptr=0, my_pos=None):
+    """
+    อ่านจุดตกกระทบของระเบิด/จรวดที่ Dagor Engine คำนวณไว้ในหน่วยความจำโดยตรง (+ 0x1C9C)
+    พร้อมระบบตรวจจับ Freeze Vector เมื่อระเบิดหมด / หยุดคำนวณ
+    """
+    global _LAST_IMPACT_RAW, _LAST_IMPACT_CHANGE_TIME, _LAST_MY_POS_FOR_CCIP, _LAST_SPEED_GOOD_TIME
+    if cgame_base == 0:
+        return None
+    try:
+        weapon_ptr = 0
+        if is_valid_ptr(unit_ptr):
+            raw_w = scanner.read_mem(unit_ptr + OFF_WEAPON_PTR, 8)
+            if raw_w and len(raw_w) == 8:
+                ptr_cand = struct.unpack("<Q", raw_w)[0]
+                if is_valid_ptr(ptr_cand):
+                    weapon_ptr = ptr_cand
+
+        if not is_valid_ptr(weapon_ptr) and is_valid_ptr(cgame_base):
+            raw_w = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
+            if raw_w and len(raw_w) == 8:
+                ptr_cand = struct.unpack("<Q", raw_w)[0]
+                if is_valid_ptr(ptr_cand):
+                    weapon_ptr = ptr_cand
+
+        if not is_valid_ptr(weapon_ptr):
+            return None
+
+        # 1. ตรวจสอบความเร็วต้นกระสุน/ระเบิด (OFF_BULLET_SPEED @ 0x20E0)
+        # เอนจิน Dagor จะอัปเดตความเร็ว > 50 m/s เมื่อมีอาวุธ/ระเบิดที่ใช้งานได้
+        now_time = time.time()
+        raw_speed = scanner.read_mem(weapon_ptr + OFF_BULLET_SPEED, 4)
+        if raw_speed and len(raw_speed) == 4:
+            round_speed = struct.unpack("<f", raw_speed)[0]
+            if math.isfinite(round_speed) and 50.0 < round_speed < 4000.0:
+                _LAST_SPEED_GOOD_TIME = now_time
+
+        # หากความเร็วไม่ได้อยู่ในช่วงใช้งานเกิน 0.75 วินาที แสดงว่าระเบิดหมดหรือปิดอาวุธ
+        if (now_time - _LAST_SPEED_GOOD_TIME) > 0.75:
+            _LAST_IMPACT_RAW = None
+            return None
+
+        # 2. อ่าน 3D Vector จุดตกกระทบจาก Memory (+ 0x1C9C)
+        raw_impact = scanner.read_mem(weapon_ptr + OFF_CCIP_IMPACT, 12)
+        if not raw_impact or len(raw_impact) < 12:
+            return None
+
+        ix, iy, iz = struct.unpack("<fff", raw_impact)
+        if not (math.isfinite(ix) and math.isfinite(iy) and math.isfinite(iz)):
+            return None
+
+        if abs(ix) >= 50000.0 or abs(iy) >= 50000.0 or abs(iz) >= 50000.0:
+            return None
+
+        if ix == 0.0 and iy == 0.0 and iz == 0.0:
+            return None
+
+        if my_pos:
+            dx = ix - my_pos[0]
+            dy = iy - my_pos[1]
+            dz = iz - my_pos[2]
+            dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+            if dist <= 2.0 or dist >= 50000.0:
+                return None
+
+        # 3. ระบบตรวจจับ Freeze / Stale Memory Vector
+        # เมื่อเครื่องบินกำลังบินอยู่ ค่าจุดตกกระทบใน World Space ต้องมีการขยับอัปเดตเสมอ
+        # หากพิกัดค้างเท่าเดิมแบบ 100% ขณะเครื่องบินบินผ่านระยะทาง > 3 เมตร ให้ถือว่าจุดตกค้าง (ระเบิดหมด)
+        current_impact_tuple = (ix, iy, iz)
+        if _LAST_IMPACT_RAW != current_impact_tuple:
+            _LAST_IMPACT_RAW = current_impact_tuple
+            _LAST_IMPACT_CHANGE_TIME = now_time
+            if my_pos:
+                _LAST_MY_POS_FOR_CCIP = my_pos
+        else:
+            if my_pos and _LAST_MY_POS_FOR_CCIP:
+                m_dx = my_pos[0] - _LAST_MY_POS_FOR_CCIP[0]
+                m_dy = my_pos[1] - _LAST_MY_POS_FOR_CCIP[1]
+                m_dz = my_pos[2] - _LAST_MY_POS_FOR_CCIP[2]
+                my_moved_dist = math.sqrt(m_dx * m_dx + m_dy * m_dy + m_dz * m_dz)
+                if my_moved_dist > 3.0 and (now_time - _LAST_IMPACT_CHANGE_TIME) > 0.35:
+                    return None
+
+        return (ix, iy, iz)
+    except Exception:
+        return None
+
