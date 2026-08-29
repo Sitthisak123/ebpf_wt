@@ -285,8 +285,10 @@ DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY = False
 DEBUG_AXIS_LENGTH_GROUND = 2.4
 DEBUG_AXIS_LENGTH_AIR = 8.0
 
-# 🚀 ROCKET CCIP OVERLAY FLAGS
-ENABLE_ROCKET_CCIP               = True   # Set to False to turn OFF Air-to-Ground Rocket CCIP
+# 💣 & 🚀 CCIP OVERLAY FLAGS
+BOMB_CCIP_SMOOTHING_ALPHA        = 0.35   # Smoothing factor for Bomb CCIP (1.0=instant/raw, 0.30=smooth EMA filtering)
+
+ENABLE_ROCKET_CCIP               = False   # Set to False to turn OFF Air-to-Ground Rocket CCIP
 ROCKET_CCIP_SMOOTHING_ALPHA      = 0.3   # Smoothing factor (1.0=instant/raw, 0.30=smooth EMA filtering)
 DEBUG_DRAW_ROCKET_TRAJECTORY     = True   # Draw 3D rocket flightpath arc line
 DEBUG_DRAW_ROCKET_LAUNCH_RAY    = False   # Draw 3D ray along launcher vector (rkt_fwd)
@@ -2711,6 +2713,7 @@ class ESPOverlay(QOpenGLWidget):
         self.tab_pressed_last = False    # 🔒 TAB debounce
         self.last_rocket_impact_pos = None # 🚀 Smooth 3D CCIP impact position
         self.last_rkt_path_pts = None      # 🚀 Smooth 3D trajectory arc points
+        self.last_bomb_impact_pos = None   # 💣 Smooth 3D CCIP impact position
         self.last_debug_log_time = 0.0
         self.console_initialized = False
         self.air_alert_seen = {}
@@ -5047,11 +5050,22 @@ class ESPOverlay(QOpenGLWidget):
                 )
 
                 if bomb_impact_pos:
+                    if self.last_bomb_impact_pos is None or BOMB_CCIP_SMOOTHING_ALPHA >= 1.0:
+                        self.last_bomb_impact_pos = bomb_impact_pos
+                    else:
+                        alpha = max(0.01, min(1.0, BOMB_CCIP_SMOOTHING_ALPHA))
+                        self.last_bomb_impact_pos = (
+                            self.last_bomb_impact_pos[0] * (1.0 - alpha) + bomb_impact_pos[0] * alpha,
+                            self.last_bomb_impact_pos[1] * (1.0 - alpha) + bomb_impact_pos[1] * alpha,
+                            self.last_bomb_impact_pos[2] * (1.0 - alpha) + bomb_impact_pos[2] * alpha,
+                        )
+                    draw_bomb_pos = self.last_bomb_impact_pos
+
                     bomb_screen = world_to_screen(
                         view_matrix,
-                        bomb_impact_pos[0],
-                        bomb_impact_pos[1],
-                        bomb_impact_pos[2],
+                        draw_bomb_pos[0],
+                        draw_bomb_pos[1],
+                        draw_bomb_pos[2],
                         self.screen_width,
                         self.screen_height,
                     )
@@ -5067,6 +5081,8 @@ class ESPOverlay(QOpenGLWidget):
                         painter.drawLine(b_sx - radius, b_sy, b_sx + radius, b_sy)
                         painter.setBrush(ccip_color)
                         painter.drawEllipse(b_sx - 2, b_sy - 2, 4, 4)
+                else:
+                    self.last_bomb_impact_pos = None
 
                 # 🚀 AIR-TO-GROUND ROCKET CCIP (Disabled if Bomb CCIP is active)
                 if ENABLE_ROCKET_CCIP and not bomb_impact_pos:
@@ -5290,6 +5306,8 @@ class ESPOverlay(QOpenGLWidget):
                 else:
                     self.last_rocket_impact_pos = None
                     self.last_rkt_path_pts = None
+            else:
+                self.last_bomb_impact_pos = None
 
             # ========================================================
             # 🚀 FLIGHT PATH SIMULATION RENDERER (SPAAG VERSION)
