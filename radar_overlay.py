@@ -5036,13 +5036,16 @@ class ESPOverlay(QOpenGLWidget):
                 # 🎯 ใช้ความสูงเป้าหมายที่ล็อคไว้ (ถ้ามี) หรือใช้ 0.0 (ระดับน้ำทะเล) หากไม่ได้ล็อคเป้าหมาย
                 target_ground_y = locked_ground_target_y if locked_ground_target_y is not None else 0.0
 
-                # 💣 AIR-TO-GROUND BOMB CCIP
-                bomb_impact_pos = _simulate_bomb_impact(
-                    my_pos,
-                    (my_vx, my_vy, my_vz),
-                    target_ground_y,
-                    drag_k=BOMB_CCIP_DRAG_K,
+                # 💣 AIR-TO-GROUND BOMB CCIP (DIRECT ENGINE MEMORY READ)
+                # Reads CCIP impact vector directly from Dagor engine memory (+ 0x1C9C).
+                # Turns OFF automatically when out of bombs or when Dagor Engine stops calculating CCIP.
+                bomb_impact_pos = get_direct_bomb_impact(
+                    self.scanner,
+                    cgame_base,
+                    unit_ptr=my_unit if my_unit else 0,
+                    my_pos=my_pos,
                 )
+
                 if bomb_impact_pos:
                     bomb_screen = world_to_screen(
                         view_matrix,
