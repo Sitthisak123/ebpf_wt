@@ -1563,43 +1563,31 @@ def get_direct_bomb_impact(scanner, cgame_base, unit_ptr=0, my_pos=None):
     อ่านจุดตกกระทบของระเบิด/จรวดที่ Dagor Engine คำนวณไว้ในหน่วยความจำโดยตรง (+ 0x1C9C)
     พร้อมระบบตรวจจับ Freeze Vector เมื่อระเบิดหมด / หยุดคำนวณ
     """
-    global _LAST_IMPACT_RAW, _LAST_IMPACT_CHANGE_TIME, _LAST_MY_POS_FOR_CCIP, _LAST_SPEED_GOOD_TIME
+    global _LAST_IMPACT_RAW, _LAST_IMPACT_CHANGE_TIME, _LAST_MY_POS_FOR_CCIP
     if cgame_base == 0:
         return None
     try:
         weapon_ptr = 0
-        if is_valid_ptr(unit_ptr):
-            raw_w = scanner.read_mem(unit_ptr + OFF_WEAPON_PTR, 8)
-            if raw_w and len(raw_w) == 8:
-                ptr_cand = struct.unpack("<Q", raw_w)[0]
-                if is_valid_ptr(ptr_cand):
-                    weapon_ptr = ptr_cand
-
-        if not is_valid_ptr(weapon_ptr) and is_valid_ptr(cgame_base):
+        # Priority 1: cgame_base + OFF_WEAPON_PTR (Primary global weapon container)
+        if is_valid_ptr(cgame_base):
             raw_w = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
             if raw_w and len(raw_w) == 8:
                 ptr_cand = struct.unpack("<Q", raw_w)[0]
-                if is_valid_ptr(ptr_cand):
+                if is_valid_ptr(ptr_cand) and ptr_cand < 0x7FF000000000:
+                    weapon_ptr = ptr_cand
+
+        # Priority 2: Fallback to unit_ptr + OFF_WEAPON_PTR if cgame_base didn't return valid heap pointer
+        if not is_valid_ptr(weapon_ptr) and is_valid_ptr(unit_ptr):
+            raw_w = scanner.read_mem(unit_ptr + OFF_WEAPON_PTR, 8)
+            if raw_w and len(raw_w) == 8:
+                ptr_cand = struct.unpack("<Q", raw_w)[0]
+                if is_valid_ptr(ptr_cand) and ptr_cand < 0x7FF000000000:
                     weapon_ptr = ptr_cand
 
         if not is_valid_ptr(weapon_ptr):
             return None
 
-        # 1. ตรวจสอบความเร็วต้นกระสุน/ระเบิด (OFF_BULLET_SPEED @ 0x20E0)
-        # เอนจิน Dagor จะอัปเดตความเร็ว > 50 m/s เมื่อมีอาวุธ/ระเบิดที่ใช้งานได้
-        now_time = time.time()
-        raw_speed = scanner.read_mem(weapon_ptr + OFF_BULLET_SPEED, 4)
-        if raw_speed and len(raw_speed) == 4:
-            round_speed = struct.unpack("<f", raw_speed)[0]
-            if math.isfinite(round_speed) and 50.0 < round_speed < 4000.0:
-                _LAST_SPEED_GOOD_TIME = now_time
-
-        # หากความเร็วไม่ได้อยู่ในช่วงใช้งานเกิน 0.75 วินาที แสดงว่าระเบิดหมดหรือปิดอาวุธ
-        if (now_time - _LAST_SPEED_GOOD_TIME) > 0.75:
-            _LAST_IMPACT_RAW = None
-            return None
-
-        # 2. อ่าน 3D Vector จุดตกกระทบจาก Memory (+ 0x1C9C)
+        # 1. อ่าน 3D Vector จุดตกกระทบจาก Memory (+ 0x1C9C)
         raw_impact = scanner.read_mem(weapon_ptr + OFF_CCIP_IMPACT, 12)
         if not raw_impact or len(raw_impact) < 12:
             return None
@@ -1622,9 +1610,10 @@ def get_direct_bomb_impact(scanner, cgame_base, unit_ptr=0, my_pos=None):
             if dist <= 2.0 or dist >= 50000.0:
                 return None
 
-        # 3. ระบบตรวจจับ Freeze / Stale Memory Vector
+        # 2. ระบบตรวจจับ Freeze / Stale Memory Vector
         # เมื่อเครื่องบินกำลังบินอยู่ ค่าจุดตกกระทบใน World Space ต้องมีการขยับอัปเดตเสมอ
         # หากพิกัดค้างเท่าเดิมแบบ 100% ขณะเครื่องบินบินผ่านระยะทาง > 3 เมตร ให้ถือว่าจุดตกค้าง (ระเบิดหมด)
+        now_time = time.time()
         current_impact_tuple = (ix, iy, iz)
         if _LAST_IMPACT_RAW != current_impact_tuple:
             _LAST_IMPACT_RAW = current_impact_tuple
