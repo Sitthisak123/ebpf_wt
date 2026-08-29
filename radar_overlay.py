@@ -5068,8 +5068,8 @@ class ESPOverlay(QOpenGLWidget):
                         painter.setBrush(ccip_color)
                         painter.drawEllipse(b_sx - 2, b_sy - 2, 4, 4)
 
-                # 🚀 AIR-TO-GROUND ROCKET CCIP
-                if ENABLE_ROCKET_CCIP:
+                # 🚀 AIR-TO-GROUND ROCKET CCIP (Disabled if Bomb CCIP is active)
+                if ENABLE_ROCKET_CCIP and not bomb_impact_pos:
                     my_rot = get_unit_rotation(self.scanner, my_unit) if my_unit else None
                     if not my_rot:
                         my_rot = (1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0)
@@ -5287,6 +5287,9 @@ class ESPOverlay(QOpenGLWidget):
                     else:
                         self.last_rocket_impact_pos = None
                         self.last_rkt_path_pts = None
+                else:
+                    self.last_rocket_impact_pos = None
+                    self.last_rkt_path_pts = None
 
             # ========================================================
             # 🚀 FLIGHT PATH SIMULATION RENDERER (SPAAG VERSION)
