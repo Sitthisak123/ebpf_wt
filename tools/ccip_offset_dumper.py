@@ -79,38 +79,38 @@ def dump_ccip_offsets():
     weapon_src = "None"
     off_w = getattr(mul, "OFF_WEAPON_PTR", 0x3F0)
 
-    # Check Unit + OFF_WEAPON_PTR
-    if mul.is_valid_ptr(unit_ptr):
-        raw_w = scanner.read_mem(unit_ptr + off_w, 8)
-        if raw_w and len(raw_w) == 8:
-            ptr_cand = struct.unpack("<Q", raw_w)[0]
-            if mul.is_valid_ptr(ptr_cand):
-                weapon_ptr = ptr_cand
-                weapon_src = f"unit_ptr + 0x{off_w:X}"
-
-    # Check cgame_base + OFF_WEAPON_PTR
-    if not mul.is_valid_ptr(weapon_ptr) and mul.is_valid_ptr(cgame_base):
+    # Check cgame_base + OFF_WEAPON_PTR (Primary global weapon container)
+    if mul.is_valid_ptr(cgame_base):
         raw_w = scanner.read_mem(cgame_base + off_w, 8)
         if raw_w and len(raw_w) == 8:
             ptr_cand = struct.unpack("<Q", raw_w)[0]
-            if mul.is_valid_ptr(ptr_cand):
+            if mul.is_valid_ptr(ptr_cand) and ptr_cand < 0x7FF000000000:
                 weapon_ptr = ptr_cand
                 weapon_src = f"cgame_base + 0x{off_w:X}"
+
+    # Check unit_ptr + OFF_WEAPON_PTR fallback
+    if not mul.is_valid_ptr(weapon_ptr) and mul.is_valid_ptr(unit_ptr):
+        raw_w = scanner.read_mem(unit_ptr + off_w, 8)
+        if raw_w and len(raw_w) == 8:
+            ptr_cand = struct.unpack("<Q", raw_w)[0]
+            if mul.is_valid_ptr(ptr_cand) and ptr_cand < 0x7FF000000000:
+                weapon_ptr = ptr_cand
+                weapon_src = f"unit_ptr + 0x{off_w:X}"
 
     # Scan nearby candidate offsets if weapon_ptr is still not found
     if not mul.is_valid_ptr(weapon_ptr):
         print(f"⚠️ Direct read at 0x{off_w:X} did not return valid pointer. Scanning candidate offsets...")
         candidate_offsets = [0x3E0, 0x3E8, 0x3F0, 0x3F8, 0x400, 0x408, 0x480, 0x670, 0xFC0]
         base_targets = []
-        if mul.is_valid_ptr(unit_ptr): base_targets.append(("unit_ptr", unit_ptr))
         if mul.is_valid_ptr(cgame_base): base_targets.append(("cgame_base", cgame_base))
+        if mul.is_valid_ptr(unit_ptr): base_targets.append(("unit_ptr", unit_ptr))
 
         for name, b_ptr in base_targets:
             for cand in candidate_offsets:
                 raw = scanner.read_mem(b_ptr + cand, 8)
                 if raw and len(raw) == 8:
                     val = struct.unpack("<Q", raw)[0]
-                    if mul.is_valid_ptr(val):
+                    if mul.is_valid_ptr(val) and val < 0x7FF000000000:
                         print(f"  [Found Pointer Candidate] {name} + 0x{cand:04X} -> 0x{val:X}")
                         if weapon_ptr == 0:
                             weapon_ptr = val
