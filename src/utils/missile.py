@@ -148,7 +148,7 @@ class MissileScanner:
     def scan(self, scanner, base):
         """
         Scan active missiles in 1 single memory read of the active node table window.
-        Takes < 0.03ms total execution time.
+        Includes dynamic ECS pointer re-verification to handle match transitions smoothly.
         """
         now = time.time()
         
@@ -157,13 +157,18 @@ class MissileScanner:
             return None
         self._last_scan_time = now
         
-        if not self._initialized:
+        # Continuously verify/re-init ECS manager pointers if invalid or stale
+        if not self._initialized or now - getattr(self, '_last_init_time', 0.0) > 2.0:
+            self._last_init_time = now
             if not self._init_ecs(scanner, base):
+                self._initialized = False
                 return []
         
         # Single 6.4KB Batch Read of active node table entries (0..200)
         table_bytes = scanner.read_mem(self._node_table, NODE_ENTRY_WINDOW * 0x20)
         if not table_bytes or len(table_bytes) < 0x20:
+            # Memory read failed or invalid table -> force re-init on next frame
+            self._initialized = False
             return []
         
         found_missiles = []
