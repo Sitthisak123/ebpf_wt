@@ -22,11 +22,7 @@ from src.utils.mul import is_valid_ptr, GHIDRA_BASE
 # ====================================================================
 OFFSET_SETS = [
     # (name, pos, vel, owner, state, guidance, entity_id, props_ptr)
-    # starned FIRST - confirmed working on our build!
     ("starned",  0x23c, 0x258, 0x40,  0x94, 0x638, 0x30, 0x6c8),
-    ("boyu808",  0x2C8, 0x2E4, 0x48,  0x94, 0x638, 0x30, 0x6e8),
-    ("ref2",     0x298, 0x2B4, 0x48,  0x94, 0x638, 0x30, 0x6c8),
-    ("orig_post",0x1D0, 0x1EC, 0x480, 0x94, 0x648, 0x30, 0x6e8),
 ]
 
 # ECS internal offsets (stable)
