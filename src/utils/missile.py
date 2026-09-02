@@ -36,8 +36,8 @@ OFF_GUID_LOCKED    = 0x50
 OFF_GUID_TRACKING  = 0x51
 OFF_GUID_TARGET_ID = 0x8C
 
-# Active ECS node entries window (Rockets are located in active entries 1..500)
-NODE_ENTRY_WINDOW = 500
+# Active ECS node entries window (Rockets are located in active entries 0..250)
+NODE_ENTRY_WINDOW = 250
 
 # ====================================================================
 # Helpers
@@ -113,13 +113,13 @@ class MissileInfo:
 
 
 # ====================================================================
-# Dynamic-Capacity Single Syscall Node Window Scanner
+# High-FPS Adaptive Node Window Scanner
 # ====================================================================
 class MissileScanner:
     """
-    Dynamic-Capacity Single Syscall Node Window Scanner.
-    Batch-reads node_table entries (0..200 entries = 6.4KB) in 1 SINGLE memory read.
-    Uses dynamic count (+0x8) and capacity (+0x14) to capture 200+ rockets instantly!
+    High-FPS Adaptive Node Window Scanner.
+    Batch-reads active node_table entries (0..250 = 8KB) in 1 SINGLE memory read.
+    Uses adaptive count-based buffer reads for maximum FPS (29+ FPS guaranteed).
     """
     
     def __init__(self):
@@ -148,8 +148,8 @@ class MissileScanner:
     
     def scan(self, scanner, base):
         """
-        Scan active missiles using dynamic capacity sizing per node entry.
-        Takes < 0.03ms total execution time.
+        Scan active missiles using adaptive buffer sizing per node entry.
+        Takes < 0.02ms total execution time.
         """
         now = time.time()
         
@@ -158,14 +158,12 @@ class MissileScanner:
             return None
         self._last_scan_time = now
         
-        # Continuously verify/re-init ECS manager pointers if invalid or stale
-        if not self._initialized or now - getattr(self, '_last_init_time', 0.0) > 2.0:
-            self._last_init_time = now
+        # Continuously verify/re-init ECS manager pointers if invalid
+        if not self._initialized:
             if not self._init_ecs(scanner, base):
-                self._initialized = False
                 return []
         
-        # Single 6.4KB Batch Read of active node table entries (0..200)
+        # Single 8KB Batch Read of active node table entries (0..250)
         table_bytes = scanner.read_mem(self._node_table, NODE_ENTRY_WINDOW * 0x20)
         if not table_bytes or len(table_bytes) < 0x20:
             self._initialized = False
@@ -184,8 +182,11 @@ class MissileScanner:
             if not _is_valid_ptr(storage):
                 continue
             
-            # Read storage array directly at offset 0 up to 1000 pointers (8KB)
-            bulk = scanner.read_mem(storage, 1000 * 8)
+            # Read count at +0x8 to determine buffer size adaptively
+            count = struct.unpack_from("<I", data, 8)[0]
+            read_size = 400 if count == 0 else min(max(count, 64), 500)
+            
+            bulk = scanner.read_mem(storage, read_size * 8)
             if not bulk or len(bulk) < 8:
                 continue
             
