@@ -3465,6 +3465,9 @@ class ESPOverlay(QOpenGLWidget):
             painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}")
             painter.setPen(QColor(*COLOR_INFO_TEXT))
             painter.drawText(20, 115, f"🧠 AI Tracking : 6 Threads Active (Decay={self.dynamic_decay:.3f})")
+            if hasattr(self, 'missile_cache') and self.missile_cache:
+                painter.setPen(QColor(255, 140, 40))
+                painter.drawText(20, 140, f"🚀 Active Missiles : {len(self.missile_cache)}")
 
             all_units_data = get_all_units(self.scanner, cgame_base)
             all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
@@ -5737,14 +5740,14 @@ class ESPOverlay(QOpenGLWidget):
                     active_missiles = self.missile_cache
                     
                     if active_missiles:
-                        # Filter: missiles within 15km of my position
+                        # Filter: missiles within 100km of my position
                         nearby = []
                         for m in active_missiles:
                             dx = m.pos[0] - my_pos[0]
                             dy = m.pos[1] - my_pos[1]
                             dz = m.pos[2] - my_pos[2]
                             dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                            if dist < 15000:
+                            if dist < 100000:
                                 nearby.append((m, dist))
                         
                         # Check if any missile is tracking ME
@@ -5771,52 +5774,85 @@ class ESPOverlay(QOpenGLWidget):
                         incoming.sort(key=lambda x: x[1])
                         nearby.sort(key=lambda x: x[1])
                         
-                        # Draw missile markers
+                        # Draw missile markers (on-screen and offscreen edge indicators)
                         painter.setFont(QFont("Arial", 10, QFont.Bold))
+                        cx, cy = self.screen_width / 2.0, self.screen_height / 2.0
+                        
                         for m, dist in nearby:
                             w2s = world_to_screen(
                                 view_matrix,
                                 m.pos[0], m.pos[1], m.pos[2],
                                 self.screen_width, self.screen_height
                             )
-                            if w2s:
+                            is_incoming = any(im[0].ptr == m.ptr for im in incoming)
+                            dist_km = dist / 1000.0
+                            speed_label = f"{m.speed:.0f}m/s"
+                            dist_label = f"{dist_km:.1f}km" if dist_km >= 1 else f"{dist:.0f}m"
+                            
+                            short_name = "🚀 Missile"
+                            if m.name:
+                                short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
+                            label = f"{short_name} ({dist_label} {speed_label})"
+
+                            if w2s and (0 <= w2s[0] <= self.screen_width and 0 <= w2s[1] <= self.screen_height):
                                 sx, sy, sw = w2s
-                                if 0 <= sx <= self.screen_width and 0 <= sy <= self.screen_height:
-                                    # Diamond marker
-                                    is_incoming = any(im[0].ptr == m.ptr for im in incoming)
-                                    if is_incoming:
-                                        marker_color = QColor(*COLOR_MISSILE_MARKER)
-                                        size = 10
-                                    else:
-                                        marker_color = QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
-                                        size = 7
-                                    
-                                    painter.setPen(QPen(marker_color, 2))
-                                    painter.setBrush(Qt.NoBrush)
-                                    diamond = QPolygon([
-                                        QPoint(int(sx), int(sy - size)),
-                                        QPoint(int(sx + size), int(sy)),
-                                        QPoint(int(sx), int(sy + size)),
-                                        QPoint(int(sx - size), int(sy)),
-                                    ])
-                                    painter.drawPolygon(diamond)
-                                    
-                                    # Label
-                                    dist_km = dist / 1000.0
-                                    speed_label = f"{m.speed:.0f}m/s"
-                                    dist_label = f"{dist_km:.1f}km" if dist_km >= 1 else f"{dist:.0f}m"
-                                    label = f"🚀 {dist_label} {speed_label}"
-                                    if m.name:
-                                        # Extract short name (e.g. "aim7m_sparrow" from full path)
-                                        short = m.name.split('^')[-1].replace('.blk','').replace('_default','')
-                                        label = f"🚀 {short} {dist_label}"
-                                    
-                                    text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
-                                    _draw_outlined_text(
-                                        painter, int(sx + size + 4), int(sy + 4),
-                                        label, text_color,
-                                        QColor(0, 0, 0, 180), 1
-                                    )
+                                # Diamond marker
+                                if is_incoming:
+                                    marker_color = QColor(*COLOR_MISSILE_MARKER)
+                                    size = 10
+                                else:
+                                    marker_color = QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
+                                    size = 7
+                                
+                                painter.setPen(QPen(marker_color, 2))
+                                painter.setBrush(Qt.NoBrush)
+                                diamond = QPolygon([
+                                    QPoint(int(sx), int(sy - size)),
+                                    QPoint(int(sx + size), int(sy)),
+                                    QPoint(int(sx), int(sy + size)),
+                                    QPoint(int(sx - size), int(sy)),
+                                ])
+                                painter.drawPolygon(diamond)
+                                
+                                text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
+                                _draw_outlined_text(
+                                    painter, int(sx + size + 4), int(sy + 4),
+                                    label, text_color,
+                                    QColor(0, 0, 0, 180), 1
+                                )
+                            else:
+                                # Offscreen / Behind Camera edge indicator
+                                dx = m.pos[0] - my_pos[0]
+                                dz = m.pos[2] - my_pos[2]
+                                angle = math.atan2(dz, dx)
+                                
+                                edge_r = min(self.screen_width, self.screen_height) / 2.0 - 50.0
+                                arrow_x = cx + math.cos(angle) * edge_r
+                                arrow_y = cy + math.sin(angle) * edge_r
+                                
+                                arr_col = QColor(*COLOR_MISSILE_MARKER) if is_incoming else QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
+                                painter.setPen(QPen(arr_col, 2))
+                                painter.setBrush(QBrush(arr_col))
+                                
+                                arrow_size = 10
+                                tip_x = arrow_x + math.cos(angle) * arrow_size
+                                tip_y = arrow_y + math.sin(angle) * arrow_size
+                                left_x = arrow_x + math.cos(angle + 2.5) * arrow_size
+                                left_y = arrow_y + math.sin(angle + 2.5) * arrow_size
+                                right_x = arrow_x + math.cos(angle - 2.5) * arrow_size
+                                right_y = arrow_y + math.sin(angle - 2.5) * arrow_size
+                                painter.drawPolygon(QPolygon([
+                                    QPoint(int(tip_x), int(tip_y)),
+                                    QPoint(int(left_x), int(left_y)),
+                                    QPoint(int(right_x), int(right_y)),
+                                ]))
+                                
+                                text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
+                                _draw_outlined_text(
+                                    painter, int(arrow_x + 12), int(arrow_y - 6),
+                                    f"{short_name} {dist_label}", text_color,
+                                    QColor(0, 0, 0, 180), 1
+                                )
                         
                         # 🚨 WARNING HUD - flashing border when missiles incoming
                         if incoming:
