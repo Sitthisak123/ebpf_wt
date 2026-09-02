@@ -13,18 +13,16 @@ import struct
 import math
 import time
 
+import src.utils.mul as mul
+
 try:
     from src.utils.debug import dprint
 except Exception:
     def dprint(msg, force=False): return
 
 # ====================================================================
-# Confirmed Offsets (starned - Linux)
+# Rocket Struct Offsets (starned - Linux)
 # ====================================================================
-OFF_ECS_MANAGER    = 0x8225aa0   # base + this → ptr to ECS manager
-OFF_ECS_NODE_TABLE = 0x178       # manager + this → node_table ptr
-
-# Rocket struct internals (starned)
 OFF_RKT_ENTITY_ID  = 0x30
 OFF_RKT_OWNER      = 0x40
 OFF_RKT_STATE      = 0x94
@@ -121,7 +119,7 @@ class MissileScanner:
     """
     Single Syscall Node Window Scanner.
     Batch-reads the active node_table window (0..200 entries = 6.4KB) in 1 SINGLE memory read.
-    Guaranteed execution time < 0.03ms with 100% rocket detection rate!
+    Uses dynamic OFF_ECS_MANAGER from mul.py to remain update-proof across game patches!
     """
     
     def __init__(self):
@@ -131,12 +129,15 @@ class MissileScanner:
         self._initialized = False
     
     def _init_ecs(self, scanner, base):
-        """Initialize ECS manager pointers"""
-        mgr = _rp(scanner, base + OFF_ECS_MANAGER)
+        """Initialize ECS manager pointers dynamically from mul.OFF_ECS_MANAGER"""
+        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8225aa0)
+        ecs_node_off = getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)
+        
+        mgr = _rp(scanner, base + ecs_mgr_off)
         if not _is_valid_ptr(mgr):
             return False
         
-        node_t = _rp(scanner, mgr + OFF_ECS_NODE_TABLE)
+        node_t = _rp(scanner, mgr + ecs_node_off)
         if not _is_valid_ptr(node_t):
             return False
         

@@ -837,6 +837,52 @@ def init_dynamic_offsets(scanner, base_address):
         print(f"  [+] ✅ BINGO! RELOAD = {hex(top_reload)} (RELOADING = {hex(top_reload - 0x11C)}) (โหวต {votes} เสียง)")
     else: print("  [-] ❌ หา RELOAD ไม่เจอ")
 
+    # ---------------------------------------------------------
+    # 🎯 Phase 5: Dynamic ECS Manager Offset Verification & Persistence
+    # ---------------------------------------------------------
+    print("[*] 🔍 5/5 ตรวจสอบและค้นหา ECS Manager (OFF_ECS_MANAGER Persistence)...")
+    ecs_ok = False
+    
+    # 1. Check existing OFF_ECS_MANAGER offset
+    test_mgr = mul._read_ptr(scanner, base_address + mul.OFF_ECS_MANAGER)
+    if mul.is_valid_ptr(test_mgr):
+        test_node = mul._read_ptr(scanner, test_mgr + mul.OFF_ECS_NODE_TABLE)
+        if mul.is_valid_ptr(test_node):
+            node_bytes = scanner.read_mem(test_node, 128)
+            if node_bytes and any(b != 0 for b in node_bytes):
+                ecs_ok = True
+                print(f"  [+] ✅ BINGO! ECS Manager = {hex(mul.OFF_ECS_MANAGER)} (Confirmed Active)")
+
+    # 2. If game updated and offset shifted, scan base region dynamically
+    if not ecs_ok:
+        print("  [!] ⚠️ Offset เดิมไม่ตรงกับแพตช์ปัจจุบัน กำลังสแกนหา ECS Manager ใหม่...")
+        scan_start = base_address + 0x8000000
+        scan_end   = base_address + 0x9500000
+        step = 8
+        found_off = 0
+        
+        # Batch read memory to scan dynamically
+        chunk_size = 0x100000  # 1MB per chunk
+        for addr in range(scan_start, scan_end, chunk_size):
+            chunk = scanner.read_mem(addr, chunk_size)
+            if not chunk: continue
+            for i in range(0, len(chunk) - 8, 8):
+                ptr_val = struct.unpack_from("<Q", chunk, i)[0]
+                if mul.is_valid_ptr(ptr_val):
+                    test_node = mul._read_ptr(scanner, ptr_val + mul.OFF_ECS_NODE_TABLE)
+                    if mul.is_valid_ptr(test_node):
+                        nb = scanner.read_mem(test_node, 64)
+                        if nb and any(b != 0 for b in nb):
+                            found_off = (addr + i) - base_address
+                            break
+            if found_off: break
+        
+        if found_off:
+            mul.OFF_ECS_MANAGER = found_off
+            print(f"  [+] 🎉 DYNAMIC BINGO! OFF_ECS_MANAGER = {hex(mul.OFF_ECS_MANAGER)}")
+        else:
+            print(f"  [!] ⚠️ ใช้ค่า Persistence สำหรับ ECS Manager: {hex(mul.OFF_ECS_MANAGER)}")
+
     # 5️⃣ หา OFF_AIR_VEL (0x318)
     # 🧬 DNA: 0F 10 ?? 18 03 00 00 0F 10 ?? 24 03 00 00 (จาก 025effcb)
     # air_vel_dna = "0F 10 ? 18 03 00 00 0F 10 ? 24 03 00 00"
