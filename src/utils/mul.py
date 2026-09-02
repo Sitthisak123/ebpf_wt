@@ -56,6 +56,18 @@ OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเ
 OFF_MY_AIR_VEL      = 0x0068      # My air velocity: DOUBLE vec3 at move_ptr + 0x0068 (47.5Hz)
 OFF_MY_AIR_MOVEMENT = 0x0D28      # My air movement pointer from tick-rate scan (0x0D28 / 0x0D30)
 
+# 🚀 Missile/Rocket ECS Offsets (starned - confirmed 2026-09)
+OFF_ECS_MANAGER     = 0x8225aa0   # base + this → ECS manager ptr
+OFF_ECS_NODE_TABLE  = 0x178       # manager + this → node_table ptr
+OFF_RKT_POS         = 0x23c       # rocket + this → Vec3 position
+OFF_RKT_VEL         = 0x258       # rocket + this → Vec3 velocity
+OFF_RKT_OWNER       = 0x40        # rocket + this → owner unit id (u32)
+OFF_RKT_STATE       = 0x94        # rocket + this → state byte
+OFF_RKT_GUIDANCE    = 0x638       # rocket + this → guidance struct ptr
+OFF_RKT_PROPS       = 0x6c8       # rocket + this → props ptr (name at +0x50)
+OFF_GUID_LOCKED     = 0x50        # guidance + this → isLocked byte
+OFF_GUID_TRACKING   = 0x51        # guidance + this → isTracking byte
+OFF_GUID_TARGET_ID  = 0x8C        # guidance + this → target unit id (i16)
 
 OFF_GROUND_UNITS    = (0x358, False)
 OFF_GROUND_MOVEMENT = 0x1118

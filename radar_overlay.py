@@ -37,6 +37,7 @@ from src.utils.mul import *
 from src.utils.debug import *
 from src.utils.kalman import KinematicKalmanFilter
 from src.utils.ammo_family import resolve_ammo_family
+from src.utils.missile import MissileScanner, get_all_missiles
 from src.worker.data_pump import DataPumpWorker, FrameSnapshot, TargetSnapshot
 
 
@@ -244,6 +245,15 @@ COLOR_DEBUG_BOX_ENTRY           = (255, 120, 40, 235)
 COLOR_CALIBRATION_HIT           = (0, 150, 255, 255)
 COLOR_CLASS_ICON_GROUND         = (255, 215, 96, 235)
 COLOR_CLASS_ICON_AIR            = (120, 220, 255, 235)
+
+# 🚀 MISSILE WARNING COLORS
+COLOR_MISSILE_MARKER            = (255, 40, 40, 255)     # Red diamond marker
+COLOR_MISSILE_MARKER_UNGUIDED   = (255, 160, 40, 200)    # Orange for unguided
+COLOR_MISSILE_WARNING_BORDER    = (255, 0, 0, 180)       # Flashing red border
+COLOR_MISSILE_WARNING_TEXT      = (255, 60, 60, 255)     # Warning text
+COLOR_MISSILE_INFO_TEXT         = (255, 200, 80, 230)    # Missile info text
+MISSILE_SCAN_INTERVAL_S         = 0.10                   # Scan every 100ms
+MISSILE_WARNING_FLASH_HZ        = 3.0                    # Flash frequency
 
 BULLET_GRAVITY       = 9.80665   
 BOMB_CCIP_DRAG_K     = 0.0000175  # Small drag trim: 0.0001 was too much, 0.0 was slightly too little.
@@ -2728,6 +2738,13 @@ class ESPOverlay(QOpenGLWidget):
         self.my_unit_spawn_grace_until = 0.0
         self.shutdown_requested = False
         self.startup_time = time.time()
+        
+        # 🚀 MISSILE WARNING SYSTEM
+        self.missile_scanner = MissileScanner()
+        self.missile_cache = []           # List of MissileInfo
+        self.missile_last_scan = 0.0
+        self.missile_warning_active = False
+        self.missile_warning_start = 0.0
         self.calibration_offset = [0.0, 0.0]
         self.vertical_correction = 0.0
         self.camera_parallax = -4.5  # 🎯 NEW: ค่าแรงเหวี่ยงกล้องเริ่มต้น (T-80U-E1)
@@ -5704,6 +5721,181 @@ class ESPOverlay(QOpenGLWidget):
                 del self.kalman_filters[ptr]
             for ptr in [ptr for ptr in self.air_alert_seen if ptr not in seen_targets_this_frame]:
                 del self.air_alert_seen[ptr]
+
+            # ============================================================
+            # 🚀 MISSILE WARNING SYSTEM
+            # ============================================================
+            if my_pos and view_matrix:
+                try:
+                    # Scan for missiles (throttled internally)
+                    if curr_t - self.missile_last_scan >= MISSILE_SCAN_INTERVAL_S:
+                        self.missile_last_scan = curr_t
+                        result = self.missile_scanner.scan(self.scanner, self.base_address)
+                        if result is not None:
+                            self.missile_cache = result
+                    
+                    active_missiles = self.missile_cache
+                    
+                    if active_missiles:
+                        # Filter: missiles within 15km of my position
+                        nearby = []
+                        for m in active_missiles:
+                            dx = m.pos[0] - my_pos[0]
+                            dy = m.pos[1] - my_pos[1]
+                            dz = m.pos[2] - my_pos[2]
+                            dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                            if dist < 15000:
+                                nearby.append((m, dist))
+                        
+                        # Check if any missile is tracking ME
+                        incoming = []
+                        for m, dist in nearby:
+                            # Check if missile is heading toward me
+                            if dist > 0:
+                                dx = my_pos[0] - m.pos[0]
+                                dy = my_pos[1] - m.pos[1]
+                                dz = my_pos[2] - m.pos[2]
+                                # Dot product of velocity and direction-to-me
+                                dot = m.vel[0]*dx + m.vel[1]*dy + m.vel[2]*dz
+                                if dot > 0:  # Moving toward me
+                                    # Angle between velocity and direction-to-me
+                                    v_len = m.speed
+                                    d_len = dist
+                                    if v_len > 0 and d_len > 0:
+                                        cos_angle = dot / (v_len * d_len)
+                                        if cos_angle > 0.7:  # Within ~45 degrees cone
+                                            time_to_impact = dist / m.speed if m.speed > 0 else 999
+                                            incoming.append((m, dist, time_to_impact))
+                        
+                        # Sort by distance (closest first)
+                        incoming.sort(key=lambda x: x[1])
+                        nearby.sort(key=lambda x: x[1])
+                        
+                        # Draw missile markers
+                        painter.setFont(QFont("Arial", 10, QFont.Bold))
+                        for m, dist in nearby:
+                            w2s = world_to_screen(
+                                view_matrix,
+                                m.pos[0], m.pos[1], m.pos[2],
+                                self.screen_width, self.screen_height
+                            )
+                            if w2s:
+                                sx, sy, sw = w2s
+                                if 0 <= sx <= self.screen_width and 0 <= sy <= self.screen_height:
+                                    # Diamond marker
+                                    is_incoming = any(im[0].ptr == m.ptr for im in incoming)
+                                    if is_incoming:
+                                        marker_color = QColor(*COLOR_MISSILE_MARKER)
+                                        size = 10
+                                    else:
+                                        marker_color = QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
+                                        size = 7
+                                    
+                                    painter.setPen(QPen(marker_color, 2))
+                                    painter.setBrush(Qt.NoBrush)
+                                    diamond = QPolygon([
+                                        QPoint(int(sx), int(sy - size)),
+                                        QPoint(int(sx + size), int(sy)),
+                                        QPoint(int(sx), int(sy + size)),
+                                        QPoint(int(sx - size), int(sy)),
+                                    ])
+                                    painter.drawPolygon(diamond)
+                                    
+                                    # Label
+                                    dist_km = dist / 1000.0
+                                    speed_label = f"{m.speed:.0f}m/s"
+                                    dist_label = f"{dist_km:.1f}km" if dist_km >= 1 else f"{dist:.0f}m"
+                                    label = f"🚀 {dist_label} {speed_label}"
+                                    if m.name:
+                                        # Extract short name (e.g. "aim7m_sparrow" from full path)
+                                        short = m.name.split('^')[-1].replace('.blk','').replace('_default','')
+                                        label = f"🚀 {short} {dist_label}"
+                                    
+                                    text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
+                                    _draw_outlined_text(
+                                        painter, int(sx + size + 4), int(sy + 4),
+                                        label, text_color,
+                                        QColor(0, 0, 0, 180), 1
+                                    )
+                        
+                        # 🚨 WARNING HUD - flashing border when missiles incoming
+                        if incoming:
+                            if not self.missile_warning_active:
+                                self.missile_warning_active = True
+                                self.missile_warning_start = curr_t
+                            
+                            # Flashing alpha
+                            flash_phase = math.sin(curr_t * MISSILE_WARNING_FLASH_HZ * 2 * math.pi)
+                            flash_alpha = int(80 + 100 * max(0, flash_phase))
+                            
+                            # Red border
+                            border_color = QColor(255, 0, 0, flash_alpha)
+                            painter.setPen(QPen(border_color, 4))
+                            painter.setBrush(Qt.NoBrush)
+                            margin = 30
+                            painter.drawRect(margin, margin, 
+                                           self.screen_width - 2*margin, 
+                                           self.screen_height - 2*margin)
+                            
+                            # Warning text at top
+                            closest = incoming[0]
+                            m_closest, dist_closest, tti = closest
+                            
+                            warn_text = f"⚠️ MISSILE WARNING - {len(incoming)} INCOMING"
+                            if tti < 999:
+                                warn_text += f" - IMPACT {tti:.1f}s"
+                            
+                            painter.setFont(QFont("Arial", 20, QFont.Bold))
+                            warn_color = QColor(255, 40, 40, min(255, flash_alpha + 80))
+                            fm = painter.fontMetrics()
+                            tw = fm.boundingRect(warn_text).width()
+                            _draw_outlined_text(
+                                painter,
+                                int((self.screen_width - tw) / 2),
+                                70,
+                                warn_text,
+                                warn_color,
+                                QColor(0, 0, 0, 200), 2
+                            )
+                            
+                            # Direction arrow at screen edge pointing to closest missile
+                            w2s_m = world_to_screen(
+                                view_matrix,
+                                m_closest.pos[0], m_closest.pos[1], m_closest.pos[2],
+                                self.screen_width, self.screen_height
+                            )
+                            if not w2s_m or not (0 <= w2s_m[0] <= self.screen_width and 0 <= w2s_m[1] <= self.screen_height):
+                                # Missile is offscreen - draw direction indicator
+                                cx = self.screen_width / 2
+                                cy = self.screen_height / 2
+                                dx = m_closest.pos[0] - my_pos[0]
+                                dz = m_closest.pos[2] - my_pos[2]
+                                angle = math.atan2(dz, dx)
+                                
+                                edge_r = min(self.screen_width, self.screen_height) / 2 - 60
+                                arrow_x = cx + math.cos(angle) * edge_r
+                                arrow_y = cy + math.sin(angle) * edge_r
+                                
+                                painter.setPen(QPen(QColor(255, 0, 0, flash_alpha + 40), 3))
+                                painter.setBrush(QBrush(QColor(255, 0, 0, flash_alpha)))
+                                arrow_size = 15
+                                tip_x = arrow_x + math.cos(angle) * arrow_size
+                                tip_y = arrow_y + math.sin(angle) * arrow_size
+                                left_x = arrow_x + math.cos(angle + 2.5) * arrow_size
+                                left_y = arrow_y + math.sin(angle + 2.5) * arrow_size
+                                right_x = arrow_x + math.cos(angle - 2.5) * arrow_size
+                                right_y = arrow_y + math.sin(angle - 2.5) * arrow_size
+                                painter.drawPolygon(QPolygon([
+                                    QPoint(int(tip_x), int(tip_y)),
+                                    QPoint(int(left_x), int(left_y)),
+                                    QPoint(int(right_x), int(right_y)),
+                                ]))
+                            
+                            painter.setFont(QFont("Arial", 12, QFont.Bold))
+                        else:
+                            self.missile_warning_active = False
+                except Exception as e:
+                    dprint(f"Missile warning error: {e}", force=True)
 
         except Exception as e: 
             self._fatal_shutdown(
