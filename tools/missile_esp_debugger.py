@@ -24,8 +24,7 @@ from src.utils.mul import (
     get_cgame_base, get_view_matrix, get_local_team, get_unit_pos,
     world_to_screen, GHIDRA_BASE
 )
-from src.utils.missile import MissileScanner, get_all_missiles
-from tools.missile_starned_dumper import brute_force_entries as dumper_brute_force, rp, OUR_ALLLISTDATA, ECS_NODE_TABLE, ECS_CLASS_TABLE
+from tools.missile_starned_dumper import brute_force_entries as dumper_brute_force, rp
 
 def main():
     print("🔍 MISSILE ESP DEBUGGER & DIAGNOSTIC TOOL")
@@ -52,9 +51,10 @@ def main():
     print("\n" + "=" * 70)
     print("📊 TEST 1: dumper brute-force scan (reference)")
     print("=" * 70)
-    mgr = rp(scanner, base + OUR_ALLLISTDATA)
-    node_t = rp(scanner, mgr + ECS_NODE_TABLE) if mgr else 0
-    class_t = rp(scanner, mgr + ECS_CLASS_TABLE) if mgr else 0
+    from src.utils.missile import MissileScanner
+    from tools.missile_starned_dumper import OFF_ECS_MANAGER, OFF_ECS_NODE_TABLE
+    mgr = rp(scanner, base + OFF_ECS_MANAGER)
+    node_t = rp(scanner, mgr + OFF_ECS_NODE_TABLE) if mgr else 0
     
     dumper_rockets = []
     if node_t:
