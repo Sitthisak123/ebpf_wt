@@ -189,8 +189,22 @@ class MissileScanner:
             if not _is_valid_ptr(storage):
                 continue
             
-            # Read storage array directly at offset 0 (up to 1000 pointers = 8KB)
-            bulk = scanner.read_mem(storage, 1000 * 8)
+            # Read dynamic count (+0x8) and capacity (+0x14) from entry descriptor
+            count = struct.unpack_from("<I", data, 8)[0]
+            cap = struct.unpack_from("<I", data, 0x14)[0]
+            
+            # Calculate safe pointer count matching exact allocated block (min 32, max 2048)
+            num_ptrs = max(count, cap)
+            if num_ptrs == 0:
+                num_ptrs = 64
+            num_ptrs = min(num_ptrs, 2048)
+            
+            # Read EXACT memory allocated for this storage block (avoids EFAULT on page boundary)
+            bulk = scanner.read_mem(storage, num_ptrs * 8)
+            if not bulk:
+                fallback_ptrs = max(count, 32)
+                bulk = scanner.read_mem(storage, fallback_ptrs * 8)
+            
             if not bulk or len(bulk) < 8:
                 continue
             
