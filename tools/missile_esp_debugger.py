@@ -70,10 +70,8 @@ def main():
     print("📊 TEST 2: src/utils/missile.py (MissileScanner module)")
     print("=" * 70)
     ms = MissileScanner()
-    # Force full scan
     missile_module_rockets = ms.scan(scanner, base)
     if missile_module_rockets is None:
-        # Retry once if throttled
         time.sleep(0.06)
         missile_module_rockets = ms.scan(scanner, base)
     
