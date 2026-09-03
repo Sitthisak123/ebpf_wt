@@ -36,7 +36,7 @@ OFF_GUID_LOCKED    = 0x50
 OFF_GUID_TRACKING  = 0x51
 OFF_GUID_TARGET_ID = 0x8C
 
-# Active ECS node entries window (Covers all 5000 node_table sublists in 1 Single 160KB Syscall)
+# Active ECS node entries window (Rockets can be located in entries 0..5000)
 NODE_ENTRY_WINDOW = 5000
 
 # ====================================================================
@@ -189,21 +189,25 @@ class MissileScanner:
             if not _is_valid_ptr(storage):
                 continue
             
-            # Read dynamic count (+0x8) and capacity (+0x14) from entry descriptor
+            # Read count (+0x8) and capacity (+0x14) from ECS Node Descriptor
             count = struct.unpack_from("<I", data, 8)[0]
-            cap = struct.unpack_from("<I", data, 0x14)[0]
+            capacity = struct.unpack_from("<I", data, 0x14)[0]
             
-            # Calculate safe pointer count matching exact allocated block (min 32, max 2048)
-            num_ptrs = max(count, cap)
-            if num_ptrs == 0:
-                num_ptrs = 64
-            num_ptrs = min(num_ptrs, 2048)
+            # Dynamic capacity calculation (handles 32, 64, 128, 256, 512, 1024, 2048 entities dynamically!)
+            target_ptrs = max(count, capacity, 32)
+            target_ptrs = min(target_ptrs, 2048)
             
-            # Read EXACT memory allocated for this storage block (avoids EFAULT on page boundary)
-            bulk = scanner.read_mem(storage, num_ptrs * 8)
+            bulk = scanner.read_mem(storage, target_ptrs * 8)
             if not bulk:
-                fallback_ptrs = max(count, 32)
-                bulk = scanner.read_mem(storage, fallback_ptrs * 8)
+                # Re-allocation recovery: if game reallocated storage buffer mid-frame, fetch live descriptor
+                live_desc = scanner.read_mem(node_t + entry_idx * 0x20, 0x20)
+                if live_desc and len(live_desc) >= 0x20:
+                    storage = struct.unpack_from("<Q", live_desc, 0)[0]
+                    count = struct.unpack_from("<I", live_desc, 8)[0]
+                    capacity = struct.unpack_from("<I", live_desc, 0x14)[0]
+                    target_ptrs = min(max(count, capacity, 32), 2048)
+                    if _is_valid_ptr(storage):
+                        bulk = scanner.read_mem(storage, target_ptrs * 8)
             
             if not bulk or len(bulk) < 8:
                 continue

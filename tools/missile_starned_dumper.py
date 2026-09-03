@@ -160,14 +160,20 @@ def brute_force_entries(sc, node_table, max_entries=350):
             continue
         
         count = struct.unpack_from("<I", data, 8)[0]
-        cap = struct.unpack_from("<I", data, 0x14)[0]
-        num_ptrs = min(max(max(count, cap), 64), 2048)
+        capacity = struct.unpack_from("<I", data, 0x14)[0]
+        target_ptrs = min(max(count, capacity, 32), 2048)
         
-        # 1. Read storage array directly at offset 0 matching exact allocated block
-        bulk0 = sc.read_mem(storage, num_ptrs * 8)
+        bulk0 = sc.read_mem(storage, target_ptrs * 8)
         if not bulk0:
-            bulk0 = sc.read_mem(storage, max(count, 32) * 8)
-            
+            live_desc = sc.read_mem(node_table + i * 0x20, 0x20)
+            if live_desc and len(live_desc) >= 0x20:
+                storage = struct.unpack_from("<Q", live_desc, 0)[0]
+                count = struct.unpack_from("<I", live_desc, 8)[0]
+                capacity = struct.unpack_from("<I", live_desc, 0x14)[0]
+                target_ptrs = min(max(count, capacity, 32), 2048)
+                if is_valid_ptr(storage):
+                    bulk0 = sc.read_mem(storage, target_ptrs * 8)
+        
         if bulk0 and len(bulk0) >= 8:
             for idx in range(len(bulk0) // 8):
                 ptr = struct.unpack_from("<Q", bulk0, idx * 8)[0]
