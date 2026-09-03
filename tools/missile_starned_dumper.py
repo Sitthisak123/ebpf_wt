@@ -159,8 +159,15 @@ def brute_force_entries(sc, node_table, max_entries=350):
         if not is_valid_ptr(storage):
             continue
         
-        # 1. Read storage array directly at offset 0 (up to 1000 pointers = 8KB)
-        bulk0 = sc.read_mem(storage, 1000 * 8)
+        count = struct.unpack_from("<I", data, 8)[0]
+        cap = struct.unpack_from("<I", data, 0x14)[0]
+        num_ptrs = min(max(max(count, cap), 64), 2048)
+        
+        # 1. Read storage array directly at offset 0 matching exact allocated block
+        bulk0 = sc.read_mem(storage, num_ptrs * 8)
+        if not bulk0:
+            bulk0 = sc.read_mem(storage, max(count, 32) * 8)
+            
         if bulk0 and len(bulk0) >= 8:
             for idx in range(len(bulk0) // 8):
                 ptr = struct.unpack_from("<Q", bulk0, idx * 8)[0]
@@ -171,21 +178,6 @@ def brute_force_entries(sc, node_table, max_entries=350):
                         info["entry"] = i
                         seen_ptrs.add(ptr)
                         all_rockets.append(info)
-        
-        # 2. Try Layout B: Column Pointers (col0 = *(storage + 0))
-        col0 = rp(sc, storage)
-        if is_valid_ptr(col0) and col0 not in seen_ptrs:
-            col_bulk = sc.read_mem(col0, 1000 * 8)
-            if col_bulk and len(col_bulk) >= 8:
-                for idx in range(len(col_bulk) // 8):
-                    ptr = struct.unpack_from("<Q", col_bulk, idx * 8)[0]
-                    if is_valid_ptr(ptr) and ptr not in seen_ptrs:
-                        info = check_ptr_is_rocket(sc, ptr)
-                        if info:
-                            info["layout"] = "B_col_ptrs"
-                            info["entry"] = i
-                            seen_ptrs.add(ptr)
-                            all_rockets.append(info)
     
     return all_rockets
 
