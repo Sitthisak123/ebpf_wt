@@ -159,21 +159,8 @@ def brute_force_entries(sc, node_table, max_entries=350):
         if not is_valid_ptr(storage):
             continue
         
-        count = struct.unpack_from("<I", data, 8)[0]
-        capacity = struct.unpack_from("<I", data, 0x14)[0]
-        target_ptrs = min(max(count, capacity, 32), 2048)
-        
-        bulk0 = sc.read_mem(storage, target_ptrs * 8)
-        if not bulk0:
-            live_desc = sc.read_mem(node_table + i * 0x20, 0x20)
-            if live_desc and len(live_desc) >= 0x20:
-                storage = struct.unpack_from("<Q", live_desc, 0)[0]
-                count = struct.unpack_from("<I", live_desc, 8)[0]
-                capacity = struct.unpack_from("<I", live_desc, 0x14)[0]
-                target_ptrs = min(max(count, capacity, 32), 2048)
-                if is_valid_ptr(storage):
-                    bulk0 = sc.read_mem(storage, target_ptrs * 8)
-        
+        # 1. Read storage array directly at offset 0 (up to 1000 pointers = 8KB)
+        bulk0 = sc.read_mem(storage, 1000 * 8)
         if bulk0 and len(bulk0) >= 8:
             for idx in range(len(bulk0) // 8):
                 ptr = struct.unpack_from("<Q", bulk0, idx * 8)[0]
@@ -184,6 +171,21 @@ def brute_force_entries(sc, node_table, max_entries=350):
                         info["entry"] = i
                         seen_ptrs.add(ptr)
                         all_rockets.append(info)
+        
+        # 2. Try Layout B: Column Pointers (col0 = *(storage + 0))
+        col0 = rp(sc, storage)
+        if is_valid_ptr(col0) and col0 not in seen_ptrs:
+            col_bulk = sc.read_mem(col0, 1000 * 8)
+            if col_bulk and len(col_bulk) >= 8:
+                for idx in range(len(col_bulk) // 8):
+                    ptr = struct.unpack_from("<Q", col_bulk, idx * 8)[0]
+                    if is_valid_ptr(ptr) and ptr not in seen_ptrs:
+                        info = check_ptr_is_rocket(sc, ptr)
+                        if info:
+                            info["layout"] = "B_col_ptrs"
+                            info["entry"] = i
+                            seen_ptrs.add(ptr)
+                            all_rockets.append(info)
     
     return all_rockets
 
