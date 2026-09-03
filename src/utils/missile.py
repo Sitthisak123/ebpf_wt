@@ -36,8 +36,8 @@ OFF_GUID_LOCKED    = 0x50
 OFF_GUID_TRACKING  = 0x51
 OFF_GUID_TARGET_ID = 0x8C
 
-# Active ECS node entries window (Rockets are located in active entries 0..500)
-NODE_ENTRY_WINDOW = 500
+# Active ECS node entries window (Rockets are located in active entries 0..250)
+NODE_ENTRY_WINDOW = 250
 
 # ====================================================================
 # Helpers
@@ -189,8 +189,8 @@ class MissileScanner:
             if not _is_valid_ptr(storage):
                 continue
             
-            # Read storage array up to 3000 pointers (24KB) to cover expanded column arrays (128+ entities)
-            bulk = scanner.read_mem(storage, 3000 * 8)
+            # Read storage array up to 2048 pointers (16KB) to guarantee 200+ missile detection
+            bulk = scanner.read_mem(storage, 2048 * 8)
             if not bulk or len(bulk) < 8:
                 continue
             
