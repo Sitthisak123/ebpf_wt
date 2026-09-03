@@ -36,8 +36,8 @@ OFF_GUID_LOCKED    = 0x50
 OFF_GUID_TRACKING  = 0x51
 OFF_GUID_TARGET_ID = 0x8C
 
-# Active ECS node entries window (Rockets can be located in entries 0..5000)
-NODE_ENTRY_WINDOW = 5000
+# Active ECS node entries window (Rockets are located in active entries 0..500)
+NODE_ENTRY_WINDOW = 500
 
 # ====================================================================
 # Helpers
@@ -189,26 +189,8 @@ class MissileScanner:
             if not _is_valid_ptr(storage):
                 continue
             
-            # Read count (+0x8) and capacity (+0x14) from ECS Node Descriptor
-            count = struct.unpack_from("<I", data, 8)[0]
-            capacity = struct.unpack_from("<I", data, 0x14)[0]
-            
-            # Dynamic capacity calculation (handles 32, 64, 128, 256, 512, 1024, 2048 entities dynamically!)
-            target_ptrs = max(count, capacity, 32)
-            target_ptrs = min(target_ptrs, 2048)
-            
-            bulk = scanner.read_mem(storage, target_ptrs * 8)
-            if not bulk:
-                # Re-allocation recovery: if game reallocated storage buffer mid-frame, fetch live descriptor
-                live_desc = scanner.read_mem(node_t + entry_idx * 0x20, 0x20)
-                if live_desc and len(live_desc) >= 0x20:
-                    storage = struct.unpack_from("<Q", live_desc, 0)[0]
-                    count = struct.unpack_from("<I", live_desc, 8)[0]
-                    capacity = struct.unpack_from("<I", live_desc, 0x14)[0]
-                    target_ptrs = min(max(count, capacity, 32), 2048)
-                    if _is_valid_ptr(storage):
-                        bulk = scanner.read_mem(storage, target_ptrs * 8)
-            
+            # Read storage array up to 3000 pointers (24KB) to cover expanded column arrays (128+ entities)
+            bulk = scanner.read_mem(storage, 3000 * 8)
             if not bulk or len(bulk) < 8:
                 continue
             
