@@ -76,15 +76,14 @@ def vlen(v):
 def is_real_missile_pos(pos):
     if not pos or not all(math.isfinite(x) for x in pos): return False
     nonzero = sum(1 for x in pos if abs(x) > 5.0)
-    if nonzero < 2: return False
-    if any(abs(x) > 200000 for x in pos): return False
+    if nonzero < 1: return False
+    if any(abs(x) > 250000 for x in pos): return False
     return True
 
 def is_real_missile_vel(vel):
     if not vel or not all(math.isfinite(x) for x in vel): return False
     speed = vlen(vel)
-    nonzero = sum(1 for x in vel if abs(x) > 1.0)
-    return 50.0 < speed < 3500.0 and nonzero >= 2
+    return 30.0 < speed < 4500.0
 
 
 def check_ptr_is_rocket(sc, ptr):
