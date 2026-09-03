@@ -36,8 +36,8 @@ OFF_GUID_LOCKED    = 0x50
 OFF_GUID_TRACKING  = 0x51
 OFF_GUID_TARGET_ID = 0x8C
 
-# Active ECS node entries window (Rockets are located in active entries 0..500)
-NODE_ENTRY_WINDOW = 500
+# Active ECS node entries window (Covers all 5000 node_table sublists in 1 Single 160KB Syscall)
+NODE_ENTRY_WINDOW = 5000
 
 # ====================================================================
 # Helpers
