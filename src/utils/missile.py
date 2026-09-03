@@ -36,8 +36,8 @@ OFF_GUID_LOCKED    = 0x50
 OFF_GUID_TRACKING  = 0x51
 OFF_GUID_TARGET_ID = 0x8C
 
-# Active ECS node entries window (Rockets are located in active entries 0..250)
-NODE_ENTRY_WINDOW = 250
+# Active ECS node entries window (Rockets are located in active entries 0..500)
+NODE_ENTRY_WINDOW = 500
 
 # ====================================================================
 # Helpers
@@ -148,7 +148,8 @@ class MissileScanner:
     
     def scan(self, scanner, base):
         """
-        Scan active missiles using adaptive buffer sizing per node entry.
+        Scan active missiles using live node_table pointer.
+        Handles dynamic ECS node_table memory re-allocations seamlessly (> 32 missiles).
         Takes < 0.02ms total execution time.
         """
         now = time.time()
@@ -158,15 +159,21 @@ class MissileScanner:
             return None
         self._last_scan_time = now
         
-        # Continuously verify/re-init ECS manager pointers if invalid
-        if not self._initialized:
-            if not self._init_ecs(scanner, base):
-                return []
+        # Always fetch LIVE ECS manager and node_table pointers
+        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8225aa0)
+        ecs_node_off = getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)
         
-        # Single 8KB Batch Read of active node table entries (0..250)
-        table_bytes = scanner.read_mem(self._node_table, NODE_ENTRY_WINDOW * 0x20)
+        mgr = _rp(scanner, base + ecs_mgr_off)
+        if not _is_valid_ptr(mgr):
+            return []
+        
+        node_t = _rp(scanner, mgr + ecs_node_off)
+        if not _is_valid_ptr(node_t):
+            return []
+        
+        # Single 8KB Batch Read of active node table entries (0..250) from LIVE node_t
+        table_bytes = scanner.read_mem(node_t, NODE_ENTRY_WINDOW * 0x20)
         if not table_bytes or len(table_bytes) < 0x20:
-            self._initialized = False
             return []
         
         found_missiles = []
@@ -182,11 +189,8 @@ class MissileScanner:
             if not _is_valid_ptr(storage):
                 continue
             
-            # Read count at +0x8 to determine buffer size adaptively
-            count = struct.unpack_from("<I", data, 8)[0]
-            read_size = 400 if count == 0 else min(max(count, 64), 500)
-            
-            bulk = scanner.read_mem(storage, read_size * 8)
+            # Read storage array directly at offset 0 (up to 400 pointers = 3.2KB)
+            bulk = scanner.read_mem(storage, 400 * 8)
             if not bulk or len(bulk) < 8:
                 continue
             
@@ -217,8 +221,9 @@ class MissileScanner:
         pos = struct.unpack_from("<fff", header, OFF_RKT_POS)
         if not all(math.isfinite(x) for x in pos):
             return None
+        # Must be valid map coordinates (not 0.0 or garbage 10^-38)
         nonzero_pos = sum(1 for x in pos if abs(x) > 5.0)
-        if nonzero_pos < 2 or any(abs(x) > 200000 for x in pos):
+        if nonzero_pos < 1 or any(abs(x) > 250000 for x in pos):
             return None
         
         # Read velocity (starned 0x258)
@@ -226,8 +231,7 @@ class MissileScanner:
         if not all(math.isfinite(x) for x in vel):
             return None
         speed = _vlen(vel)
-        nonzero_vel = sum(1 for x in vel if abs(x) > 1.0)
-        if not (50.0 < speed < 3500.0 and nonzero_vel >= 2):
+        if not (30.0 < speed < 4500.0):
             return None
         
         # Secondary validation directly from header block
