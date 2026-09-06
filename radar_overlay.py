@@ -3395,13 +3395,16 @@ class ESPOverlay(QOpenGLWidget):
 
         return (calib_x, calib_y)
 
-    def _stabilize_velocity(self, u_ptr, is_air, pos, curr_t):
+    def _stabilize_velocity(self, u_ptr, is_air, pos, curr_t, cache=None, meta_cache=None):
+        vel_cache = cache if cache is not None else self.velocity_cache
+        meta_dict = meta_cache if meta_cache is not None else self.last_velocity_meta
+
         if u_ptr and pos:
             raw_vel = get_air_velocity(self.scanner, u_ptr) if is_air else get_ground_velocity(self.scanner, u_ptr)
         else:
             raw_vel = (0.0, 0.0, 0.0)
-        cached = self.velocity_cache.get(u_ptr)
-        prev_meta = self.last_velocity_meta.get(u_ptr, {})
+        cached = vel_cache.get(u_ptr)
+        prev_meta = meta_dict.get(u_ptr, {})
         pos_vel = None
 
         if cached and pos:
@@ -3413,18 +3416,23 @@ class ESPOverlay(QOpenGLWidget):
                 dy = pos[1] - cached['pos'][1]
                 dz = pos[2] - cached['pos'][2]
                 pos_vel = (dx / dt, dy / dt, dz / dt)
-                if not is_air:
-                    prev_pos_filtered = prev_meta.get("pos_vel_filtered")
-                    # World-space ground lead uses X/Z as horizontal motion; Y is height and must stay zero.
-                    planar_pos_vel = (pos_vel[0], 0.0, pos_vel[2])
-                    if prev_pos_filtered and len(prev_pos_filtered) == 3:
-                        pos_vel = (
-                            (prev_pos_filtered[0] * 0.82) + (planar_pos_vel[0] * 0.18),
-                            0.0,
-                            (prev_pos_filtered[2] * 0.82) + (planar_pos_vel[2] * 0.18),
-                        )
-                    else:
-                        pos_vel = planar_pos_vel
+            elif dt < min_dt:
+                # 🚀 Jitter Prevention: ถ้าเฟรมมาเร็วเกินไป (dt < min_dt)
+                # ให้คงค่า pos_vel เดิมไว้ ไม่ปล่อยให้หลุดเป็น None จนความเร็ววูบเป็น 0
+                pos_vel = prev_meta.get("pos_vel")
+
+            if pos_vel and not is_air:
+                prev_pos_filtered = prev_meta.get("pos_vel_filtered")
+                # World-space ground lead uses X/Z as horizontal motion; Y is height and must stay zero.
+                planar_pos_vel = (pos_vel[0], 0.0, pos_vel[2])
+                if prev_pos_filtered and len(prev_pos_filtered) == 3:
+                    pos_vel = (
+                        (prev_pos_filtered[0] * 0.82) + (planar_pos_vel[0] * 0.18),
+                        0.0,
+                        (prev_pos_filtered[2] * 0.82) + (planar_pos_vel[2] * 0.18),
+                    )
+                else:
+                    pos_vel = planar_pos_vel
 
         chosen_vel = raw_vel
         source = "raw"
@@ -3532,12 +3540,12 @@ class ESPOverlay(QOpenGLWidget):
                     chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
                     source = f"{source}_smoothed"
         
-        self.velocity_cache[u_ptr] = {
+        vel_cache[u_ptr] = {
             'time': curr_t,
             'pos': pos,
             'vel': chosen_vel,
         }
-        self.last_velocity_meta[u_ptr] = {
+        meta_dict[u_ptr] = {
             'source': source,
             'raw_vel': raw_vel,
             'raw_mag': raw_mag,
@@ -3734,6 +3742,7 @@ class ESPOverlay(QOpenGLWidget):
                 self.vel_window = {}
                 self.velocity_cache = {}
                 self.last_velocity_meta = {}
+                self._ground_target_vel_cache = {}
                 self.ai_ghost_queue = []
                 self.recon_spawn_watch = {}
                 self.live_velocity_debug = None
@@ -3749,7 +3758,7 @@ class ESPOverlay(QOpenGLWidget):
             else:
                 if my_unit:
                     if my_is_air:
-                        my_vel = get_my_air_velocity(self.scanner, my_unit)
+                        my_vel = (snapshot.my_vel if snapshot and snapshot.my_vel else None) or get_my_air_velocity(self.scanner, my_unit) or (0.0, 0.0, 0.0)
                         my_speed_raw = math.sqrt(my_vel[0]**2 + my_vel[1]**2 + my_vel[2]**2)
                         self.last_velocity_meta[my_unit] = {
                             'source': 'my_air_0d10_0068',
@@ -3762,7 +3771,8 @@ class ESPOverlay(QOpenGLWidget):
                             'ground_motion_state': "",
                         }
                     else:
-                        my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t)
+                        # 🎯 Ground my_vel is stabilized at true 60Hz exclusively by GUI thread
+                        my_vel = self._stabilize_velocity(my_unit, False, my_pos, curr_t)
                 else:
                     my_vel = (0.0, 0.0, 0.0)
                 
@@ -4439,7 +4449,7 @@ class ESPOverlay(QOpenGLWidget):
 
                     warning_level = 0
                     if physics_is_air and my_pos and dist > 10.0:
-                        air_vel_warn = pre_vel or (t_snap.vel if t_snap else None) or self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
+                        air_vel_warn = (t_snap.vel if t_snap and t_snap.vel is not None else None) or pre_vel or self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
                         warning_level = _get_air_warning_level(
                             my_pos,
                             pos,
@@ -4703,7 +4713,8 @@ class ESPOverlay(QOpenGLWidget):
                     # ========================================================
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
-                    vel = pre_vel or (t_snap.vel if t_snap else None) or self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
+                    target_vel = (t_snap.vel if t_snap and t_snap.vel is not None else None) or pre_vel
+                    vel = target_vel if target_vel is not None else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
 
                     # ✈️ Air Speed display below bbox
                     if overlay_is_air and vel and target_box_rect and (draw_inline_air_overlay):
@@ -4759,19 +4770,6 @@ class ESPOverlay(QOpenGLWidget):
                             # 4. Limit Acceleration ป้องกันเป้ากระตุกหลุดจอเวลา Memory อ่านค่าเพี้ยนฉับพลัน
                             if a_mag > 150.0: 
                                 ax, ay, az = (ax/a_mag)*150.0, (ay/a_mag)*150.0, (az/a_mag)*150.0
-                                
-                        a_mag = math.sqrt(ax**2 + ay**2 + az**2)
-                        
-                        if a_mag > 1.5: 
-                            is_turning = True
-                            self.vel_window[u_ptr]['turn_time'] = curr_t 
-                        else:
-                            if curr_t - self.vel_window[u_ptr].get('turn_time', 0.0) < 1.0:
-                                is_turning = True 
-                            else:
-                                is_turning = False 
-                                
-                        if a_mag > 150.0: ax, ay, az = (ax/a_mag)*150.0, (ay/a_mag)*150.0, (az/a_mag)*150.0
                         
                         t_x, t_y, t_z = pos[0], pos[1], pos[2]
                         
@@ -4794,6 +4792,23 @@ class ESPOverlay(QOpenGLWidget):
                             })
                             active_flight_data = {'pos': pos, 'v': vel, 'a': (ax, ay, az)}
                     else:
+                        # 🛡️ Ground Target Kinematic Smoothing: กรองความเร็วเป้าหมายภาคพื้นดินให้นิ่งสนิท ไม่สั่น Jitter
+                        if not hasattr(self, '_ground_target_vel_cache'):
+                            self._ground_target_vel_cache = {}
+                        prev_ground_vel = self._ground_target_vel_cache.get(u_ptr)
+                        if prev_ground_vel and len(prev_ground_vel) == 3:
+                            target_spd = math.hypot(vx, vz)
+                            if target_spd > 0.15:
+                                smooth_factor = 0.78
+                                vx = (prev_ground_vel[0] * smooth_factor) + (vx * (1.0 - smooth_factor))
+                                vy = 0.0
+                                vz = (prev_ground_vel[2] * smooth_factor) + (vz * (1.0 - smooth_factor))
+                                vel = (vx, 0.0, vz)
+                            else:
+                                vel = (0.0, 0.0, 0.0)
+                                vx, vy, vz = vel
+                        self._ground_target_vel_cache[u_ptr] = (vx, 0.0, vz)
+
                         ground_aim_point = _get_ground_target_aim_point(box_data, pos, dist)
                         if not ground_aim_point:
                             continue
