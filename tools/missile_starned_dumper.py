@@ -83,7 +83,7 @@ def is_real_missile_pos(pos):
 def is_real_missile_vel(vel):
     if not vel or not all(math.isfinite(x) for x in vel): return False
     speed = vlen(vel)
-    return 30.0 < speed < 4500.0
+    return 15.0 < speed < 4500.0
 
 
 def check_ptr_is_rocket(sc, ptr):
@@ -114,10 +114,9 @@ def check_ptr_is_rocket(sc, ptr):
                 continue
             
             # Filter dead/impacted rockets pooled on ground
-            is_alive = struct.unpack_from("<I", header, 0x6c0)[0]
             phase = struct.unpack_from("<I", header, 0x498)[0]
             detonated = struct.unpack_from("<Q", header, 0x420)[0]
-            if is_alive == 0 or phase == 6 or detonated != 0:
+            if phase == 6 or detonated != 0:
                 continue
             
             # Must have valid weapon properties pointer
