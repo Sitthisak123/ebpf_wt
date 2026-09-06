@@ -202,8 +202,7 @@ class DataPumpWorker(QThread):
         # ----- Worker-owned caches -----
         self.profile_cache: Dict[int, dict] = {}
         self.active_targets: Dict[int, dict] = {}  # u_ptr -> {"snapshot": t_snap, "last_seen": now}
-        self.velocity_cache: Dict[int, dict] = {}  # Worker-owned velocity cache (prevents GUI cache collisions)
-        self.last_velocity_meta: Dict[int, dict] = {}
+
         self.last_my_unit: int = 0
         self.last_my_team: int = 0
         self.last_cgame_base: int = 0
@@ -323,8 +322,7 @@ class DataPumpWorker(QThread):
         if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
             self.profile_cache = {}
             self.active_targets = {}
-            self.velocity_cache = {}
-            self.last_velocity_meta = {}
+
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
         elif my_unit and not self.last_my_unit:
@@ -518,14 +516,8 @@ class DataPumpWorker(QThread):
                 if dist_to_me > (MAX_AIR_DIST if resolved_is_air else MAX_GROUND_DIST):
                     continue
 
-            # Pre-stabilize velocity for all targets using Worker-owned cache and precise per-target timestamp
+            # Ground and Air velocity stabilization is owned 100% by GUI thread at 60Hz
             pre_vel = None
-            if self._stabilize_velocity:
-                t_target = time.time()
-                pre_vel = self._stabilize_velocity(
-                    u_ptr, resolved_is_air, pos, t_target,
-                    cache=self.velocity_cache, meta_cache=self.last_velocity_meta,
-                )
 
             # Pre-resolve unit family (cached permanently per unit)
             unit_family = cached_prof.get("unit_family") if cached_prof else None

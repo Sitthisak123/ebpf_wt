@@ -2943,7 +2943,7 @@ class ESPOverlay(QOpenGLWidget):
             read_ballistic_profile_fn=_read_ballistic_profile,
             get_dynamic_target_box_data_fn=_get_dynamic_target_box_data,
             get_dynamic_my_geometry_fn=_get_dynamic_my_geometry,
-            stabilize_velocity_fn=self._stabilize_velocity,
+            stabilize_velocity_fn=None,
             resolve_is_air_fn=_resolve_is_air_now,
             resolve_unit_family_fn=_resolve_unit_family_enum,
             is_boat_like_fn=_is_boat_like,
@@ -2961,7 +2961,8 @@ class ESPOverlay(QOpenGLWidget):
             },
         )
         self._data_pump.new_frame.connect(self._on_worker_frame)
-        self._data_pump.start()
+        # 🚧 Worker ยังไม่เริ่มจนกว่า paintGL จะ migrate ไปใช้ snapshot (ปิดไว้ตาม commit 296c2e78 เพื่อความนิ่ง 100% ไร้ Jitter)
+        # self._data_pump.start()
 
 
     def _fatal_shutdown(self, reason, detail=""):
@@ -3395,70 +3396,36 @@ class ESPOverlay(QOpenGLWidget):
 
         return (calib_x, calib_y)
 
-    def _stabilize_velocity(self, u_ptr, is_air, pos, curr_t, cache=None, meta_cache=None):
-        vel_cache = cache if cache is not None else self.velocity_cache
-        meta_dict = meta_cache if meta_cache is not None else self.last_velocity_meta
-
+    def _stabilize_velocity(self, u_ptr, is_air, pos, curr_t):
         if u_ptr and pos:
             raw_vel = get_air_velocity(self.scanner, u_ptr) if is_air else get_ground_velocity(self.scanner, u_ptr)
         else:
             raw_vel = (0.0, 0.0, 0.0)
-        cached = vel_cache.get(u_ptr)
-        prev_meta = meta_dict.get(u_ptr, {})
+        cached = self.velocity_cache.get(u_ptr)
+        prev_meta = self.last_velocity_meta.get(u_ptr, {})
         pos_vel = None
-        advance_pos_cache = True
 
         if cached and pos:
             dt = curr_t - cached['time']
             min_dt = 0.005 if is_air else 0.008
             max_dt = 0.75 if is_air else 0.60
-
-            if not is_air:
-                disp = math.hypot(pos[0] - cached['pos'][0], pos[2] - cached['pos'][2])
-                if disp < 0.005 and dt < 0.10:
-                    # 🚀 Sub-tick Aliasing: เฟรมระหว่าง Tick ของฟิสิกส์เกมที่พิกัดยังไม่ขยับ
-                    # ให้คง pos_vel เดิมไว้ และไม่เลื่อน cached_time เพื่อคำนวณ dt แท้จริงใน Tick ถัดไป
-                    pos_vel = prev_meta.get("pos_vel")
-                    advance_pos_cache = False
-                elif disp < 0.005 and dt >= 0.10:
-                    # รถหยุดนิ่งจริงเกิน 100ms
-                    pos_vel = (0.0, 0.0, 0.0)
-                    advance_pos_cache = True
-                elif min_dt <= dt <= max_dt:
-                    dx = pos[0] - cached['pos'][0]
-                    dz = pos[2] - cached['pos'][2]
-                    pos_vel = (dx / dt, 0.0, dz / dt)
-                    advance_pos_cache = True
-                elif dt < min_dt:
-                    # เฟรมมาถี่เกินไป (< 8ms)
-                    pos_vel = prev_meta.get("pos_vel")
-                    advance_pos_cache = False
-                else:
-                    advance_pos_cache = True
-            else:
-                if min_dt <= dt <= max_dt:
-                    dx = pos[0] - cached['pos'][0]
-                    dy = pos[1] - cached['pos'][1]
-                    dz = pos[2] - cached['pos'][2]
-                    pos_vel = (dx / dt, dy / dt, dz / dt)
-                elif dt < min_dt:
-                    pos_vel = prev_meta.get("pos_vel")
-
-            if pos_vel and not is_air:
-                if advance_pos_cache:
+            if min_dt <= dt <= max_dt:
+                dx = pos[0] - cached['pos'][0]
+                dy = pos[1] - cached['pos'][1]
+                dz = pos[2] - cached['pos'][2]
+                pos_vel = (dx / dt, dy / dt, dz / dt)
+                if not is_air:
                     prev_pos_filtered = prev_meta.get("pos_vel_filtered")
                     # World-space ground lead uses X/Z as horizontal motion; Y is height and must stay zero.
                     planar_pos_vel = (pos_vel[0], 0.0, pos_vel[2])
-                    if prev_pos_filtered and len(prev_pos_filtered) == 3 and any(abs(v) > 0.01 for v in prev_pos_filtered):
+                    if prev_pos_filtered and len(prev_pos_filtered) == 3:
                         pos_vel = (
-                            (prev_pos_filtered[0] * 0.85) + (planar_pos_vel[0] * 0.15),
+                            (prev_pos_filtered[0] * 0.82) + (planar_pos_vel[0] * 0.18),
                             0.0,
-                            (prev_pos_filtered[2] * 0.85) + (planar_pos_vel[2] * 0.15),
+                            (prev_pos_filtered[2] * 0.82) + (planar_pos_vel[2] * 0.18),
                         )
                     else:
                         pos_vel = planar_pos_vel
-                else:
-                    pos_vel = prev_meta.get("pos_vel_filtered") or (pos_vel[0], 0.0, pos_vel[2])
 
         chosen_vel = raw_vel
         source = "raw"
@@ -3552,63 +3519,26 @@ class ESPOverlay(QOpenGLWidget):
                 chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
             chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
 
-            # 🛡️ Adaptive Deadband & Hysteresis Smoothing:
-            # กำจัด Micro-jitter ออกอย่างสมบูรณ์แบบ (Zero Jitter) เมื่อวิ่งทางตรงคงที่
+            # Ground world velocity is derived from noisy local raw fields + short-frame position deltas.
+            # Smooth the final vector to prevent source flapping and visible jitter on moving vehicles.
             if prev_vel and len(prev_vel) == 3 and source != "ground_idle":
-                prev_planar_mag = math.hypot(prev_vel[0], prev_vel[2])
-                curr_planar_mag = math.hypot(chosen_vel[0], chosen_vel[2])
-                if prev_planar_mag > 0.25 and curr_planar_mag > 0.25:
-                    vel_diff = math.hypot(chosen_vel[0] - prev_vel[0], chosen_vel[2] - prev_vel[2])
-                    dot = (chosen_vel[0]*prev_vel[0] + chosen_vel[2]*prev_vel[2]) / (prev_planar_mag * curr_planar_mag + 1e-6)
-                    dot = max(-1.0, min(1.0, dot))
-
-                    # 🎯 Rock-Solid Deadband:
-                    # ขับตรงความเร็วคงที่ (Delta < 0.35 m/s (~1.2 km/h) และมุมเบี่ยงเบน < 3.5 องศา)
-                    # ตรึงเวกเตอร์ความเร็วเดิมไว้ 100% ทำให้เส้นเล็งนิ่งสนิท ไม่สั่นแม้แต่มิลลิเมตรเดียว
-                    if vel_diff < 0.35 and dot > 0.998:
-                        chosen_vel = prev_vel
-                        source = f"{source}_locked"
-                    elif vel_diff < 0.75 and dot > 0.990:
-                        smoothing = 0.92
-                        chosen_vel = (
-                            (prev_vel[0] * smoothing) + (chosen_vel[0] * (1.0 - smoothing)),
-                            0.0,
-                            (prev_vel[2] * smoothing) + (chosen_vel[2] * (1.0 - smoothing)),
-                        )
-                        source = f"{source}_smoothed_steady"
-                    else:
-                        # เข้าโค้ง หักเลี้ยว เร่ง หรือเบรกฉับพลัน: ตอบสนองอย่างรวดเร็ว (0.72) ไม่ดีเลย์
-                        smoothing = 0.72
-                        chosen_vel = (
-                            (prev_vel[0] * smoothing) + (chosen_vel[0] * (1.0 - smoothing)),
-                            0.0,
-                            (prev_vel[2] * smoothing) + (chosen_vel[2] * (1.0 - smoothing)),
-                        )
-                        source = f"{source}_smoothed_dynamic"
-                elif prev_planar_mag > 0.0 or raw_mag > idle_speed_exit or pos_mag > idle_speed_exit:
-                    smoothing = 0.82
-                    chosen_vel = (
-                        (prev_vel[0] * smoothing) + (chosen_vel[0] * (1.0 - smoothing)),
-                        0.0,
-                        (prev_vel[2] * smoothing) + (chosen_vel[2] * (1.0 - smoothing)),
+                prev_mag = math.sqrt(prev_vel[0]**2 + prev_vel[1]**2 + prev_vel[2]**2)
+                if prev_mag > 0.0 or raw_mag > idle_speed_exit or pos_mag > idle_speed_exit:
+                    smoothing = 0.84 if source.startswith("pos_") else 0.72
+                    chosen_vel = tuple(
+                        (prev_vel[i] * smoothing) + (chosen_vel[i] * (1.0 - smoothing))
+                        for i in range(3)
                     )
                     chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
                     chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
                     source = f"{source}_smoothed"
-
-        if not is_air and not advance_pos_cache and cached:
-            vel_cache[u_ptr] = {
-                'time': cached['time'],
-                'pos': cached['pos'],
-                'vel': chosen_vel,
-            }
-        else:
-            vel_cache[u_ptr] = {
-                'time': curr_t,
-                'pos': pos,
-                'vel': chosen_vel,
-            }
-        meta_dict[u_ptr] = {
+        
+        self.velocity_cache[u_ptr] = {
+            'time': curr_t,
+            'pos': pos,
+            'vel': chosen_vel,
+        }
+        self.last_velocity_meta[u_ptr] = {
             'source': source,
             'raw_vel': raw_vel,
             'raw_mag': raw_mag,
@@ -3798,20 +3728,21 @@ class ESPOverlay(QOpenGLWidget):
                         my_is_air = False
 
             # Cache reset on my_unit change
-            if my_unit != self.last_my_unit:
+            if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
                 reset_runtime_caches(clear_view=True)
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {}
                 self.max_reload_cache = {}
                 self.vel_window = {}
                 self.velocity_cache = {}
                 self.last_velocity_meta = {}
-                self._ground_target_vel_cache = {}
                 self.ai_ghost_queue = []
                 self.recon_spawn_watch = {}
                 self.live_velocity_debug = None
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
                 self.kalman_filters = {}
+            elif my_unit and not self.last_my_unit:
+                self.last_my_unit = my_unit
             
             my_spawn_in_grace = curr_t < self.my_unit_spawn_grace_until
             my_acc = (0.0, 0.0, 0.0)
@@ -3835,7 +3766,7 @@ class ESPOverlay(QOpenGLWidget):
                         }
                     else:
                         # 🎯 Ground my_vel is stabilized at true 60Hz exclusively by GUI thread
-                        my_vel = self._stabilize_velocity(my_unit, False, my_pos, curr_t)
+                        my_vel = self._stabilize_velocity(my_unit, my_is_air, my_pos, curr_t)
                 else:
                     my_vel = (0.0, 0.0, 0.0)
                 
@@ -4512,11 +4443,10 @@ class ESPOverlay(QOpenGLWidget):
 
                     warning_level = 0
                     if physics_is_air and my_pos and dist > 10.0:
-                        air_vel_warn = (t_snap.vel if t_snap and t_snap.vel is not None else None) or pre_vel or self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
                         warning_level = _get_air_warning_level(
                             my_pos,
                             pos,
-                            air_vel_warn,
+                            self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t),
                         )
 
                     indicator_alpha = 0.0
@@ -4776,8 +4706,7 @@ class ESPOverlay(QOpenGLWidget):
                     # ========================================================
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
-                    target_vel = (t_snap.vel if t_snap and t_snap.vel is not None else None) or pre_vel
-                    vel = target_vel if target_vel is not None else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
+                    vel = pre_vel if (pre_vel and not physics_is_air) else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
 
                     # ✈️ Air Speed display below bbox
                     if overlay_is_air and vel and target_box_rect and (draw_inline_air_overlay):
@@ -4855,48 +4784,6 @@ class ESPOverlay(QOpenGLWidget):
                             })
                             active_flight_data = {'pos': pos, 'v': vel, 'a': (ax, ay, az)}
                     else:
-                        # 🛡️ Ground Target Kinematic Smoothing: กรองความเร็วเป้าหมายภาคพื้นดินให้นิ่งสนิท ไม่สั่น Jitter
-                        if not hasattr(self, '_ground_target_vel_cache'):
-                            self._ground_target_vel_cache = {}
-                        prev_ground_vel = self._ground_target_vel_cache.get(u_ptr)
-                        target_spd = math.hypot(vx, vz)
-                        if target_spd <= 0.22:
-                            # 🛑 สภาพหยุดนิ่ง: ล็อกความเร็วเป็นศูนย์สนิท 100%
-                            vel = (0.0, 0.0, 0.0)
-                            vx, vy, vz = vel
-                        elif prev_ground_vel and len(prev_ground_vel) == 3:
-                            prev_spd = math.hypot(prev_ground_vel[0], prev_ground_vel[2])
-                            if prev_spd > 0.22:
-                                vel_diff = math.hypot(vx - prev_ground_vel[0], vz - prev_ground_vel[2])
-                                dot = (vx * prev_ground_vel[0] + vz * prev_ground_vel[2]) / (target_spd * prev_spd + 1e-6)
-                                dot = max(-1.0, min(1.0, dot))
-
-                                # 🎯 Target Ground Velocity Deadband:
-                                # หากเป้าหมายวิ่งตรงความเร็วคงที่ (Delta < 0.35 m/s (~1.2 km/h) และมุมเบี่ยงเบน < 3.5 องศา)
-                                # ล็อกความเร็วเดิมไว้ 100% ทำให้เส้นเล็งนำวิถี (Leadmark) นิ่งสนิท ไม่สั่นไหว
-                                if vel_diff < 0.35 and dot > 0.998:
-                                    vx = prev_ground_vel[0]
-                                    vy = 0.0
-                                    vz = prev_ground_vel[2]
-                                    vel = (vx, 0.0, vz)
-                                elif vel_diff < 0.75 and dot > 0.990:
-                                    smooth_factor = 0.92
-                                    vx = (prev_ground_vel[0] * smooth_factor) + (vx * (1.0 - smooth_factor))
-                                    vy = 0.0
-                                    vz = (prev_ground_vel[2] * smooth_factor) + (vz * (1.0 - smooth_factor))
-                                    vel = (vx, 0.0, vz)
-                                else:
-                                    smooth_factor = 0.75
-                                    vx = (prev_ground_vel[0] * smooth_factor) + (vx * (1.0 - smooth_factor))
-                                    vy = 0.0
-                                    vz = (prev_ground_vel[2] * smooth_factor) + (vz * (1.0 - smooth_factor))
-                                    vel = (vx, 0.0, vz)
-                            else:
-                                vel = (vx, 0.0, vz)
-                        else:
-                            vel = (vx, 0.0, vz)
-                        self._ground_target_vel_cache[u_ptr] = (vx, 0.0, vz)
-
                         ground_aim_point = _get_ground_target_aim_point(box_data, pos, dist)
                         if not ground_aim_point:
                             continue
