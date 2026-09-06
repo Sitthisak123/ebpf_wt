@@ -51,6 +51,7 @@ from src.utils.mul import (
     OFF_VIEW_MATRIX,
 )
 from src.utils.debug import dprint
+from src.utils.missile import MissileScanner
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +135,9 @@ class FrameSnapshot:
     # All valid enemy targets (pre-filtered, pre-fetched)
     valid_targets: List[TargetSnapshot] = field(default_factory=list)
 
+    # Active missiles pre-scanned in background thread (0ms overhead in paintGL!)
+    missiles: List[Any] = field(default_factory=list)
+
     # Active target selection
     active_target_ptr: int = 0
 
@@ -206,6 +210,12 @@ class DataPumpWorker(QThread):
         # Worker FPS tracking
         self._last_frame_time = time.time()
         self._worker_fps = 0.0
+
+        # Background missile scanner (removes all missile scan overhead from paintGL)
+        self.missile_scanner = MissileScanner()
+        self.latest_missiles: List[Any] = []
+        self.last_missile_scan_t: float = 0.0
+        self.missile_scan_interval: float = 0.08
 
         # Thread-safe snapshot buffer
         self._latest_snapshot = FrameSnapshot()
@@ -620,6 +630,17 @@ class DataPumpWorker(QThread):
                 if (now - last_seen) > 5.0:
                     del self.profile_cache[ptr]
 
+        # Scan for missiles periodically in background thread (0ms in paintGL)
+        if (now - self.last_missile_scan_t) >= self.missile_scan_interval:
+            self.last_missile_scan_t = now
+            try:
+                m_res = self.missile_scanner.scan(self.scanner, self.base_address)
+                if m_res is not None:
+                    self.latest_missiles = m_res
+            except Exception:
+                pass
+
+        snap.missiles = list(self.latest_missiles)
         snap.valid_targets = valid_targets
         snap.is_valid = True
         return snap
