@@ -323,6 +323,8 @@ class DataPumpWorker(QThread):
         if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
             self.profile_cache = {}
             self.active_targets = {}
+            self.velocity_cache = {}
+            self.last_velocity_meta = {}
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
         elif my_unit and not self.last_my_unit:
