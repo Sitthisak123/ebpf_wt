@@ -266,8 +266,7 @@ class MemoryScanner:
         if address is None or address <= 0x10000:
             return None
         try:
-            os.lseek(self.mem_fd, address, os.SEEK_SET)
-            return os.read(self.mem_fd, size)
+            return os.pread(self.mem_fd, size, address)
         except OSError as e:
             self.last_error = f"{e.__class__.__name__}: errno={getattr(e, 'errno', '?')} msg={e}"
             if getattr(e, "errno", None) in (errno.ESRCH, errno.EBADF):
