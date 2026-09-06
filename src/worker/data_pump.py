@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from src.utils.scanner import MemoryScanner
+import src.utils.mul as mul
 from src.utils.mul import (
     get_cgame_base,
     get_view_matrix,
@@ -80,6 +81,27 @@ class TargetSnapshot:
     bmax: Any = None                  # (x,y,z) or None
     rot: Any = None                   # 9-float tuple or None
     barrel_data: Any = None           # (start, end) or None
+    unit_family: Any = None           # pre-calculated unit_family enum
+
+    def __iter__(self):
+        """Allows unpacking as a 14-element tuple identical to the legacy target tuple."""
+        yield self.u_ptr
+        yield self.raw_name
+        yield self.reload_val
+        yield self.is_air
+        yield self.pos
+        yield self.dist
+        yield self.short_name
+        yield self.family_name
+        yield self.name_key
+        yield self.profile_tag
+        yield self.profile_path
+        yield self.profile_unit_key
+        yield self.vel
+        yield self.is_recon_drone
+
+    def __getitem__(self, index):
+        return tuple(self)[index]
 
 
 @dataclass
@@ -147,8 +169,11 @@ class DataPumpWorker(QThread):
         get_dynamic_my_geometry_fn=None,
         stabilize_velocity_fn=None,
         resolve_is_air_fn=None,
+        resolve_unit_family_fn=None,
         is_boat_like_fn=None,
         is_recon_drone_fn=None,
+        is_fixed_recon_ghost_fn=None,
+        is_recon_alert_ready_fn=None,
         filter_constants=None,
     ):
         super().__init__()
@@ -163,12 +188,16 @@ class DataPumpWorker(QThread):
         self._get_dynamic_my_geometry = get_dynamic_my_geometry_fn
         self._stabilize_velocity = stabilize_velocity_fn
         self._resolve_is_air = resolve_is_air_fn
+        self._resolve_unit_family = resolve_unit_family_fn
         self._is_boat_like = is_boat_like_fn
         self._is_recon_drone = is_recon_drone_fn
+        self._is_fixed_recon_ghost = is_fixed_recon_ghost_fn
+        self._is_recon_alert_ready = is_recon_alert_ready_fn
         self._filter_constants = filter_constants or {}
 
         # ----- Worker-owned caches -----
         self.profile_cache: Dict[int, dict] = {}
+        self.active_targets: Dict[int, dict] = {}  # u_ptr -> {"snapshot": t_snap, "last_seen": now}
         self.last_my_unit: int = 0
         self.last_my_team: int = 0
         self.last_cgame_base: int = 0
@@ -177,6 +206,14 @@ class DataPumpWorker(QThread):
         # Worker FPS tracking
         self._last_frame_time = time.time()
         self._worker_fps = 0.0
+
+        # Thread-safe snapshot buffer
+        self._latest_snapshot = FrameSnapshot()
+        self._snapshot_lock = threading.Lock()
+
+    def get_latest_snapshot(self) -> FrameSnapshot:
+        with self._snapshot_lock:
+            return self._latest_snapshot
 
     def request_stop(self):
         self._stop_flag = True
@@ -188,14 +225,18 @@ class DataPumpWorker(QThread):
         while not self._stop_flag:
             try:
                 snapshot = self._gather_frame()
+                with self._snapshot_lock:
+                    self._latest_snapshot = snapshot
                 self.new_frame.emit(snapshot)
             except Exception as e:
                 dprint(f"DataPumpWorker error: {e}", force=True)
-                # Emit empty snapshot so paintGL knows we're alive
-                self.new_frame.emit(FrameSnapshot(
+                empty_snap = FrameSnapshot(
                     timestamp=time.time(),
                     is_valid=False,
-                ))
+                )
+                with self._snapshot_lock:
+                    self._latest_snapshot = empty_snap
+                self.new_frame.emit(empty_snap)
 
             # Adaptive sleep to hit target FPS
             elapsed = time.time() - self._last_frame_time
@@ -230,15 +271,17 @@ class DataPumpWorker(QThread):
             return snap
 
         if cgame_base != self.last_cgame_base:
-            reset_runtime_caches(clear_view=True)
             self.last_cgame_base = cgame_base
+            self.profile_cache = {}
+            self.active_targets = {}
         snap.cgame_base = cgame_base
 
         # --- 2. View Matrix ---
-        view_matrix = get_view_matrix(self.scanner, cgame_base)
-        if not view_matrix:
-            return snap
-        snap.view_matrix = view_matrix
+        try:
+            view_matrix = get_view_matrix(self.scanner, cgame_base)
+            snap.view_matrix = view_matrix
+        except Exception:
+            pass
 
         # --- 3. Ballistic Profile ---
         if self._read_ballistic_profile:
@@ -264,12 +307,14 @@ class DataPumpWorker(QThread):
         my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
         snap.my_pos = my_pos
 
-        # Cache reset on my_unit change
-        if my_unit != self.last_my_unit:
-            reset_runtime_caches(clear_view=True)
+        # Cache reset only when my_unit changes between two non-zero units
+        if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
             self.profile_cache = {}
+            self.active_targets = {}
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
+        elif my_unit and not self.last_my_unit:
+            self.last_my_unit = my_unit
 
         # Determine my_is_air
         my_is_air = False
@@ -336,23 +381,18 @@ class DataPumpWorker(QThread):
                 continue
             current_seen_ptrs.add(u_ptr)
 
+            # Check cached profile to determine if name is already resolved
+            cached_prof = self.profile_cache.get(u_ptr)
+            cached_name = cached_prof.get("resolved_name") if cached_prof else None
+            need_read_name = not (cached_name and cached_name.lower() not in ("none", "unknown", "c", ""))
+
             # Read status
-            info_ptr_raw = self.scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8)
+            info_ptr_raw = self.scanner.read_mem(u_ptr + mul.OFF_UNIT_INFO, 8)
             info_ptr_now = struct.unpack("<Q", info_ptr_raw)[0] if (info_ptr_raw and len(info_ptr_raw) == 8) else 0
 
-            status = get_unit_status(self.scanner, u_ptr)
+            status = get_unit_status(self.scanner, u_ptr, read_name=need_read_name)
             if not status:
                 continue
-
-            profile = get_unit_filter_profile(self.scanner, u_ptr)
-            dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
-            self.profile_cache[u_ptr] = {
-                "status": status,
-                "profile": profile,
-                "dna": dna,
-                "is_air_resolved": is_air,
-                "info_ptr": info_ptr_now,
-            }
 
             u_team, u_state, unit_name, reload_val = status
 
@@ -362,6 +402,23 @@ class DataPumpWorker(QThread):
             # Team filter
             if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team):
                 continue
+
+            # Cache immutable Profile & DNA to eliminate 6+ syscalls per unit
+            if cached_prof and (cached_prof.get("info_ptr") == info_ptr_now or not is_valid_ptr(info_ptr_now)):
+                profile = cached_prof["profile"]
+                dna = cached_prof["dna"]
+                cached_prof["last_seen"] = now
+            else:
+                profile = get_unit_filter_profile(self.scanner, u_ptr)
+                dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                if is_valid_ptr(info_ptr_now):
+                    self.profile_cache[u_ptr] = {
+                        "profile": profile,
+                        "dna": dna,
+                        "info_ptr": info_ptr_now,
+                        "last_seen": now,
+                    }
+                    cached_prof = self.profile_cache[u_ptr]
 
             # Profile-based filtering
             if profile.get("skip"):
@@ -385,12 +442,18 @@ class DataPumpWorker(QThread):
                     is_air, family_name, profile_tag, profile_path,
                 )
 
-            # Resolve name
-            resolved_name = short_name
-            if (not resolved_name) or (resolved_name.lower() in ("none", "unknown", "c")):
-                resolved_name = unit_name
-            if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
-                resolved_name = profile.get("display_name") or "unknown"
+            # Resolve name with sticky caching (never degrades into UNKNOWN or another name)
+            cached_name = cached_prof.get("resolved_name") if cached_prof else None
+            if cached_name and cached_name.lower() not in ("none", "unknown", "c", ""):
+                resolved_name = cached_name
+            else:
+                resolved_name = short_name
+                if (not resolved_name) or (resolved_name.lower() in ("none", "unknown", "c")):
+                    resolved_name = unit_name
+                if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
+                    resolved_name = profile.get("display_name") or "unknown"
+                if resolved_name and resolved_name.lower() not in ("none", "unknown", "c", "") and cached_prof:
+                    cached_prof["resolved_name"] = resolved_name
 
             # Runtime filter
             runtime_filter_blob = " ".join((
@@ -419,6 +482,12 @@ class DataPumpWorker(QThread):
             if not pos:
                 continue
 
+            # Recon ghost drone filter (synced with radar_overlay)
+            if is_recon_drone and self._is_fixed_recon_ghost and self._is_fixed_recon_ghost(u_ptr, pos, now):
+                continue
+            if is_recon_drone and self._is_recon_alert_ready and not self._is_recon_alert_ready(u_ptr, now):
+                continue
+
             # Origin ghost
             pos_origin_dist = math.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2)
             if pos_origin_dist <= ORIGIN_GHOST_RADIUS:
@@ -440,6 +509,26 @@ class DataPumpWorker(QThread):
             if not resolved_is_air and self._stabilize_velocity:
                 pre_vel = self._stabilize_velocity(u_ptr, False, pos, now)
 
+            # Pre-resolve unit family (cached permanently per unit)
+            unit_family = cached_prof.get("unit_family") if cached_prof else None
+            if unit_family is None and self._resolve_unit_family:
+                try:
+                    unit_family = self._resolve_unit_family(
+                        family_name,
+                        profile_tag,
+                        profile_path,
+                        profile_unit_key,
+                        name_key,
+                        short_name,
+                        resolved_is_air,
+                        self.scanner,
+                        u_ptr,
+                    )
+                    if cached_prof:
+                        cached_prof["unit_family"] = unit_family
+                except Exception:
+                    pass
+
             # ===== PRE-FETCH HEAVY DATA (bbox, barrel) =====
             t_snap = TargetSnapshot(
                 u_ptr=u_ptr,
@@ -456,52 +545,80 @@ class DataPumpWorker(QThread):
                 dist=dist_to_me,
                 vel=pre_vel,
                 is_recon_drone=is_recon_drone,
+                unit_family=unit_family,
             )
 
-            # Pre-fetch box data (heavy memory read)
+            # Pre-fetch box data (heavy memory read optimized with bbox cache)
             try:
-                if self._get_dynamic_target_box_data:
-                    box_result = self._get_dynamic_target_box_data(
-                        self.scanner, u_ptr, resolved_is_air,
-                    )
-                    if box_result:
-                        t_snap.box_data = box_result[0]
-                        t_snap.dynamic_box_source = box_result[1] if len(box_result) > 1 else ""
+                cached_bbox = cached_prof.get("bbox") if cached_prof else None
+                if cached_bbox:
+                    bmin, bmax, dyn_src = cached_bbox
+                    rot = get_unit_rotation(self.scanner, u_ptr)
+                    t_snap.box_data = (pos, bmin, bmax, rot) if rot else None
+                    t_snap.dynamic_box_source = dyn_src
+                    t_snap.bmin = bmin
+                    t_snap.bmax = bmax
+                    t_snap.rot = rot
                 else:
-                    t_snap.box_data = get_unit_3d_box_data(
-                        self.scanner, u_ptr, resolved_is_air,
-                    )
+                    if self._get_dynamic_target_box_data:
+                        box_result = self._get_dynamic_target_box_data(
+                            self.scanner, u_ptr, resolved_is_air,
+                        )
+                        if box_result:
+                            t_snap.box_data = box_result[0]
+                            t_snap.dynamic_box_source = box_result[1] if len(box_result) > 1 else ""
+                    else:
+                        t_snap.box_data = get_unit_3d_box_data(
+                            self.scanner, u_ptr, resolved_is_air,
+                        )
 
-                # Update pos from box_data if available
-                if t_snap.box_data:
-                    t_snap.pos = t_snap.box_data[0] or t_snap.pos
+                    # Extract pos, bmin, bmax, rot directly from box_data without redundant syscalls!
+                    if t_snap.box_data:
+                        t_snap.pos = t_snap.box_data[0] or t_snap.pos
+                        t_snap.bmin = t_snap.box_data[1]
+                        t_snap.bmax = t_snap.box_data[2]
+                        t_snap.rot = t_snap.box_data[3]
+                        if cached_prof and t_snap.bmin and t_snap.bmax:
+                            cached_prof["bbox"] = (t_snap.bmin, t_snap.bmax, t_snap.dynamic_box_source)
+                    else:
+                        t_snap.bmin, t_snap.bmax = get_unit_bbox(self.scanner, u_ptr)
+                        t_snap.rot = get_unit_rotation(self.scanner, u_ptr)
+                        if cached_prof and t_snap.bmin and t_snap.bmax:
+                            cached_prof["bbox"] = (t_snap.bmin, t_snap.bmax, "")
             except Exception:
                 pass
 
-            # Pre-fetch bbox & rotation
-            try:
-                t_snap.bmin, t_snap.bmax = get_unit_bbox(self.scanner, u_ptr)
-                t_snap.rot = get_unit_rotation(self.scanner, u_ptr)
-            except Exception:
-                pass
-
-            # Pre-fetch barrel data
-            try:
-                if t_snap.box_data:
+            # Pre-fetch barrel data (ground targets only within 3500m combat distance, no log spam)
+            if t_snap.box_data and (not resolved_is_air) and dist_to_me <= 3500.0:
+                try:
                     t_snap.barrel_data = get_weapon_barrel(
                         self.scanner, u_ptr,
                         t_snap.pos, t_snap.box_data[3],
-                        should_log=True,
+                        should_log=False,
                     )
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
             valid_targets.append(t_snap)
 
-        # Clean profile cache
+        # Anti-blink tracking: preserve targets across momentary frame dropouts (250ms grace)
+        now_valid_ptrs = {t.u_ptr for t in valid_targets}
+        for t in valid_targets:
+            self.active_targets[t.u_ptr] = {"snapshot": t, "last_seen": now}
+
+        for u_ptr, trk in list(self.active_targets.items()):
+            if u_ptr not in now_valid_ptrs:
+                if (now - trk["last_seen"]) <= 0.25:
+                    valid_targets.append(trk["snapshot"])
+                else:
+                    del self.active_targets[u_ptr]
+
+        # Clean profile cache (5-second grace period)
         for ptr in list(self.profile_cache.keys()):
             if ptr not in current_seen_ptrs:
-                del self.profile_cache[ptr]
+                last_seen = self.profile_cache[ptr].get("last_seen", 0.0)
+                if (now - last_seen) > 5.0:
+                    del self.profile_cache[ptr]
 
         snap.valid_targets = valid_targets
         snap.is_valid = True

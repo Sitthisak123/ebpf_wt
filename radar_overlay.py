@@ -512,7 +512,7 @@ SNIPER_POS_Y = 320            # ตำแหน่งแกน Y (มุมซ�
 SNIPER_MIN_RANGE = 200.0      # ระยะต่ำสุดที่จะเปิด PiP sniper
 SNIPER_CROSSHAIR_MAX_PX = 180.0
 SNIPER_REJECT_WHITE_CAPTURE = True
-SNIPER_WHITE_CAPTURE_RATIO = 0.92
+SNIPER_WHITE_CAPTURE_RATIO = 0.88
 
 #- อยากกดลงทุกระยะอีกหน่อย: เพิ่ม GROUND_HITPOINT_DROP_BASE
 #- อยากให้ระยะไกลลงมากขึ้น: เพิ่ม GROUND_HITPOINT_DROP_EXP
@@ -2746,7 +2746,7 @@ def _is_probably_white_capture(raw_rgb, width, height):
         r = raw_rgb[idx]
         g = raw_rgb[idx + 1]
         b = raw_rgb[idx + 2]
-        if r >= 245 and g >= 245 and b >= 245:
+        if r >= 230 and g >= 230 and b >= 230:
             white_count += 1
         total += 1
         if total >= sample_pixels:
@@ -2861,8 +2861,11 @@ class ESPOverlay(QOpenGLWidget):
             get_dynamic_my_geometry_fn=_get_dynamic_my_geometry,
             stabilize_velocity_fn=self._stabilize_velocity,
             resolve_is_air_fn=_resolve_is_air_now,
+            resolve_unit_family_fn=_resolve_unit_family_enum,
             is_boat_like_fn=_is_boat_like,
             is_recon_drone_fn=_is_recon_drone_like,
+            is_fixed_recon_ghost_fn=self._is_fixed_recon_ghost,
+            is_recon_alert_ready_fn=self._is_recon_alert_ready,
             filter_constants={
                 "NON_PLAYABLE_RUNTIME_HINTS": NON_PLAYABLE_RUNTIME_HINTS,
                 "MAX_GROUND_TARGET_DISTANCE": MAX_GROUND_TARGET_DISTANCE,
@@ -2874,8 +2877,7 @@ class ESPOverlay(QOpenGLWidget):
             },
         )
         self._data_pump.new_frame.connect(self._on_worker_frame)
-        # 🚧 Worker ยังไม่เริ่มจนกว่า paintGL จะ migrate ไปใช้ snapshot
-        # self._data_pump.start()
+        self._data_pump.start()
 
 
     def _fatal_shutdown(self, reason, detail=""):
@@ -3526,8 +3528,10 @@ class ESPOverlay(QOpenGLWidget):
             current_bullet_cd = ballistic_profile["cx"]
             current_bullet_caliber = ballistic_profile["caliber"]
 
+            snapshot = self._data_pump.get_latest_snapshot() if hasattr(self, '_data_pump') and self._data_pump else self._latest_snapshot
+            worker_fps_str = f" (Pump: {int(snapshot.worker_fps)})" if (snapshot and snapshot.is_valid and snapshot.worker_fps > 0) else ""
             painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
-            painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}")
+            painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}{worker_fps_str}")
             painter.setPen(QColor(*COLOR_INFO_TEXT))
             painter.drawText(20, 115, f"🧠 AI Tracking : 6 Threads Active (Decay={self.dynamic_decay:.3f})")
             active_m_count = len(self.missile_tracks) if hasattr(self, 'missile_tracks') and self.missile_tracks else (len(self.missile_cache) if hasattr(self, 'missile_cache') and self.missile_cache else 0)
@@ -3535,15 +3539,40 @@ class ESPOverlay(QOpenGLWidget):
                 painter.setPen(QColor(255, 140, 40))
                 painter.drawText(20, 140, f"🚀 Active Missiles : {active_m_count}")
 
-            all_units_data = get_all_units(self.scanner, cgame_base)
-            all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
-            my_unit, my_team = get_local_team(self.scanner, self.base_address)
-            if my_team:
-                self.last_my_team = my_team
-            effective_my_team = my_team or self.last_my_team
-            my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
+            if snapshot and snapshot.is_valid:
+                all_units_data = []
+                all_unit_ptrs = snapshot.all_unit_ptrs
+                my_unit = snapshot.my_unit
+                effective_my_team = snapshot.my_team
+                my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else snapshot.my_pos
+                my_is_air = snapshot.my_is_air
+                my_name = snapshot.my_name
+                my_name_key = snapshot.my_name_key
+            else:
+                all_units_data = get_all_units(self.scanner, cgame_base)
+                all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
+                my_unit, my_team = get_local_team(self.scanner, self.base_address)
+                if my_team:
+                    self.last_my_team = my_team
+                effective_my_team = my_team or self.last_my_team
+                my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
 
-            #Cache reset on my_unit change
+                my_is_air = False
+                my_name = ""
+                my_name_key = ""
+                for u_ptr, is_air in all_units_data:
+                    if u_ptr == my_unit:
+                        my_is_air = is_air; break
+                if my_unit:
+                    my_profile = get_unit_filter_profile(self.scanner, my_unit)
+                    my_name = my_profile.get("short_name") or ""
+                    my_name_key = my_profile.get("unit_key") or ""
+                    if my_profile.get("kind") == "air":
+                        my_is_air = True
+                    elif my_profile.get("kind") == "ground":
+                        my_is_air = False
+
+            # Cache reset on my_unit change
             if my_unit != self.last_my_unit:
                 reset_runtime_caches(clear_view=True)
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {}
@@ -3557,21 +3586,6 @@ class ESPOverlay(QOpenGLWidget):
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
                 self.kalman_filters = {}
-
-            my_is_air = False
-            my_name = ""
-            my_name_key = ""
-            for u_ptr, is_air in all_units_data:
-                if u_ptr == my_unit:
-                    my_is_air = is_air; break
-            if my_unit:
-                my_profile = get_unit_filter_profile(self.scanner, my_unit)
-                my_name = my_profile.get("short_name") or ""
-                my_name_key = my_profile.get("unit_key") or ""
-                if my_profile.get("kind") == "air":
-                    my_is_air = True
-                elif my_profile.get("kind") == "ground":
-                    my_is_air = False
             
             my_spawn_in_grace = curr_t < self.my_unit_spawn_grace_until
             my_acc = (0.0, 0.0, 0.0)
@@ -3613,7 +3627,24 @@ class ESPOverlay(QOpenGLWidget):
             my_ground_shot_origin = my_pos
             my_box_data = None
             my_dynamic_geometry = None
-            if my_unit and my_pos and not my_is_air:
+            if snapshot and snapshot.is_valid:
+                my_box_data = snapshot.my_box_data
+                my_barrel_data = snapshot.my_barrel_data
+                my_dynamic_geometry = snapshot.my_dynamic_geometry
+                if my_barrel_data:
+                    my_ground_shot_origin = my_barrel_data[1] or my_barrel_data[0] or my_pos
+                    if SHOW_MY_UNIT_BOX:
+                        b_start, b_end = my_barrel_data
+                        scr_b = world_to_screen(view_matrix, b_start[0], b_start[1], b_start[2], self.screen_width, self.screen_height)
+                        scr_e = world_to_screen(view_matrix, b_end[0], b_end[1], b_end[2], self.screen_width, self.screen_height)
+                        if scr_b and scr_e and scr_b[2] > 0 and scr_e[2] > 0:
+                            b_pts = _screen_int_tuple(scr_b[0], scr_b[1], scr_e[0], scr_e[1])
+                            if b_pts:
+                                painter.setPen(QPen(QColor(0, 255, 255), 2.5))
+                                painter.drawLine(*b_pts)
+                                painter.setBrush(QBrush(QColor(0, 255, 255)))
+                                painter.drawEllipse(int(scr_e[0]) - 3, int(scr_e[1]) - 3, 6, 6)
+            elif my_unit and my_pos and not my_is_air:
                 try:
                     my_box_data = get_unit_3d_box_data(self.scanner, my_unit, False)
                     if my_box_data:
@@ -3639,8 +3670,13 @@ class ESPOverlay(QOpenGLWidget):
 
             if SHOW_MY_UNIT_BOX and my_unit and my_pos:
                 try:
-                    my_bmin, my_bmax = get_unit_bbox(self.scanner, my_unit)
-                    my_rot = get_unit_rotation(self.scanner, my_unit)
+                    if my_box_data:
+                        my_bmin = my_box_data[1]
+                        my_bmax = my_box_data[2]
+                        my_rot = my_box_data[3]
+                    else:
+                        my_bmin, my_bmax = get_unit_bbox(self.scanner, my_unit)
+                        my_rot = get_unit_rotation(self.scanner, my_unit)
                     if my_bmin and my_bmax and my_rot:
                         
                         my_w = abs(my_bmax[0] - my_bmin[0])
@@ -3682,124 +3718,134 @@ class ESPOverlay(QOpenGLWidget):
                 except Exception:
                     pass
 
-            valid_targets = []
-            current_seen_ptrs = set()
-            for u_ptr, is_air in all_units_data:
-                if u_ptr == my_unit: continue 
-                current_seen_ptrs.add(u_ptr)
-                
-                # 🛡️ Cache-based Profile & Status Retrieval
-                info_ptr_now = _read_ptr_fast(self.scanner, u_ptr + OFF_UNIT_INFO)
-                status = get_unit_status(self.scanner, u_ptr)
-                if not status:
-                    continue
-                profile = get_unit_filter_profile(self.scanner, u_ptr)
-                dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
-                cached_prof = {
-                    'status': status,
-                    'profile': profile,
-                    'dna': dna,
-                    'is_air_resolved': is_air,
-                    'info_ptr': info_ptr_now,
-                }
-                self.profile_cache[u_ptr] = cached_prof
-                
-                u_team, u_state, unit_name, reload_val = cached_prof['status']
-
-                if u_state >= 1:
-                    continue
-                if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team): continue
-
-                profile = cached_prof['profile']
-                if profile.get("skip"): continue
-                
-                profile_tag = (profile.get("tag") or "").lower()
-                profile_path = (profile.get("path") or "").lower()
-                if profile_tag in ("exp_aaa", "exp_fortification", "exp_structure", "exp_zero"): continue
-                if ("air_defence/" in profile_path) or ("structures/" in profile_path) or ("dummy_plane" in profile_path): continue
-
-                dna = cached_prof.get('dna') or {}
-                short_name = (dna.get("short_name") or "").strip()
-                family_name = (dna.get("family") or "").strip()
-                name_key = (dna.get("name_key") or "").strip()
-                resolved_is_air = _resolve_is_air_now(
-                    cached_prof.get('is_air_resolved', is_air),
-                    family_name,
-                    profile_tag,
-                    profile_path,
-                )
-                cached_prof['is_air_resolved'] = resolved_is_air
-
-                resolved_name = short_name
-                if (not resolved_name) or (resolved_name.lower() in ("none", "unknown", "c")):
-                    resolved_name = unit_name
-                if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
-                    resolved_name = profile.get("display_name") or "unknown"
-
-                runtime_filter_blob = " ".join((
-                    (resolved_name or ""),
-                    short_name,
-                    family_name,
-                    name_key,
-                    (profile.get("display_name") or ""),
-                    (profile.get("unit_key") or ""),
-                    (profile.get("path") or ""),
-                    (profile.get("tag") or ""),
-                )).lower()
-                if any(h in runtime_filter_blob for h in NON_PLAYABLE_RUNTIME_HINTS):
-                    continue
-                if _is_boat_like(
-                    family_name,
-                    profile_tag,
-                    profile_path,
-                    profile.get("unit_key") or "",
-                    name_key,
-                    short_name,
-                ):
-                    if IGNORE_ALL_BOATS or (not my_is_air):
+            # 🚀 Worker Snapshot Integration (Eliminates 500+ blocking syscalls from GUI thread)
+            target_snapshot_map = {}
+            if snapshot and snapshot.is_valid:
+                valid_targets = snapshot.valid_targets
+                current_seen_ptrs = snapshot.all_unit_ptrs
+                for t in valid_targets:
+                    u_id = getattr(t, 'u_ptr', None) or (t[0] if isinstance(t, (tuple, list)) else None)
+                    if u_id:
+                        target_snapshot_map[u_id] = t
+            else:
+                valid_targets = []
+                current_seen_ptrs = set()
+                for u_ptr, is_air in all_units_data:
+                    if u_ptr == my_unit: continue 
+                    current_seen_ptrs.add(u_ptr)
+                    
+                    # 🛡️ Cache-based Profile & Status Retrieval
+                    info_ptr_now = _read_ptr_fast(self.scanner, u_ptr + OFF_UNIT_INFO)
+                    status = get_unit_status(self.scanner, u_ptr)
+                    if not status:
                         continue
+                    profile = get_unit_filter_profile(self.scanner, u_ptr)
+                    dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                    cached_prof = {
+                        'status': status,
+                        'profile': profile,
+                        'dna': dna,
+                        'is_air_resolved': is_air,
+                        'info_ptr': info_ptr_now,
+                    }
+                    self.profile_cache[u_ptr] = cached_prof
+                    
+                    u_team, u_state, unit_name, reload_val = cached_prof['status']
 
-                is_recon_drone = _is_recon_drone_like(runtime_filter_blob)
-
-                pos = get_unit_pos(self.scanner, u_ptr)
-                if not pos: continue
-                if is_recon_drone and self._is_fixed_recon_ghost(u_ptr, pos, curr_t):
-                    continue
-                if is_recon_drone and not self._is_recon_alert_ready(u_ptr, curr_t):
-                    continue
-                pre_vel = None
-                if not resolved_is_air:
-                    pre_vel = self._stabilize_velocity(u_ptr, False, pos, curr_t)
-
-                # Position checks (Origin ghost / Distance)
-                pos_origin_dist = math.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
-                if pos_origin_dist <= ORIGIN_GHOST_RADIUS:
-                    if my_pos and math.sqrt(my_pos[0]**2 + my_pos[1]**2 + my_pos[2]**2) >= ORIGIN_GHOST_MY_DIST_MIN:
+                    if u_state >= 1:
                         continue
+                    if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team): continue
 
-                dist_to_me = 0.0
-                if my_pos:
-                    dx, dy, dz = pos[0]-my_pos[0], pos[1]-my_pos[1], pos[2]-my_pos[2]
-                    dist_to_me = math.sqrt(dx*dx + dy*dy + dz*dz)
-                    if dist_to_me > (MAX_AIR_TARGET_DISTANCE if resolved_is_air else MAX_GROUND_TARGET_DISTANCE):
+                    profile = cached_prof['profile']
+                    if profile.get("skip"): continue
+                    
+                    profile_tag = (profile.get("tag") or "").lower()
+                    profile_path = (profile.get("path") or "").lower()
+                    if profile_tag in ("exp_aaa", "exp_fortification", "exp_structure", "exp_zero"): continue
+                    if ("air_defence/" in profile_path) or ("structures/" in profile_path) or ("dummy_plane" in profile_path): continue
+
+                    dna = cached_prof.get('dna') or {}
+                    short_name = (dna.get("short_name") or "").strip()
+                    family_name = (dna.get("family") or "").strip()
+                    name_key = (dna.get("name_key") or "").strip()
+                    resolved_is_air = _resolve_is_air_now(
+                        cached_prof.get('is_air_resolved', is_air),
+                        family_name,
+                        profile_tag,
+                        profile_path,
+                    )
+                    cached_prof['is_air_resolved'] = resolved_is_air
+
+                    resolved_name = short_name
+                    if (not resolved_name) or (resolved_name.lower() in ("none", "unknown", "c")):
+                        resolved_name = unit_name
+                    if (not resolved_name) or (len(resolved_name) < 2) or (resolved_name.lower() in ("unknown", "c", "none")):
+                        resolved_name = profile.get("display_name") or "unknown"
+
+                    runtime_filter_blob = " ".join((
+                        (resolved_name or ""),
+                        short_name,
+                        family_name,
+                        name_key,
+                        (profile.get("display_name") or ""),
+                        (profile.get("unit_key") or ""),
+                        (profile.get("path") or ""),
+                        (profile.get("tag") or ""),
+                    )).lower()
+                    if any(h in runtime_filter_blob for h in NON_PLAYABLE_RUNTIME_HINTS):
                         continue
+                    if _is_boat_like(
+                        family_name,
+                        profile_tag,
+                        profile_path,
+                        profile.get("unit_key") or "",
+                        name_key,
+                        short_name,
+                    ):
+                        if IGNORE_ALL_BOATS or (not my_is_air):
+                            continue
 
-                valid_targets.append((
-                    u_ptr,
-                    resolved_name,
-                    reload_val,
-                    resolved_is_air,
-                    pos,
-                    dist_to_me,
-                    short_name,
-                    family_name,
-                    name_key,
-                    profile_tag,
-                    profile_path,
-                    (profile.get("unit_key") or ""),
-                    pre_vel,
-                    is_recon_drone,
-                ))
+                    is_recon_drone = _is_recon_drone_like(runtime_filter_blob)
+
+                    pos = get_unit_pos(self.scanner, u_ptr)
+                    if not pos: continue
+                    if is_recon_drone and self._is_fixed_recon_ghost(u_ptr, pos, curr_t):
+                        continue
+                    if is_recon_drone and not self._is_recon_alert_ready(u_ptr, curr_t):
+                        continue
+                    pre_vel = None
+                    if not resolved_is_air:
+                        pre_vel = self._stabilize_velocity(u_ptr, False, pos, curr_t)
+
+                    # Position checks (Origin ghost / Distance)
+                    pos_origin_dist = math.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
+                    if pos_origin_dist <= ORIGIN_GHOST_RADIUS:
+                        if my_pos and math.sqrt(my_pos[0]**2 + my_pos[1]**2 + my_pos[2]**2) >= ORIGIN_GHOST_MY_DIST_MIN:
+                            continue
+
+                    dist_to_me = 0.0
+                    if my_pos:
+                        dx, dy, dz = pos[0]-my_pos[0], pos[1]-my_pos[1], pos[2]-my_pos[2]
+                        dist_to_me = math.sqrt(dx*dx + dy*dy + dz*dz)
+                        if dist_to_me > (MAX_AIR_TARGET_DISTANCE if resolved_is_air else MAX_GROUND_TARGET_DISTANCE):
+                            continue
+
+                    valid_targets.append((
+                        u_ptr,
+                        resolved_name,
+                        reload_val,
+                        resolved_is_air,
+                        pos,
+                        dist_to_me,
+                        short_name,
+                        family_name,
+                        name_key,
+                        profile_tag,
+                        profile_path,
+                        (profile.get("unit_key") or ""),
+                        pre_vel,
+                        is_recon_drone,
+                    ))
             
             # 🧹 Clean up Profile Cache for missing units
             for ptr in list(self.profile_cache.keys()):
@@ -3851,7 +3897,12 @@ class ESPOverlay(QOpenGLWidget):
                 if (not is_air_target) and current_bullet_speed > 0.0 and my_pos:
                     # Ground selection: compare by leadmark-like point, not raw unit center.
                     try:
-                        select_box_data, _select_box_source = _get_dynamic_target_box_data(self.scanner, u_ptr, False)
+                        t_snap = target_snapshot_map.get(u_ptr)
+                        if t_snap:
+                            select_box_data = t_snap.box_data
+                            _select_box_source = t_snap.dynamic_box_source or "unit_bbox"
+                        else:
+                            select_box_data, _select_box_source = _get_dynamic_target_box_data(self.scanner, u_ptr, False)
                         select_box_rect = _project_target_box_rect(
                             view_matrix,
                             select_box_data,
@@ -3986,7 +4037,12 @@ class ESPOverlay(QOpenGLWidget):
             ) in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
                 try:
-                    box_data, dynamic_box_source = _get_dynamic_target_box_data(self.scanner, u_ptr, is_air_target)
+                    t_snap = target_snapshot_map.get(u_ptr)
+                    if t_snap:
+                        box_data = t_snap.box_data
+                        dynamic_box_source = t_snap.dynamic_box_source or "unit_bbox"
+                    else:
+                        box_data, dynamic_box_source = _get_dynamic_target_box_data(self.scanner, u_ptr, is_air_target)
                     pos = box_data[0] if box_data else pos
                     if not pos: continue
                     
@@ -3995,8 +4051,10 @@ class ESPOverlay(QOpenGLWidget):
                     # 💥 เพิ่มตัวแปรสำหรับวาดเส้นปืน (Barrel) และแจ้งเตือนภัยคุกคาม
                     barrel_base_2d = None
                     barrel_data = None
-                    if box_data:
-                        barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, box_data[3], should_log=True)
+                    if t_snap:
+                        barrel_data = t_snap.barrel_data
+                    elif box_data and (not is_air_target):
+                        barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, box_data[3], should_log=False)
                         
                     has_valid_box = False
                     avg_x, avg_y, min_y = 0, 0, 0
@@ -4047,8 +4105,19 @@ class ESPOverlay(QOpenGLWidget):
                         # ========================================================
                         # 📦 3D BOUNDING BOX RENDERER (PERFECT ROTATION)
                         # ========================================================
-                        bmin, bmax = get_unit_bbox(self.scanner, u_ptr)
-                        rot = get_unit_rotation(self.scanner, u_ptr)
+                        if box_data:
+                            bmin = box_data[1]
+                            bmax = box_data[2]
+                            rot = box_data[3]
+                        elif t_snap and t_snap.bmin and t_snap.bmax and t_snap.rot:
+                            bmin = t_snap.bmin
+                            bmax = t_snap.bmax
+                            rot = t_snap.rot
+                        elif not t_snap:
+                            bmin, bmax = get_unit_bbox(self.scanner, u_ptr)
+                            rot = get_unit_rotation(self.scanner, u_ptr)
+                        else:
+                            bmin, bmax, rot = None, None, None
                         
                         if bmin and bmax and rot:
                             
@@ -4138,17 +4207,23 @@ class ESPOverlay(QOpenGLWidget):
                             break
 
                     physics_is_air = is_air_target
-                    unit_family = _resolve_unit_family_enum(
-                        family_name,
-                        profile_tag,
-                        profile_path,
-                        profile_unit_key,
-                        name_key,
-                        short_name,
-                        physics_is_air,
-                        self.scanner,
-                        u_ptr,
-                    )
+                    unit_family = getattr(t_snap, 'unit_family', None) if t_snap else None
+                    if unit_family is None:
+                        unit_family = self.profile_cache.get(u_ptr, {}).get('unit_family')
+                    if unit_family is None:
+                        unit_family = _resolve_unit_family_enum(
+                            family_name,
+                            profile_tag,
+                            profile_path,
+                            profile_unit_key,
+                            name_key,
+                            short_name,
+                            physics_is_air,
+                            self.scanner,
+                            u_ptr,
+                        )
+                        if u_ptr in self.profile_cache:
+                            self.profile_cache[u_ptr]['unit_family'] = unit_family
                     family_is_air = unit_family in (
                         UNIT_FAMILY_AIR_FIGHTER,
                         UNIT_FAMILY_AIR_BOMBER,
@@ -5067,7 +5142,7 @@ class ESPOverlay(QOpenGLWidget):
                                                 mapped_hitpoint[0] - self.center_x,
                                                 mapped_hitpoint[1] - self.center_y,
                                             )
-                                            if sniper_anchor_dist <= SNIPER_CROSSHAIR_MAX_PX:
+                                            if (not my_is_air) and sniper_anchor_dist <= SNIPER_CROSSHAIR_MAX_PX:
                                                 active_sniper_data = {
                                                     'center_x': avg_x,
                                                     'center_y': avg_y,
@@ -5668,7 +5743,7 @@ class ESPOverlay(QOpenGLWidget):
             # ========================================================
             # 🔎 PICTURE-IN-PICTURE (PiP) SNIPER SCOPE RENDERER
             # ========================================================
-            if ENABLE_SNIPER_MODE and active_sniper_data:
+            if ENABLE_SNIPER_MODE and (not my_is_air) and active_sniper_data:
                 try:
                     if float(active_sniper_data.get('distance', 0.0) or 0.0) < SNIPER_MIN_RANGE:
                         raise ValueError("sniper_min_range_skip")

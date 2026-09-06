@@ -1080,40 +1080,58 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
         current_info_ptr = _read_ptr(scanner, u_ptr + OFF_UNIT_INFO) if OFF_UNIT_INFO else 0
         if u_ptr in scanner.bone_cache:
             cache = scanner.bone_cache[u_ptr]
-            cache_expired = False
-            if cache.get('info_ptr') and current_info_ptr and cache.get('info_ptr') != current_info_ptr:
-                cache_expired = True
-            if not cache_expired:
-                reuse_count = int(cache.get('reuse_count', 0) or 0) + 1
-                cache['reuse_count'] = reuse_count
-                if reuse_count >= 240:
-                    cache_expired = True
-            if cache_expired:
-                del scanner.bone_cache[u_ptr]
+            if cache.get('no_barrel'):
+                # Check if unit respawned or 5s retry window passed
+                if current_info_ptr and cache.get('info_ptr') and cache.get('info_ptr') != current_info_ptr:
+                    del scanner.bone_cache[u_ptr]
+                elif (time.time() - cache.get('failed_at', 0)) > 5.0:
+                    del scanner.bone_cache[u_ptr]
+                else:
+                    return None
             else:
-                # Dynamic WTM matrix array: tree_ptr + 0x00
-                cached_tree = cache.get('tree_ptr', 0)
-                cached_wtm_off = cache.get('wtm_off', 0x00)
-                if cached_tree and is_valid_ptr(cached_tree):
-                    wtm_raw = scanner.read_mem(cached_tree + cached_wtm_off, 8)
-                    if wtm_raw:
-                        w_ptr = struct.unpack("<Q", wtm_raw)[0]
-                        if is_valid_ptr(w_ptr):
-                            target_idx = cache['bone_idx']
-                            matrix_data = scanner.read_mem(w_ptr + (target_idx * 64), 64)
-                            if matrix_data and len(matrix_data) == 64:
-                                bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
-                                if math.isfinite(bx) and math.isfinite(by) and math.isfinite(bz) and abs(bx) < 5000 and abs(by) < 5000 and abs(bz) < 5000:
-                                    wtm_ptr = w_ptr
-                                    target_bone_index = target_idx
+                cache_expired = False
+                if cache.get('info_ptr') and current_info_ptr and cache.get('info_ptr') != current_info_ptr:
+                    cache_expired = True
+                if not cache_expired:
+                    reuse_count = int(cache.get('reuse_count', 0) or 0) + 1
+                    cache['reuse_count'] = reuse_count
+                    if reuse_count >= 5000:
+                        cache_expired = True
+                if cache_expired:
+                    del scanner.bone_cache[u_ptr]
+                else:
+                    # Dynamic WTM matrix array: tree_ptr + 0x00
+                    cached_tree = cache.get('tree_ptr', 0)
+                    cached_wtm_off = cache.get('wtm_off', 0x00)
+                    if cached_tree and is_valid_ptr(cached_tree):
+                        wtm_raw = scanner.read_mem(cached_tree + cached_wtm_off, 8)
+                        if wtm_raw:
+                            w_ptr = struct.unpack("<Q", wtm_raw)[0]
+                            if is_valid_ptr(w_ptr):
+                                target_idx = cache['bone_idx']
+                                matrix_data = scanner.read_mem(w_ptr + (target_idx * 64), 64)
+                                if matrix_data and len(matrix_data) == 64:
+                                    bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
+                                    if math.isfinite(bx) and math.isfinite(by) and math.isfinite(bz) and abs(bx) < 5000 and abs(by) < 5000 and abs(bz) < 5000:
+                                        wtm_ptr = w_ptr
+                                        target_bone_index = target_idx
+                                        cache['fail_count'] = 0
+                                    else:
+                                        cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
+                                        if cache['fail_count'] >= 10:
+                                            del scanner.bone_cache[u_ptr]
                                 else:
-                                    del scanner.bone_cache[u_ptr]
+                                    cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
+                                    if cache['fail_count'] >= 10:
+                                        del scanner.bone_cache[u_ptr]
                             else:
-                                del scanner.bone_cache[u_ptr]
+                                cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
+                                if cache['fail_count'] >= 10:
+                                    del scanner.bone_cache[u_ptr]
                         else:
-                            del scanner.bone_cache[u_ptr]
-                    else:
-                        del scanner.bone_cache[u_ptr]
+                            cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
+                            if cache['fail_count'] >= 10:
+                                del scanner.bone_cache[u_ptr]
         if u_ptr not in scanner.bone_cache:
             try:
                 import src.utils.scanner as scanner_mod
@@ -1218,6 +1236,15 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                 wtm_found = True
                                 break
 
+        if wtm_ptr == 0 or target_bone_index == -1:
+            if u_ptr not in scanner.bone_cache:
+                scanner.bone_cache[u_ptr] = {
+                    "no_barrel": True,
+                    "info_ptr": current_info_ptr,
+                    "failed_at": time.time(),
+                }
+            return None
+
         if wtm_ptr != 0 and target_bone_index != -1:
             matrix_data = scanner.read_mem(wtm_ptr + (target_bone_index * 64), 64)
             if matrix_data and len(matrix_data) == 64:
@@ -1261,7 +1288,7 @@ def get_local_team(scanner, base_addr):
         return control_ptr, team
     except: return 0, 0
 
-def get_unit_status(scanner, u_ptr):
+def get_unit_status(scanner, u_ptr, read_name=True):
     if u_ptr == 0: return None
     try:
         # 🎯 FIX: ขยายขนาดการอ่านเป็น 256 bytes เพื่อให้ครอบคลุมถึง OFF_UNIT_TEAM (0xFB8)
@@ -1274,18 +1301,19 @@ def get_unit_status(scanner, u_ptr):
         team = struct.unpack_from("<B", status_data, team_offset)[0]
         
         unit_name = "UNKNOWN"
-        info_raw = scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8) 
-        if info_raw:
-            info_ptr = struct.unpack("<Q", info_raw)[0]
-            if is_valid_ptr(info_ptr):
-                name_ptr_raw = scanner.read_mem(info_ptr + OFF_UNIT_NAME_PTR, 8) 
-                if name_ptr_raw:
-                    name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
-                    if is_valid_ptr(name_ptr):
-                        str_data = scanner.read_mem(name_ptr, 64)
-                        if str_data:
-                            raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
-                            unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
+        if read_name:
+            info_raw = scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8) 
+            if info_raw:
+                info_ptr = struct.unpack("<Q", info_raw)[0]
+                if is_valid_ptr(info_ptr):
+                    name_ptr_raw = scanner.read_mem(info_ptr + OFF_UNIT_NAME_PTR, 8) 
+                    if name_ptr_raw:
+                        name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
+                        if is_valid_ptr(name_ptr):
+                            str_data = scanner.read_mem(name_ptr, 64)
+                            if str_data:
+                                raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
+                                unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
                                 
         # 🎯 ดึงสถานะ Reload (ตอนนี้เป็น 1 ไบต์: 0-16)
         reload_raw = scanner.read_mem(u_ptr + OFF_UNIT_RELOAD, 1)
