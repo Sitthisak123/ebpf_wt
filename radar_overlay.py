@@ -254,6 +254,7 @@ COLOR_MISSILE_WARNING_TEXT      = (255, 60, 60, 255)     # Warning text
 COLOR_MISSILE_INFO_TEXT         = (255, 200, 80, 230)    # Missile info text
 MISSILE_SCAN_INTERVAL_S         = 0.10                   # Scan every 100ms
 MISSILE_WARNING_FLASH_HZ        = 3.0                    # Flash frequency
+OFFSCREEN_MISSILE_INDICATOR_MARGIN = 95.0               # Screen edge margin (avoids overlap with air indicator at 28px)
 
 BULLET_GRAVITY       = 9.80665   
 BOMB_CCIP_DRAG_K     = 0.0000175  # Small drag trim: 0.0001 was too much, 0.0 was slightly too little.
@@ -2034,6 +2035,66 @@ def _project_indicator_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_
         return None
     except Exception:
         return None
+
+
+def _compute_screen_direction_angle(view_matrix, target_pos, screen_w, screen_h):
+    """
+    Computes 2D screen direction angle (radians) from screen center towards target_pos
+    using the live 3D view_matrix.
+    
+    Returns:
+      angle in radians, where:
+        -pi/2 (-90 deg) = TOP of screen (12 o'clock)
+        0               = RIGHT of screen (3 o'clock)
+        +pi/2 (+90 deg) = BOTTOM of screen (6 o'clock)
+        pi (180 deg)    = LEFT of screen (9 o'clock)
+    """
+    try:
+        if not view_matrix or len(view_matrix) < 16:
+            return 0.0
+        x, y, z = target_pos
+        clip_x = (x * view_matrix[0]) + (y * view_matrix[4]) + (z * view_matrix[8]) + view_matrix[12]
+        clip_y = (x * view_matrix[1]) + (y * view_matrix[5]) + (z * view_matrix[9]) + view_matrix[13]
+        w      = (x * view_matrix[3]) + (y * view_matrix[7]) + (z * view_matrix[11]) + view_matrix[15]
+        
+        cx = screen_w * 0.5
+        cy = screen_h * 0.5
+        
+        if w > 0.01:
+            # In front of camera: direct perspective projection direction
+            dx = (clip_x / w) * cx
+            dy = (-clip_y / w) * cy
+            return math.atan2(dy, dx)
+        else:
+            # Behind camera (w <= 0.01):
+            # In camera space, clip_x is right (>0) or left (<0).
+            # -w is positive distance behind, pushing direction down to 6 o'clock.
+            # -clip_y is vertical offset (inverted for screen Y).
+            dx = clip_x
+            dy = -clip_y - w
+            if abs(dx) < 1e-4 and abs(dy) < 1e-4:
+                dy = 1.0  # Default to 6 o'clock if dead center behind
+            return math.atan2(dy, dx)
+    except Exception:
+        return 0.0
+
+
+def _get_screen_edge_pos(cx, cy, angle, screen_w, screen_h, margin=55.0):
+    """
+    Calculates the intersection of a ray from (cx, cy) at angle with the screen bounds
+    recessed by margin. Supports single scalar margin or (margin_x, margin_y) tuple.
+    """
+    if isinstance(margin, (tuple, list)):
+        margin_x, margin_y = margin[0], margin[1]
+    else:
+        margin_x, margin_y = margin, margin
+    dx = math.cos(angle)
+    dy = math.sin(angle)
+    t_x = (screen_w * 0.5 - margin_x) / abs(dx) if abs(dx) > 1e-6 else 1e9
+    t_y = (screen_h * 0.5 - margin_y) / abs(dy) if abs(dy) > 1e-6 else 1e9
+    t = min(t_x, t_y)
+    return cx + t * dx, cy + t * dy
+
 
 # ========================================================
 # 🚨 DUAL THREAT WARNING SYSTEM (จากเวอร์ชันเก่า)
@@ -5762,13 +5823,13 @@ class ESPOverlay(QOpenGLWidget):
                                 dz = my_pos[2] - m.pos[2]
                                 # Dot product of velocity and direction-to-me
                                 dot = m.vel[0]*dx + m.vel[1]*dy + m.vel[2]*dz
-                                if dot > 0:  # Moving toward me
+                                if dot > 0 and m.speed > 20.0:  # Moving toward me
                                     # Angle between velocity and direction-to-me
                                     v_len = m.speed
                                     d_len = dist
                                     if v_len > 0 and d_len > 0:
                                         cos_angle = dot / (v_len * d_len)
-                                        if cos_angle > 0.7:  # Within ~45 degrees cone
+                                        if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3):  # Within cone or close threat
                                             time_to_impact = dist / m.speed if m.speed > 0 else 999
                                             incoming.append((m, dist, time_to_impact))
                         
@@ -5794,7 +5855,14 @@ class ESPOverlay(QOpenGLWidget):
                             short_name = "🚀 Missile"
                             if m.name:
                                 short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
-                            label = f"{short_name} ({dist_label} {speed_label})"
+                            
+                            # Hide name when not a danger/threat
+                            if is_incoming:
+                                label = f"{short_name} ({dist_label} {speed_label})"
+                                t_str = f"{short_name} {dist_label}"
+                            else:
+                                label = dist_label
+                                t_str = dist_label
 
                             if w2s and (0 <= w2s[0] <= self.screen_width and 0 <= w2s[1] <= self.screen_height):
                                 sx, sy, sw = w2s
@@ -5824,19 +5892,20 @@ class ESPOverlay(QOpenGLWidget):
                                 )
                             else:
                                 # Offscreen / Behind Camera edge indicator
-                                dx = m.pos[0] - my_pos[0]
-                                dz = m.pos[2] - my_pos[2]
-                                angle = math.atan2(dz, dx)
+                                if view_matrix and len(view_matrix) >= 16:
+                                    angle = _compute_screen_direction_angle(view_matrix, m.pos, self.screen_width, self.screen_height)
+                                else:
+                                    dx = m.pos[0] - my_pos[0]
+                                    dz = m.pos[2] - my_pos[2]
+                                    angle = math.atan2(dz, dx)
                                 
-                                edge_r = min(self.screen_width, self.screen_height) / 2.0 - 50.0
-                                arrow_x = cx + math.cos(angle) * edge_r
-                                arrow_y = cy + math.sin(angle) * edge_r
+                                arrow_x, arrow_y = _get_screen_edge_pos(cx, cy, angle, self.screen_width, self.screen_height, margin=OFFSCREEN_MISSILE_INDICATOR_MARGIN)
                                 
                                 arr_col = QColor(*COLOR_MISSILE_MARKER) if is_incoming else QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
                                 painter.setPen(QPen(arr_col, 2))
                                 painter.setBrush(QBrush(arr_col))
                                 
-                                arrow_size = 10
+                                arrow_size = 12 if is_incoming else 9
                                 tip_x = arrow_x + math.cos(angle) * arrow_size
                                 tip_y = arrow_y + math.sin(angle) * arrow_size
                                 left_x = arrow_x + math.cos(angle + 2.5) * arrow_size
@@ -5849,10 +5918,30 @@ class ESPOverlay(QOpenGLWidget):
                                     QPoint(int(right_x), int(right_y)),
                                 ]))
                                 
+                                # Position text nicely inside screen area
                                 text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
+                                cos_a = math.cos(angle)
+                                sin_a = math.sin(angle)
+                                fm = painter.fontMetrics()
+                                tw = fm.boundingRect(t_str).width()
+                                th = fm.height()
+                                
+                                if cos_a > 0.4:
+                                    tx = arrow_x - tw - 14
+                                    ty = arrow_y + th * 0.35
+                                elif cos_a < -0.4:
+                                    tx = arrow_x + 14
+                                    ty = arrow_y + th * 0.35
+                                elif sin_a < -0.4:
+                                    tx = arrow_x - tw * 0.5
+                                    ty = arrow_y + th + 8
+                                else:
+                                    tx = arrow_x - tw * 0.5
+                                    ty = arrow_y - 8
+                                
                                 _draw_outlined_text(
-                                    painter, int(arrow_x + 12), int(arrow_y - 6),
-                                    f"{short_name} {dist_label}", text_color,
+                                    painter, int(tx), int(ty),
+                                    t_str, text_color,
                                     QColor(0, 0, 0, 180), 1
                                 )
                         
@@ -5904,15 +5993,17 @@ class ESPOverlay(QOpenGLWidget):
                             )
                             if not w2s_m or not (0 <= w2s_m[0] <= self.screen_width and 0 <= w2s_m[1] <= self.screen_height):
                                 # Missile is offscreen - draw direction indicator
-                                cx = self.screen_width / 2
-                                cy = self.screen_height / 2
-                                dx = m_closest.pos[0] - my_pos[0]
-                                dz = m_closest.pos[2] - my_pos[2]
-                                angle = math.atan2(dz, dx)
+                                cx = self.screen_width * 0.5
+                                cy = self.screen_height * 0.5
+                                if view_matrix and len(view_matrix) >= 16:
+                                    angle = _compute_screen_direction_angle(view_matrix, m_closest.pos, self.screen_width, self.screen_height)
+                                else:
+                                    dx = m_closest.pos[0] - my_pos[0]
+                                    dz = m_closest.pos[2] - my_pos[2]
+                                    angle = math.atan2(dz, dx)
                                 
-                                edge_r = min(self.screen_width, self.screen_height) / 2 - 60
-                                arrow_x = cx + math.cos(angle) * edge_r
-                                arrow_y = cy + math.sin(angle) * edge_r
+                                arrow_x, arrow_y = _get_screen_edge_pos(cx, cy, angle, self.screen_width, self.screen_height, margin=OFFSCREEN_MISSILE_INDICATOR_MARGIN)
+
                                 
                                 painter.setPen(QPen(QColor(255, 0, 0, flash_alpha + 40), 3))
                                 painter.setBrush(QBrush(QColor(255, 0, 0, flash_alpha)))
