@@ -251,7 +251,7 @@ class MissileScanner:
         if not all(math.isfinite(x) for x in vel):
             return None
         speed = _vlen(vel)
-        if not (30.0 < speed < 4500.0):
+        if not (15.0 < speed < 4500.0):
             return None
         
         # Secondary validation directly from header block
@@ -266,11 +266,10 @@ class MissileScanner:
         if eid == 0 or eid > 10_000_000:
             return None
         
-        # Filter out dead/impacted rockets pooled on ground (Dagor ECS deferred deletion)
-        is_alive = struct.unpack_from("<I", header, OFF_RKT_ALIVE)[0]
+        # Filter out dead/impacted rockets pooled on ground (phase 6 = terminated, detonated != 0)
         phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0]
         detonated = struct.unpack_from("<Q", header, OFF_RKT_DETONATED)[0]
-        if is_alive == 0 or phase == 6 or detonated != 0:
+        if phase == 6 or detonated != 0:
             return None
         
         # Must have valid weapon properties pointer (props -> blk definition)
@@ -307,9 +306,10 @@ class MissileScanner:
             name_ptr = _rp(scanner, props + 0x50)
             if _is_valid_ptr(name_ptr):
                 m.name = _rstr(scanner, name_ptr)
-            if len(self._name_cache) > 500:
-                self._name_cache.clear()
-            self._name_cache[ptr] = m.name
+            if m.name and m.name.endswith(".blk"):
+                if len(self._name_cache) > 500:
+                    self._name_cache.clear()
+                self._name_cache[ptr] = m.name
         
         # Must have valid non-empty weapon definition name (.blk file)
         if not m.name or m.name == "" or not m.name.endswith(".blk"):
