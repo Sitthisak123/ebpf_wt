@@ -28,7 +28,10 @@ OFF_RKT_OWNER      = 0x40
 OFF_RKT_STATE      = 0x94
 OFF_RKT_POS        = 0x23c
 OFF_RKT_VEL        = 0x258
+OFF_RKT_DETONATED  = 0x420   # Detonation/impact effect flag (0 = flying, non-zero = detonated)
+OFF_RKT_PHASE      = 0x498   # Projectile lifecycle phase (3 = in-flight, 6 = terminated/impacted)
 OFF_RKT_GUIDANCE   = 0x638
+OFF_RKT_ALIVE      = 0x6c0   # Entity active/alive flag (1 = active, 0 = inactive/dead)
 OFF_RKT_PROPS      = 0x6c8
 
 # Guidance struct internals
@@ -216,13 +219,13 @@ class MissileScanner:
                     ptr = struct.unpack_from("<Q", bulk, idx * 8)[0]
                     if _is_valid_ptr(ptr) and ptr not in seen_ptrs:
                         m = self._check_rocket(scanner, ptr, entry_idx)
-                        if m:
+                        if m and m.name != "":
                             seen_ptrs.add(m.ptr)
                             found_missiles.append(m)
                 except Exception:
                     continue
         
-        return found_missiles
+        return [m for m in found_missiles if m.name != ""]
     
     def _check_rocket(self, scanner, ptr, entry_idx):
         """
@@ -258,9 +261,21 @@ class MissileScanner:
         
         if state > 10:
             return None
-        if owner > 0xFFFFFFFF:
+        if owner == 0 or owner > 0xFFFFFFFF:
             return None
         if eid == 0 or eid > 10_000_000:
+            return None
+        
+        # Filter out dead/impacted rockets pooled on ground (Dagor ECS deferred deletion)
+        is_alive = struct.unpack_from("<I", header, OFF_RKT_ALIVE)[0]
+        phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0]
+        detonated = struct.unpack_from("<Q", header, OFF_RKT_DETONATED)[0]
+        if is_alive == 0 or phase == 6 or detonated != 0:
+            return None
+        
+        # Must have valid weapon properties pointer (props -> blk definition)
+        props = struct.unpack_from("<Q", header, OFF_RKT_PROPS)[0]
+        if not _is_valid_ptr(props):
             return None
         
         guid = struct.unpack_from("<Q", header, OFF_RKT_GUIDANCE)[0]
@@ -289,14 +304,16 @@ class MissileScanner:
         if ptr in self._name_cache:
             m.name = self._name_cache[ptr]
         else:
-            props = struct.unpack_from("<Q", header, OFF_RKT_PROPS)[0]
-            if _is_valid_ptr(props):
-                name_ptr = _rp(scanner, props + 0x50)
-                if _is_valid_ptr(name_ptr):
-                    m.name = _rstr(scanner, name_ptr)
+            name_ptr = _rp(scanner, props + 0x50)
+            if _is_valid_ptr(name_ptr):
+                m.name = _rstr(scanner, name_ptr)
             if len(self._name_cache) > 500:
                 self._name_cache.clear()
             self._name_cache[ptr] = m.name
+        
+        # Must have valid non-empty weapon definition name (.blk file)
+        if not m.name or m.name == "" or not m.name.endswith(".blk"):
+            return None
         
         # 🚫 FILTER OUT FLARES / CHAFF / DECOYS
         name_lower = m.name.lower()
