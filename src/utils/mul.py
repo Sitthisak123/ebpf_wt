@@ -1317,7 +1317,7 @@ def get_unit_status(scanner, u_ptr, read_name=True):
                                 
         # 🎯 ดึงสถานะ Reload (ตอนนี้เป็น 1 ไบต์: 0-16)
         reload_raw = scanner.read_mem(u_ptr + OFF_UNIT_RELOAD, 1)
-        reload_val = struct.unpack("<B", reload_raw)[0] if reload_raw else -1
+        reload_val = reload_raw[0] if reload_raw else -1
         return team, state, unit_name, reload_val
     except: return None
 
