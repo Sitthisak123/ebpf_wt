@@ -255,6 +255,9 @@ COLOR_MISSILE_INFO_TEXT         = (255, 200, 80, 230)    # Missile info text
 MISSILE_SCAN_INTERVAL_S         = 0.10                   # Scan every 100ms
 MISSILE_WARNING_FLASH_HZ        = 3.0                    # Flash frequency
 OFFSCREEN_MISSILE_INDICATOR_MARGIN = 95.0               # Screen edge margin (avoids overlap with air indicator at 28px)
+MISSILE_TRACK_TIMEOUT_S         = 0.30                   # Persistence grace period to prevent blinking (300ms)
+MISSILE_EXTRAPOLATION_MAX_S     = 0.35                   # Dead reckoning extrapolation max duration
+MISSILE_SMOOTH_LERP             = 0.45                   # Angular smoothing factor for edge indicator
 
 BULLET_GRAVITY       = 9.80665   
 BOMB_CCIP_DRAG_K     = 0.0000175  # Small drag trim: 0.0001 was too much, 0.0 was slightly too little.
@@ -2803,6 +2806,7 @@ class ESPOverlay(QOpenGLWidget):
         # 🚀 MISSILE WARNING SYSTEM
         self.missile_scanner = MissileScanner()
         self.missile_cache = []           # List of MissileInfo
+        self.missile_tracks = {}          # ptr -> track state for Dead Reckoning & Anti-Blink
         self.missile_last_scan = 0.0
         self.missile_warning_active = False
         self.missile_warning_start = 0.0
@@ -3526,9 +3530,10 @@ class ESPOverlay(QOpenGLWidget):
             painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}")
             painter.setPen(QColor(*COLOR_INFO_TEXT))
             painter.drawText(20, 115, f"🧠 AI Tracking : 6 Threads Active (Decay={self.dynamic_decay:.3f})")
-            if hasattr(self, 'missile_cache') and self.missile_cache:
+            active_m_count = len(self.missile_tracks) if hasattr(self, 'missile_tracks') and self.missile_tracks else (len(self.missile_cache) if hasattr(self, 'missile_cache') and self.missile_cache else 0)
+            if active_m_count > 0:
                 painter.setPen(QColor(255, 140, 40))
-                painter.drawText(20, 140, f"🚀 Active Missiles : {len(self.missile_cache)}")
+                painter.drawText(20, 140, f"🚀 Active Missiles : {active_m_count}")
 
             all_units_data = get_all_units(self.scanner, cgame_base)
             all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
@@ -5787,7 +5792,7 @@ class ESPOverlay(QOpenGLWidget):
                 del self.air_alert_seen[ptr]
 
             # ============================================================
-            # 🚀 MISSILE WARNING SYSTEM
+            # 🚀 MISSILE WARNING SYSTEM (Kinematic Dead Reckoning & Anti-Blink)
             # ============================================================
             if my_pos and view_matrix:
                 try:
@@ -5797,65 +5802,96 @@ class ESPOverlay(QOpenGLWidget):
                         result = self.missile_scanner.scan(self.scanner, self.base_address)
                         if result is not None:
                             self.missile_cache = result
-                    
-                    active_missiles = self.missile_cache
-                    
-                    if active_missiles:
-                        # Filter: missiles within 100km of my position
-                        nearby = []
-                        for m in active_missiles:
-                            if not m.name or m.name == "":
-                                continue
-                            dx = m.pos[0] - my_pos[0]
-                            dy = m.pos[1] - my_pos[1]
-                            dz = m.pos[2] - my_pos[2]
-                            dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                            if dist < 100000:
-                                nearby.append((m, dist))
-                        
+                            # Update missile tracks with new scan result
+                            for m in result:
+                                if not m.name or m.name == "":
+                                    continue
+                                if m.ptr in self.missile_tracks:
+                                    tr = self.missile_tracks[m.ptr]
+                                    tr['base_pos'] = m.pos
+                                    tr['vel'] = m.vel
+                                    tr['speed'] = m.speed
+                                    tr['last_seen'] = curr_t
+                                    tr['missile'] = m
+                                else:
+                                    self.missile_tracks[m.ptr] = {
+                                        'base_pos': m.pos,
+                                        'vel': m.vel,
+                                        'speed': m.speed,
+                                        'last_seen': curr_t,
+                                        'smooth_pos': m.pos,
+                                        'smooth_angle': None,
+                                        'was_offscreen': False,
+                                        'missile': m,
+                                    }
+
+                    # Purge stale missile tracks (grace period exceeded)
+                    stale_ptrs = [ptr for ptr, tr in self.missile_tracks.items() if (curr_t - tr['last_seen']) > MISSILE_TRACK_TIMEOUT_S]
+                    for ptr in stale_ptrs:
+                        del self.missile_tracks[ptr]
+
+                    # Extrapolate active missile positions at 60 FPS via Dead Reckoning
+                    active_missile_entries = []
+                    for ptr, tr in list(self.missile_tracks.items()):
+                        # dt capped at MISSILE_EXTRAPOLATION_MAX_S
+                        dt = max(0.0, min(curr_t - tr['last_seen'], MISSILE_EXTRAPOLATION_MAX_S))
+                        bp = tr['base_pos']
+                        v = tr['vel']
+                        smooth_pos = (bp[0] + v[0] * dt, bp[1] + v[1] * dt, bp[2] + v[2] * dt)
+                        tr['smooth_pos'] = smooth_pos
+                        m = tr['missile']
+
+                        dx = smooth_pos[0] - my_pos[0]
+                        dy = smooth_pos[1] - my_pos[1]
+                        dz = smooth_pos[2] - my_pos[2]
+                        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                        if dist < 100000:
+                            active_missile_entries.append((m, smooth_pos, v, tr['speed'], dist, tr))
+
+                    if active_missile_entries:
                         # Check if any missile is tracking ME
                         incoming = []
-                        for m, dist in nearby:
+                        for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:
                             # Check if missile is heading toward me
                             if dist > 0:
-                                dx = my_pos[0] - m.pos[0]
-                                dy = my_pos[1] - m.pos[1]
-                                dz = my_pos[2] - m.pos[2]
+                                dx = my_pos[0] - smooth_pos[0]
+                                dy = my_pos[1] - smooth_pos[1]
+                                dz = my_pos[2] - smooth_pos[2]
                                 # Dot product of velocity and direction-to-me
-                                dot = m.vel[0]*dx + m.vel[1]*dy + m.vel[2]*dz
-                                if dot > 0 and m.speed > 20.0:  # Moving toward me
+                                dot = vel[0]*dx + vel[1]*dy + vel[2]*dz
+                                if dot > 0 and speed > 20.0:  # Moving toward me
                                     # Angle between velocity and direction-to-me
-                                    v_len = m.speed
+                                    v_len = speed
                                     d_len = dist
                                     if v_len > 0 and d_len > 0:
                                         cos_angle = dot / (v_len * d_len)
                                         if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3):  # Within cone or close threat
-                                            time_to_impact = dist / m.speed if m.speed > 0 else 999
-                                            incoming.append((m, dist, time_to_impact))
-                        
+                                            time_to_impact = dist / speed if speed > 0 else 999
+                                            incoming.append((m, smooth_pos, dist, time_to_impact, tr))
+
                         # Sort by distance (closest first)
-                        incoming.sort(key=lambda x: x[1])
-                        nearby.sort(key=lambda x: x[1])
-                        
+                        incoming.sort(key=lambda x: x[2])
+                        active_missile_entries.sort(key=lambda x: x[4])
+
                         # Draw missile markers (on-screen and offscreen edge indicators)
                         painter.setFont(QFont("Arial", 10, QFont.Bold))
                         cx, cy = self.screen_width / 2.0, self.screen_height / 2.0
-                        
-                        for m, dist in nearby:
+
+                        for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:
                             w2s = world_to_screen(
                                 view_matrix,
-                                m.pos[0], m.pos[1], m.pos[2],
+                                smooth_pos[0], smooth_pos[1], smooth_pos[2],
                                 self.screen_width, self.screen_height
                             )
                             is_incoming = any(im[0].ptr == m.ptr for im in incoming)
                             dist_km = dist / 1000.0
-                            speed_label = f"{m.speed:.0f}m/s"
+                            speed_label = f"{speed:.0f}m/s"
                             dist_label = f"{dist_km:.1f}km" if dist_km >= 1 else f"{dist:.0f}m"
-                            
+
                             short_name = "🚀 Missile"
                             if m.name:
                                 short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
-                            
+
                             # Hide name when not a danger/threat
                             if is_incoming:
                                 label = f"{short_name} ({dist_label} {speed_label})"
@@ -5865,6 +5901,8 @@ class ESPOverlay(QOpenGLWidget):
                                 t_str = dist_label
 
                             if w2s and (0 <= w2s[0] <= self.screen_width and 0 <= w2s[1] <= self.screen_height):
+                                tr['was_offscreen'] = False
+                                tr['smooth_angle'] = None
                                 sx, sy, sw = w2s
                                 # Diamond marker
                                 if is_incoming:
@@ -5873,7 +5911,7 @@ class ESPOverlay(QOpenGLWidget):
                                 else:
                                     marker_color = QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
                                     size = 7
-                                
+
                                 painter.setPen(QPen(marker_color, 2))
                                 painter.setBrush(Qt.NoBrush)
                                 diamond = QPolygon([
@@ -5883,7 +5921,7 @@ class ESPOverlay(QOpenGLWidget):
                                     QPoint(int(sx - size), int(sy)),
                                 ])
                                 painter.drawPolygon(diamond)
-                                
+
                                 text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
                                 _draw_outlined_text(
                                     painter, int(sx + size + 4), int(sy + 4),
@@ -5893,18 +5931,28 @@ class ESPOverlay(QOpenGLWidget):
                             else:
                                 # Offscreen / Behind Camera edge indicator
                                 if view_matrix and len(view_matrix) >= 16:
-                                    angle = _compute_screen_direction_angle(view_matrix, m.pos, self.screen_width, self.screen_height)
+                                    target_angle = _compute_screen_direction_angle(view_matrix, smooth_pos, self.screen_width, self.screen_height)
                                 else:
-                                    dx = m.pos[0] - my_pos[0]
-                                    dz = m.pos[2] - my_pos[2]
-                                    angle = math.atan2(dz, dx)
-                                
+                                    dx = smooth_pos[0] - my_pos[0]
+                                    dz = smooth_pos[2] - my_pos[2]
+                                    target_angle = math.atan2(dz, dx)
+
+                                # Smooth angle transition: snap on first offscreen frame, then lerp smoothly
+                                prev_angle = tr.get('smooth_angle')
+                                if not tr.get('was_offscreen', False) or prev_angle is None:
+                                    angle = target_angle
+                                    tr['was_offscreen'] = True
+                                else:
+                                    diff = (target_angle - prev_angle + math.pi) % (2 * math.pi) - math.pi
+                                    angle = prev_angle + diff * MISSILE_SMOOTH_LERP
+                                tr['smooth_angle'] = angle
+
                                 arrow_x, arrow_y = _get_screen_edge_pos(cx, cy, angle, self.screen_width, self.screen_height, margin=OFFSCREEN_MISSILE_INDICATOR_MARGIN)
-                                
+
                                 arr_col = QColor(*COLOR_MISSILE_MARKER) if is_incoming else QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
                                 painter.setPen(QPen(arr_col, 2))
                                 painter.setBrush(QBrush(arr_col))
-                                
+
                                 arrow_size = 12 if is_incoming else 9
                                 tip_x = arrow_x + math.cos(angle) * arrow_size
                                 tip_y = arrow_y + math.sin(angle) * arrow_size
@@ -5917,7 +5965,7 @@ class ESPOverlay(QOpenGLWidget):
                                     QPoint(int(left_x), int(left_y)),
                                     QPoint(int(right_x), int(right_y)),
                                 ]))
-                                
+
                                 # Position text nicely inside screen area
                                 text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
                                 cos_a = math.cos(angle)
@@ -5925,7 +5973,7 @@ class ESPOverlay(QOpenGLWidget):
                                 fm = painter.fontMetrics()
                                 tw = fm.boundingRect(t_str).width()
                                 th = fm.height()
-                                
+
                                 if cos_a > 0.4:
                                     tx = arrow_x - tw - 14
                                     ty = arrow_y + th * 0.35
@@ -5938,23 +5986,23 @@ class ESPOverlay(QOpenGLWidget):
                                 else:
                                     tx = arrow_x - tw * 0.5
                                     ty = arrow_y - 8
-                                
+
                                 _draw_outlined_text(
                                     painter, int(tx), int(ty),
                                     t_str, text_color,
                                     QColor(0, 0, 0, 180), 1
                                 )
-                        
+
                         # 🚨 WARNING HUD - flashing border when missiles incoming
                         if incoming:
                             if not self.missile_warning_active:
                                 self.missile_warning_active = True
                                 self.missile_warning_start = curr_t
-                            
+
                             # Flashing alpha
                             flash_phase = math.sin(curr_t * MISSILE_WARNING_FLASH_HZ * 2 * math.pi)
                             flash_alpha = int(80 + 100 * max(0, flash_phase))
-                            
+
                             # Red border
                             border_color = QColor(255, 0, 0, flash_alpha)
                             painter.setPen(QPen(border_color, 4))
@@ -5963,15 +6011,15 @@ class ESPOverlay(QOpenGLWidget):
                             painter.drawRect(margin, margin, 
                                            self.screen_width - 2*margin, 
                                            self.screen_height - 2*margin)
-                            
+
                             # Warning text at top
                             closest = incoming[0]
-                            m_closest, dist_closest, tti = closest
-                            
+                            m_closest, pos_closest, dist_closest, tti, tr_closest = closest
+
                             warn_text = f"⚠️ MISSILE WARNING - {len(incoming)} INCOMING"
                             if tti < 999:
                                 warn_text += f" - IMPACT {tti:.1f}s"
-                            
+
                             painter.setFont(QFont("Arial", 20, QFont.Bold))
                             warn_color = QColor(255, 40, 40, min(255, flash_alpha + 80))
                             fm = painter.fontMetrics()
@@ -5984,45 +6032,48 @@ class ESPOverlay(QOpenGLWidget):
                                 warn_color,
                                 QColor(0, 0, 0, 200), 2
                             )
-                            
+
                             # Direction arrow at screen edge pointing to closest missile
                             w2s_m = world_to_screen(
                                 view_matrix,
-                                m_closest.pos[0], m_closest.pos[1], m_closest.pos[2],
+                                pos_closest[0], pos_closest[1], pos_closest[2],
                                 self.screen_width, self.screen_height
                             )
                             if not w2s_m or not (0 <= w2s_m[0] <= self.screen_width and 0 <= w2s_m[1] <= self.screen_height):
                                 # Missile is offscreen - draw direction indicator
                                 cx = self.screen_width * 0.5
                                 cy = self.screen_height * 0.5
-                                if view_matrix and len(view_matrix) >= 16:
-                                    angle = _compute_screen_direction_angle(view_matrix, m_closest.pos, self.screen_width, self.screen_height)
+                                if tr_closest and tr_closest.get('smooth_angle') is not None:
+                                    angle_m = tr_closest['smooth_angle']
+                                elif view_matrix and len(view_matrix) >= 16:
+                                    angle_m = _compute_screen_direction_angle(view_matrix, pos_closest, self.screen_width, self.screen_height)
                                 else:
-                                    dx = m_closest.pos[0] - my_pos[0]
-                                    dz = m_closest.pos[2] - my_pos[2]
-                                    angle = math.atan2(dz, dx)
-                                
-                                arrow_x, arrow_y = _get_screen_edge_pos(cx, cy, angle, self.screen_width, self.screen_height, margin=OFFSCREEN_MISSILE_INDICATOR_MARGIN)
+                                    dx = pos_closest[0] - my_pos[0]
+                                    dz = pos_closest[2] - my_pos[2]
+                                    angle_m = math.atan2(dz, dx)
 
-                                
+                                arrow_x, arrow_y = _get_screen_edge_pos(cx, cy, angle_m, self.screen_width, self.screen_height, margin=OFFSCREEN_MISSILE_INDICATOR_MARGIN)
+
                                 painter.setPen(QPen(QColor(255, 0, 0, flash_alpha + 40), 3))
                                 painter.setBrush(QBrush(QColor(255, 0, 0, flash_alpha)))
                                 arrow_size = 15
-                                tip_x = arrow_x + math.cos(angle) * arrow_size
-                                tip_y = arrow_y + math.sin(angle) * arrow_size
-                                left_x = arrow_x + math.cos(angle + 2.5) * arrow_size
-                                left_y = arrow_y + math.sin(angle + 2.5) * arrow_size
-                                right_x = arrow_x + math.cos(angle - 2.5) * arrow_size
-                                right_y = arrow_y + math.sin(angle - 2.5) * arrow_size
+                                tip_x = arrow_x + math.cos(angle_m) * arrow_size
+                                tip_y = arrow_y + math.sin(angle_m) * arrow_size
+                                left_x = arrow_x + math.cos(angle_m + 2.5) * arrow_size
+                                left_y = arrow_y + math.sin(angle_m + 2.5) * arrow_size
+                                right_x = arrow_x + math.cos(angle_m - 2.5) * arrow_size
+                                right_y = arrow_y + math.sin(angle_m - 2.5) * arrow_size
                                 painter.drawPolygon(QPolygon([
                                     QPoint(int(tip_x), int(tip_y)),
                                     QPoint(int(left_x), int(left_y)),
                                     QPoint(int(right_x), int(right_y)),
                                 ]))
-                            
+
                             painter.setFont(QFont("Arial", 12, QFont.Bold))
                         else:
                             self.missile_warning_active = False
+                    else:
+                        self.missile_warning_active = False
                 except Exception as e:
                     dprint(f"Missile warning error: {e}", force=True)
 
