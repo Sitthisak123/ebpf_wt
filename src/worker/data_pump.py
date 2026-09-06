@@ -202,6 +202,8 @@ class DataPumpWorker(QThread):
         # ----- Worker-owned caches -----
         self.profile_cache: Dict[int, dict] = {}
         self.active_targets: Dict[int, dict] = {}  # u_ptr -> {"snapshot": t_snap, "last_seen": now}
+        self.velocity_cache: Dict[int, dict] = {}  # Worker-owned velocity cache (prevents GUI cache collisions)
+        self.last_velocity_meta: Dict[int, dict] = {}
         self.last_my_unit: int = 0
         self.last_my_team: int = 0
         self.last_cgame_base: int = 0
@@ -342,17 +344,17 @@ class DataPumpWorker(QThread):
                 my_is_air = False
         snap.my_is_air = my_is_air
 
-        # My velocity
+        # My velocity:
+        # AIR uses get_my_air_velocity (double precision 24 bytes).
+        # GROUND my_vel is owned and stabilized exclusively by GUI thread at steady 60Hz to prevent cache collisions and jitter!
         my_spawn_in_grace = now < self.my_unit_spawn_grace_until
         if my_spawn_in_grace:
             snap.my_vel = (0.0, 0.0, 0.0)
         elif my_unit:
             if my_is_air:
                 snap.my_vel = get_my_air_velocity(self.scanner, my_unit) or (0.0, 0.0, 0.0)
-            elif self._stabilize_velocity:
-                snap.my_vel = self._stabilize_velocity(my_unit, False, my_pos, now) or (0.0, 0.0, 0.0)
             else:
-                snap.my_vel = (0.0, 0.0, 0.0)
+                snap.my_vel = None
 
         # My box data & barrel (heavy reads)
         if my_unit and my_pos and not my_is_air:
@@ -514,10 +516,14 @@ class DataPumpWorker(QThread):
                 if dist_to_me > (MAX_AIR_DIST if resolved_is_air else MAX_GROUND_DIST):
                     continue
 
-            # Pre-stabilize velocity for all targets (both air and ground)
+            # Pre-stabilize velocity for all targets using Worker-owned cache and precise per-target timestamp
             pre_vel = None
             if self._stabilize_velocity:
-                pre_vel = self._stabilize_velocity(u_ptr, resolved_is_air, pos, now)
+                t_target = time.time()
+                pre_vel = self._stabilize_velocity(
+                    u_ptr, resolved_is_air, pos, t_target,
+                    cache=self.velocity_cache, meta_cache=self.last_velocity_meta,
+                )
 
             # Pre-resolve unit family (cached permanently per unit)
             unit_family = cached_prof.get("unit_family") if cached_prof else None
