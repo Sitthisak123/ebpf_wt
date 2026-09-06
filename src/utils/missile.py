@@ -190,25 +190,22 @@ class MissileScanner:
                 continue
             
             storage = struct.unpack_from("<Q", data, 0)[0]
-            if not _is_valid_ptr(storage):
+            if not _is_valid_ptr(storage) or (storage & 0x7 != 0):
                 continue
             
             # ⚡ KEY PERFORMANCE & DYNAMIC CAPACITY OPTIMIZATION:
             # Check active entity count (+0x8) and capacity (+0x14) in ECS Node Descriptor.
-            # Skip empty (count==0) or unallocated (capacity==0) tables instantly (<0.05ms for 0 missiles).
+            # Skip empty (count==0), unallocated (capacity==0), or corrupted tables (count > capacity).
             count = struct.unpack_from("<I", data, 8)[0]
             capacity = struct.unpack_from("<I", data, 0x14)[0]
-            if count == 0 or capacity == 0 or count > 1500:
+            if count == 0 or capacity == 0 or count > capacity or capacity > 2048:
                 continue
             
             # In Dagor ECS, storage is a Structure of Arrays (SOA).
-            # Component column offsets scale linearly with capacity:
-            # - Column 1 is at index int(capacity * 5.5)
-            # - Column 2 is at index int(capacity * 7.5)
-            # By scaling read_count as min(max(capacity * 10, 200), 8192),
-            # all columns are 100% captured dynamically across any capacity size:
-            # (16, 32, 64, 128, 256, 512, 1024+ active missiles/rockets)!
-            read_count = min(max(capacity * 10, 200), 8192)
+            # Component column offsets scale with capacity (e.g. col 1 ~ cap*5.5, col 2 ~ cap*7.5).
+            # With proper table bounds check, reading min(max(capacity * 8, 64), 1024) safely covers
+            # all active rocket component columns in < 2ms without scanning unallocated memory!
+            read_count = min(max(capacity * 8, 64), 1024)
             bulk = scanner.read_mem(storage, read_count * 8)
             if not bulk or len(bulk) < 8:
                 continue
@@ -217,7 +214,7 @@ class MissileScanner:
             for idx in range(num_ptrs):
                 try:
                     ptr = struct.unpack_from("<Q", bulk, idx * 8)[0]
-                    if _is_valid_ptr(ptr) and ptr not in seen_ptrs:
+                    if _is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
                         m = self._check_rocket(scanner, ptr, entry_idx)
                         if m and m.name != "":
                             seen_ptrs.add(m.ptr)

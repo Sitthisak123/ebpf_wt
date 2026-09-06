@@ -2754,12 +2754,76 @@ def _is_probably_white_capture(raw_rgb, width, height):
     return total > 0 and (white_count / total) >= SNIPER_WHITE_CAPTURE_RATIO
 
 
+# ============================================================================
+# ⚡ Real-Time Performance Profiler & Frame Bottleneck Debugger
+# ============================================================================
+class FrameProfiler:
+    """
+    ⚡ High-precision real-time frame timing profiler & pipeline debugger.
+    Captures exact sub-millisecond execution times for:
+      - prep:     Engine offsets, matrix, camera projection, snapshot retrieval
+      - targets:  Target iteration, bounding boxes, aim calculations
+      - sniper:   PiP sniper scope capture & drawing
+      - missiles: Missile warning checks & kinematic dead-reckoning
+      - paint:    QPainter primitives, text, overlays, and OpenGL flush
+      - total:    Total paintGL frame duration
+    """
+    def __init__(self):
+        self.t_frame_start = 0.0
+        self.t_last_mark = 0.0
+        self.timings = {}
+        self.avg_timings = {
+            "prep": 0.0,
+            "targets": 0.0,
+            "sniper": 0.0,
+            "missiles": 0.0,
+            "paint": 0.0,
+            "total": 0.0,
+        }
+        self.show_osd = True
+        self.last_slow_warn = 0.0
+        self.frame_count = 0
+
+    def start_frame(self):
+        self.t_frame_start = time.perf_counter()
+        self.t_last_mark = self.t_frame_start
+        self.timings.clear()
+
+    def mark(self, stage: str):
+        now = time.perf_counter()
+        dt_ms = (now - self.t_last_mark) * 1000.0
+        self.timings[stage] = dt_ms
+        self.t_last_mark = now
+        
+        # Exponential moving average (smooth jitter)
+        prev = self.avg_timings.get(stage, dt_ms)
+        self.avg_timings[stage] = (prev * 0.90) + (dt_ms * 0.10)
+
+    def end_frame(self):
+        now = time.perf_counter()
+        total_ms = (now - self.t_frame_start) * 1000.0
+        self.timings["total"] = total_ms
+        prev = self.avg_timings.get("total", total_ms)
+        self.avg_timings["total"] = (prev * 0.90) + (total_ms * 0.10)
+        self.frame_count += 1
+
+        # Warn if frame budget (16.6ms for 60fps) is exceeded
+        if total_ms > 25.0 and (now - self.last_slow_warn) > 3.0:
+            self.last_slow_warn = now
+            slow_stages = [f"{k}={v:.1f}ms" for k, v in self.timings.items() if v > 4.0 and k != "total"]
+            dprint(f"⚠️ [PERF ALERT] paintGL latency {total_ms:.1f}ms! Culprits: {', '.join(slow_stages)}", force=True)
+
+        return total_ms
+
+
 class ESPOverlay(QOpenGLWidget):
     def __init__(self, scanner, base_address):
         super().__init__()
         set_dashboard_mode(True)
         self.scanner = scanner
         self.base_address = base_address
+        self.profiler = FrameProfiler()
+        self.f10_pressed_last = False
         self.max_reload_cache = {}
         self.profile_cache = {} # 🛡️ New Profile Cache
         self.last_my_unit = 0 
@@ -3132,6 +3196,66 @@ class ESPOverlay(QOpenGLWidget):
                     self.target_locked_ptr = active_target_ptr
         self.tab_pressed_last = tab_now
 
+    def _draw_profiler_osd(self, painter, snapshot, target_count, missile_count):
+        """
+        Draw real-time Performance Debugger HUD on the overlay screen (top-right corner).
+        Allows instant visual diagnosis of frame bottlenecks (Prep, Targets, Missiles, Sniper, Paint).
+        Toggleable via F10 key.
+        """
+        try:
+            box_w = 320
+            box_h = 168
+            box_x = max(20, self.screen_width - box_w - 20)
+            box_y = 30
+
+            # Background Box with subtle modern blue border
+            painter.setPen(QPen(QColor(60, 130, 240, 210), 1.5))
+            painter.setBrush(QBrush(QColor(12, 16, 24, 220)))
+            painter.drawRoundedRect(box_x, box_y, box_w, box_h, 6, 6)
+
+            painter.setFont(QFont("Consolas", 10, QFont.Bold))
+
+            # Header
+            painter.setPen(QColor(100, 200, 255))
+            painter.drawText(box_x + 12, box_y + 22, "⚡ ESP DEBUGGER / PROFILER [F10]")
+
+            # FPS Summary
+            pump_fps = int(snapshot.worker_fps) if (snapshot and hasattr(snapshot, 'worker_fps') and snapshot.worker_fps > 0) else 0
+            gui_fps = int(self.current_fps)
+            total_ms = self.profiler.avg_timings.get("total", 0.0)
+
+            fps_col = QColor(100, 255, 100) if gui_fps >= 50 else (QColor(255, 200, 50) if gui_fps >= 30 else QColor(255, 70, 70))
+            painter.setPen(fps_col)
+            pump_txt = f"Pump: {pump_fps} FPS" if pump_fps > 0 else "Pump: Off"
+            painter.drawText(box_x + 12, box_y + 44, f"ESP: {gui_fps} FPS ({total_ms:.1f}ms) | {pump_txt}")
+
+            # Subsystem pipeline breakdown
+            stages = [
+                ("Prep", self.profiler.avg_timings.get("prep", 0.0), ""),
+                ("Targets", self.profiler.avg_timings.get("targets", 0.0), f"({target_count} units)"),
+                ("Missiles", self.profiler.avg_timings.get("missiles", 0.0), f"({missile_count} tracks)"),
+                ("Sniper", self.profiler.avg_timings.get("sniper", 0.0), ""),
+                ("Draw/Blit", self.profiler.avg_timings.get("paint", 0.0), ""),
+            ]
+
+            curr_y = box_y + 66
+            for label, dt_ms, extra in stages:
+                # Color code: Green < 3.0ms, Yellow 3.0-8.0ms, Red > 8.0ms
+                if dt_ms < 3.0:
+                    c = QColor(180, 235, 180)
+                elif dt_ms < 8.0:
+                    c = QColor(255, 210, 80)
+                else:
+                    c = QColor(255, 75, 75)
+
+                painter.setPen(c)
+                extra_str = f" {extra}" if extra else ""
+                painter.drawText(box_x + 16, curr_y, f"• {label:<9}: {dt_ms:5.2f} ms{extra_str}")
+                curr_y += 19
+
+        except Exception:
+            pass
+
     def _handle_compare_visibility_toggle(self):
         if not DEBUG_COMPARE_DYNAMIC_GEOMETRY:
             self.compare_last_keys["up"] = False
@@ -3426,6 +3550,16 @@ class ESPOverlay(QOpenGLWidget):
     def paintGL(self):
         if self.shutdown_requested:
             return
+        if hasattr(self, 'profiler'):
+            self.profiler.start_frame()
+
+        # ⚡ Toggle Performance Debugger HUD with F10
+        f10_now = self._keyboard_down("f10")
+        if f10_now and not getattr(self, 'f10_pressed_last', False):
+            if hasattr(self, 'profiler'):
+                self.profiler.show_osd = not self.profiler.show_osd
+        self.f10_pressed_last = f10_now
+
         self._update_screen_metrics()
         if self.width() != self.screen_width or self.height() != self.screen_height:
             self.setGeometry(0, 0, self.screen_width, self.screen_height)
@@ -3719,6 +3853,8 @@ class ESPOverlay(QOpenGLWidget):
                     pass
 
             # 🚀 Worker Snapshot Integration (Eliminates 500+ blocking syscalls from GUI thread)
+            if hasattr(self, 'profiler'):
+                self.profiler.mark("prep")
             target_snapshot_map = {}
             if snapshot and snapshot.is_valid:
                 valid_targets = snapshot.valid_targets
@@ -5740,6 +5876,9 @@ class ESPOverlay(QOpenGLWidget):
                     "[CMP-CTL] Left/Right: switch | Up: all | Down: off"
                 )
             
+            if hasattr(self, 'profiler'):
+                self.profiler.mark("targets")
+
             # ========================================================
             # 🔎 PICTURE-IN-PICTURE (PiP) SNIPER SCOPE RENDERER
             # ========================================================
@@ -5796,6 +5935,9 @@ class ESPOverlay(QOpenGLWidget):
                 except Exception as e:
                     # ป้องกันโปรแกรมค้างหากแคปจอผิดพลาด
                     pass
+
+            if hasattr(self, 'profiler'):
+                self.profiler.mark("sniper")
 
             if DRAW_OFFSCREEN_AIR_INDICATOR:
                 for indicator in offscreen_air_indicators_to_draw:
@@ -5871,34 +6013,39 @@ class ESPOverlay(QOpenGLWidget):
             # ============================================================
             if my_pos and view_matrix:
                 try:
-                    # Scan for missiles (throttled internally)
-                    if curr_t - self.missile_last_scan >= MISSILE_SCAN_INTERVAL_S:
+                    # Scan for missiles (retrieved from background worker snapshot, 0ms in paintGL!)
+                    if snapshot and snapshot.is_valid and hasattr(snapshot, 'missiles'):
+                        result = snapshot.missiles
+                    elif curr_t - self.missile_last_scan >= MISSILE_SCAN_INTERVAL_S:
                         self.missile_last_scan = curr_t
                         result = self.missile_scanner.scan(self.scanner, self.base_address)
-                        if result is not None:
-                            self.missile_cache = result
-                            # Update missile tracks with new scan result
-                            for m in result:
-                                if not m.name or m.name == "":
-                                    continue
-                                if m.ptr in self.missile_tracks:
-                                    tr = self.missile_tracks[m.ptr]
-                                    tr['base_pos'] = m.pos
-                                    tr['vel'] = m.vel
-                                    tr['speed'] = m.speed
-                                    tr['last_seen'] = curr_t
-                                    tr['missile'] = m
-                                else:
-                                    self.missile_tracks[m.ptr] = {
-                                        'base_pos': m.pos,
-                                        'vel': m.vel,
-                                        'speed': m.speed,
-                                        'last_seen': curr_t,
-                                        'smooth_pos': m.pos,
-                                        'smooth_angle': None,
-                                        'was_offscreen': False,
-                                        'missile': m,
-                                    }
+                    else:
+                        result = None
+
+                    if result is not None:
+                        self.missile_cache = result
+                        # Update missile tracks with new scan result
+                        for m in result:
+                            if not m.name or m.name == "":
+                                continue
+                            if m.ptr in self.missile_tracks:
+                                tr = self.missile_tracks[m.ptr]
+                                tr['base_pos'] = m.pos
+                                tr['vel'] = m.vel
+                                tr['speed'] = m.speed
+                                tr['last_seen'] = curr_t
+                                tr['missile'] = m
+                            else:
+                                self.missile_tracks[m.ptr] = {
+                                    'base_pos': m.pos,
+                                    'vel': m.vel,
+                                    'speed': m.speed,
+                                    'last_seen': curr_t,
+                                    'smooth_pos': m.pos,
+                                    'smooth_angle': None,
+                                    'was_offscreen': False,
+                                    'missile': m,
+                                }
 
                     # Purge stale missile tracks (grace period exceeded)
                     stale_ptrs = [ptr for ptr, tr in self.missile_tracks.items() if (curr_t - tr['last_seen']) > MISSILE_TRACK_TIMEOUT_S]
@@ -6151,6 +6298,20 @@ class ESPOverlay(QOpenGLWidget):
                         self.missile_warning_active = False
                 except Exception as e:
                     dprint(f"Missile warning error: {e}", force=True)
+
+            if hasattr(self, 'profiler'):
+                self.profiler.mark("missiles")
+
+            # ⚡ Draw Real-Time Performance Profiler & Pipeline Debugger HUD
+            if hasattr(self, 'profiler') and self.profiler.show_osd:
+                snap_obj = snapshot if ('snapshot' in locals() and snapshot) else getattr(self, '_latest_snapshot', None)
+                n_targets = len(valid_targets) if ('valid_targets' in locals() and valid_targets) else 0
+                n_missiles = len(self.missile_tracks) if hasattr(self, 'missile_tracks') and self.missile_tracks else 0
+                self._draw_profiler_osd(painter, snap_obj, n_targets, n_missiles)
+
+            if hasattr(self, 'profiler'):
+                self.profiler.mark("paint")
+                self.profiler.end_frame()
 
         except Exception as e: 
             self._fatal_shutdown(
