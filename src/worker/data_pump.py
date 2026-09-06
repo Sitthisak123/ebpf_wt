@@ -514,10 +514,10 @@ class DataPumpWorker(QThread):
                 if dist_to_me > (MAX_AIR_DIST if resolved_is_air else MAX_GROUND_DIST):
                     continue
 
-            # Pre-stabilize velocity for ground targets
+            # Pre-stabilize velocity for all targets (both air and ground)
             pre_vel = None
-            if not resolved_is_air and self._stabilize_velocity:
-                pre_vel = self._stabilize_velocity(u_ptr, False, pos, now)
+            if self._stabilize_velocity:
+                pre_vel = self._stabilize_velocity(u_ptr, resolved_is_air, pos, now)
 
             # Pre-resolve unit family (cached permanently per unit)
             unit_family = cached_prof.get("unit_family") if cached_prof else None

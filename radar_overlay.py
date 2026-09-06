@@ -493,9 +493,9 @@ DRAG_M0_TRANSONIC_MACH_HI = 1.15  # Mach ที่ transonic drag rise เต็
 DRAG_M0_TRANSONIC_PEAK = 0.22     # drag เพิ่มขึ้นสูงสุดกี่ % เมื่อเข้า transonic (0.22 = +22%)
 PROJECTILE_SIM_MAX_TIME = 12.0  # เพิ่มถ้าจะรองรับยิงไกลมาก
 PROJECTILE_SIM_MIN_SPEED = 25.0  # ต่ำลง = sim ต่อได้นานขึ้น
-PROJECTILE_SIM_DT_MIN = 0.003  # ลด = ละเอียดขึ้นแต่หนักขึ้น
-PROJECTILE_SIM_DT_MAX = 0.012  # ลด = ละเอียดขึ้น
-PROJECTILE_SIM_DT_SCALE = 4.0  # scale ของ adaptive dt
+PROJECTILE_SIM_DT_MIN = 0.008  # adaptive dt ขั้นต่ำ (สมดุลความแม่นยำระดับเซนติเมตรและ FPS สูง)
+PROJECTILE_SIM_DT_MAX = 0.020  # adaptive dt ขั้นสูงสุด
+PROJECTILE_SIM_DT_SCALE = 8.0  # scale ของ adaptive dt
 ZERO_PITCH_MAX_ITERS = 5  # เพิ่ม = zeroing นิ่งขึ้นแต่ช้าลง
 ZERO_PITCH_GAIN = 0.92  # สูงขึ้น = zeroing เข้าค่าไวขึ้น
 ZERO_PITCH_MIN = -0.08  # clamp ต่ำสุดของ zero pitch
@@ -2495,8 +2495,8 @@ def _drag_band_factor(model, speed):
         transonic_rise = _smoothstep(DRAG_M0_TRANSONIC_MACH_LO, DRAG_M0_TRANSONIC_MACH_HI, mach)
         factor *= (1.0 + DRAG_M0_TRANSONIC_PEAK * transonic_rise)
         return factor
-    vel_lo = model["vel_lo"]
-    vel_hi = model["vel_hi"]
+    vel_lo = model.get("vel_lo", 0.0)
+    vel_hi = model.get("vel_hi", 0.0)
     if vel_hi <= vel_lo or vel_hi <= 0.0:
         band = DRAG_BAND_DEFAULT
     else:
@@ -2510,24 +2510,40 @@ def _drag_band_factor(model, speed):
         (DRAG_FACTOR_TRANSONIC_WEIGHT * transonic) +
         (DRAG_FACTOR_SUPERSONIC_WEIGHT * supersonic)
     )
-    if model["speed"] >= BALLISTIC_SUBCALIBER_SPEED_MIN:
+    if model.get("speed", 0.0) >= BALLISTIC_SUBCALIBER_SPEED_MIN:
         factor *= DRAG_FACTOR_FAST_ROUND_MULT
     return max(DRAG_FACTOR_MIN, min(DRAG_FACTOR_MAX, factor))
 
 
-def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
-    if horizontal_range <= 0.001:
-        return 0.0, 0.0, model["speed"]
+_BALLISTIC_SIM_CACHE = {}
 
-    vx = model["speed"] * math.cos(zero_pitch)
-    vy = -model["speed"] * math.sin(zero_pitch)
+def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
+    model_speed = model.get("speed", 800.0) if model else 800.0
+    model_base_k = model.get("base_k", 0.0001) if model else 0.0001
+
+    if horizontal_range <= 0.001:
+        return 0.0, 0.0, model_speed
+
+    # 🚀 Quantized Cache Key (2-meter resolution): ป้องกันการคำนวณซ้ำสำหรับระยะใกล้เคียงกัน
+    cache_key = (
+        round(horizontal_range * 0.5) * 2,
+        round(model_speed, 1),
+        round(model_base_k, 6),
+        round(zero_pitch, 4),
+    )
+    cached_val = _BALLISTIC_SIM_CACHE.get(cache_key)
+    if cached_val is not None:
+        return cached_val
+
+    vx = model_speed * math.cos(zero_pitch)
+    vy = -model_speed * math.sin(zero_pitch)
     x = 0.0
     y_down = 0.0
     t = 0.0
     prev_x = 0.0
     prev_y = 0.0
     prev_t = 0.0
-    prev_speed = model["speed"]
+    prev_speed = model_speed
 
     while x < horizontal_range and t < PROJECTILE_SIM_MAX_TIME:
         speed_mag = math.hypot(vx, vy)
@@ -2535,7 +2551,7 @@ def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
             break
 
         dt = max(PROJECTILE_SIM_DT_MIN, min(PROJECTILE_SIM_DT_MAX, PROJECTILE_SIM_DT_SCALE / (speed_mag + 1.0)))
-        drag_scale = model["base_k"] * _drag_band_factor(model, speed_mag)
+        drag_scale = model_base_k * _drag_band_factor(model, speed_mag)
         ax = -drag_scale * speed_mag * vx
         ay = (drag_scale * speed_mag * -vy) + BULLET_GRAVITY
 
@@ -2558,7 +2574,11 @@ def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
     else:
         speed_mag = math.hypot(vx, vy)
 
-    return t, y_down, speed_mag
+    res = (t, y_down, speed_mag)
+    if len(_BALLISTIC_SIM_CACHE) > 512:
+        _BALLISTIC_SIM_CACHE.clear()
+    _BALLISTIC_SIM_CACHE[cache_key] = res
+    return res
 
 def _simulate_bomb_impact(my_pos, my_vel, ground_y, drag_k=0.0000):
     """
@@ -4152,6 +4172,11 @@ class ESPOverlay(QOpenGLWidget):
             zero_pitch = _solve_zero_pitch(current_zeroing, ballistic_model)
             fire_origin = my_ground_shot_origin if my_ground_shot_origin else (my_pos if my_pos else (0.0, 0.0, 0.0))
             
+            # 🎯 Pre-fetch my_rot ONCE for the entire frame (Eliminates repeated syscalls in targets loop)
+            frame_my_rot = (snapshot.my_rot if snapshot else None) or get_unit_rotation(self.scanner, my_unit)
+            if not frame_my_rot:
+                frame_my_rot = (1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0)
+
             active_sniper_data = None
 
             locked_ground_target_y = None
@@ -4183,6 +4208,16 @@ class ESPOverlay(QOpenGLWidget):
                     if not pos: continue
                     
                     dist = dist_to_me if my_pos else 0
+
+                    # 🎯 Early Center Screen Projection (Computed ONCE per target for boxes, indicator & selection)
+                    center_screen = world_to_screen(
+                        view_matrix,
+                        pos[0],
+                        pos[1],
+                        pos[2],
+                        self.screen_width,
+                        self.screen_height,
+                    )
                     
                     # 💥 เพิ่มตัวแปรสำหรับวาดเส้นปืน (Barrel) และแจ้งเตือนภัยคุกคาม
                     barrel_base_2d = None
@@ -4197,9 +4232,8 @@ class ESPOverlay(QOpenGLWidget):
                     target_box_rect = None
 
                     if ESP_POINT_ONLY_MODE:
-                        res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
-                        res_pts = _screen_int_tuple(res_pos[0], res_pos[1]) if res_pos and res_pos[2] > 0 else None
-                        if res_pts:
+                        res_pts = _screen_int_tuple(center_screen[0], center_screen[1]) if center_screen and center_screen[2] > 0 else None
+                        if res_pts and (0 <= res_pts[0] <= self.screen_width and 0 <= res_pts[1] <= self.screen_height):
                             point_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
                             painter.setPen(QPen(point_color, 2))
                             painter.drawEllipse(res_pts[0] - 4, res_pts[1] - 4, 8, 8)
@@ -4219,22 +4253,27 @@ class ESPOverlay(QOpenGLWidget):
                         or (is_air_target and AIR_USE_SIMPLE_SCREEN_BOX)
                     )
                     if (not ESP_POINT_ONLY_MODE) and use_simple_screen_box:
-                        res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
-                        res_pts = _screen_int_tuple(res_pos[0], res_pos[1]) if res_pos and res_pos[2] > 0 else None
-                        if res_pts:
+                        if center_screen and center_screen[2] > 0:
                             box_w = max(20, int(3000 / (dist + 1))) if is_air_target else max(30, int(4000 / (dist + 1)))
                             box_h = box_w * 0.8 if is_air_target else box_w * 0.6
-                            box_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
-                            painter.setPen(QPen(box_color, 2))
-                            painter.drawRect(int(res_pts[0] - box_w/2), int(res_pts[1] - box_h/2), int(box_w), int(box_h))
-                            avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - box_h/2
-                            target_box_rect = (
-                                res_pts[0] - (box_w * 0.5),
-                                res_pts[1] - (box_h * 0.5),
-                                res_pts[0] + (box_w * 0.5),
-                                res_pts[1] + (box_h * 0.5),
-                            )
-                            has_valid_box = True
+                            half_w = box_w * 0.5
+                            half_h = box_h * 0.5
+                            cx, cy = center_screen[0], center_screen[1]
+                            if (cx + half_w >= 0 and cx - half_w <= self.screen_width and
+                                cy + half_h >= 0 and cy - half_h <= self.screen_height):
+                                res_pts = _screen_int_tuple(cx, cy)
+                                if res_pts:
+                                    box_color = QColor(*COLOR_BOX_SELECT_TARGET) if u_ptr == active_target_ptr else QColor(*COLOR_BOX_TARGET)
+                                    painter.setPen(QPen(box_color, 2))
+                                    painter.drawRect(int(res_pts[0] - half_w), int(res_pts[1] - half_h), int(box_w), int(box_h))
+                                    avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - half_h
+                                    target_box_rect = (
+                                        cx - half_w,
+                                        cy - half_h,
+                                        cx + half_w,
+                                        cy + half_h,
+                                    )
+                                    has_valid_box = True
 
                     if (not ESP_POINT_ONLY_MODE) and not use_simple_screen_box:
 
@@ -4289,24 +4328,6 @@ class ESPOverlay(QOpenGLWidget):
                                     
                             # 4. ลากเส้นเชื่อมมุมทั้ง 8 (ถ้าอยู่บนหน้าจอครบ)
                             if pts.count(None) == 0:
-                                edges = [
-                                    (0,1), (0,2), (1,3), (2,3), # ฐานล่าง
-                                    (4,5), (4,6), (5,7), (6,7), # ฐานบน
-                                    (0,4), (1,5), (2,6), (3,7)  # เสาแนวตั้ง
-                                ]
-                                
-                               
-                                box_color = QColor(*COLOR_BOX_TARGET) if not is_air_target else QColor(*COLOR_BOX_TARGET)
-                                if u_ptr == active_target_ptr:
-                                    box_color = QColor(*COLOR_BOX_SELECT_TARGET)
-                                    
-                                painter.setPen(QPen(box_color, 1.5))
-                                for p1, p2 in edges:
-                                    line_pts = _screen_int_tuple(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
-                                    if line_pts:
-                                        painter.drawLine(*line_pts)
-
-                                # 5. คำนวณข้อมูลสำหรับระบบล็อกเป้าและระยะทาง
                                 valid_pts = [p for p in pts if p]
                                 min_y = min(p[1] for p in valid_pts)
                                 avg_x = sum(p[0] for p in valid_pts) / len(valid_pts)
@@ -4317,24 +4338,47 @@ class ESPOverlay(QOpenGLWidget):
                                     max(p[0] for p in valid_pts),
                                     max(p[1] for p in valid_pts),
                                 )
-                                has_valid_box = True
+                                # 🛡️ Bounding Box ต้องมีพื้นที่เหลื่อมเข้ามาในหน้าจอจริง
+                                if not (target_box_rect[2] < 0 or target_box_rect[0] > self.screen_width or
+                                        target_box_rect[3] < 0 or target_box_rect[1] > self.screen_height):
+                                    edges = [
+                                        (0,1), (0,2), (1,3), (2,3), # ฐานล่าง
+                                        (4,5), (4,6), (5,7), (6,7), # ฐานบน
+                                        (0,4), (1,5), (2,6), (3,7)  # เสาแนวตั้ง
+                                    ]
+                                    box_color = QColor(*COLOR_BOX_TARGET) if not is_air_target else QColor(*COLOR_BOX_TARGET)
+                                    if u_ptr == active_target_ptr:
+                                        box_color = QColor(*COLOR_BOX_SELECT_TARGET)
+                                        
+                                    painter.setPen(QPen(box_color, 1.5))
+                                    for p1, p2 in edges:
+                                        line_pts = _screen_int_tuple(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
+                                        if line_pts:
+                                            painter.drawLine(*line_pts)
+                                    has_valid_box = True
 
                     if (not ESP_POINT_ONLY_MODE) and not has_valid_box:
-                        res_pos = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
-                        res_pts = _screen_int_tuple(res_pos[0], res_pos[1]) if res_pos and res_pos[2] > 0 else None
-                        if res_pts:
+                        if center_screen and center_screen[2] > 0:
                             box_w = max(20, int(3000 / (dist + 1))) if is_air_target else max(30, int(4000 / (dist + 1)))
                             box_h = box_w * 0.8 if is_air_target else box_w * 0.6
-                            painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
-                            painter.drawRect(int(res_pts[0] - box_w/2), int(res_pts[1] - box_h/2), int(box_w), int(box_h))
-                            avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - box_h/2
-                            target_box_rect = (
-                                res_pts[0] - (box_w * 0.5),
-                                res_pts[1] - (box_h * 0.5),
-                                res_pts[0] + (box_w * 0.5),
-                                res_pts[1] + (box_h * 0.5),
-                            )
-                            has_valid_box = True
+                            half_w = box_w * 0.5
+                            half_h = box_h * 0.5
+                            cx, cy = center_screen[0], center_screen[1]
+                            # 🛡️ Viewport Intersection: กล่อง 2D ต้องมีพื้นที่เหลื่อมเข้ามาในหน้าจอจริง
+                            if (cx + half_w >= 0 and cx - half_w <= self.screen_width and
+                                cy + half_h >= 0 and cy - half_h <= self.screen_height):
+                                res_pts = _screen_int_tuple(cx, cy)
+                                if res_pts:
+                                    painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
+                                    painter.drawRect(int(res_pts[0] - half_w), int(res_pts[1] - half_h), int(box_w), int(box_h))
+                                    avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - half_h
+                                    target_box_rect = (
+                                        cx - half_w,
+                                        cy - half_h,
+                                        cx + half_w,
+                                        cy + half_h,
+                                    )
+                                    has_valid_box = True
 
                     clean_name = raw_name
                     for p in NAME_PREFIXES:
@@ -4395,22 +4439,16 @@ class ESPOverlay(QOpenGLWidget):
 
                     warning_level = 0
                     if physics_is_air and my_pos and dist > 10.0:
+                        air_vel_warn = pre_vel or (t_snap.vel if t_snap else None) or self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
                         warning_level = _get_air_warning_level(
                             my_pos,
                             pos,
-                            self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t),
+                            air_vel_warn,
                         )
 
-                    center_screen = world_to_screen(
-                        view_matrix,
-                        pos[0],
-                        pos[1],
-                        pos[2],
-                        self.screen_width,
-                        self.screen_height,
-                    )
                     indicator_alpha = 0.0
                     indicator_screen = None
+                    edge_x, edge_y, edge_side = None, None, "top"
                     if DRAW_OFFSCREEN_AIR_INDICATOR and overlay_is_air:
                         if center_screen and center_screen[2] > 0:
                             indicator_screen = (center_screen[0], center_screen[1])
@@ -4451,20 +4489,8 @@ class ESPOverlay(QOpenGLWidget):
                         )
                         self.offscreen_indicator_alpha[u_ptr] = indicator_alpha
                         if indicator_alpha > 0.03 and indicator_screen:
-                            if center_screen and center_screen[2] > 0:
-                                edge_x, edge_y, edge_side = _clamp_to_screen_edge(
-                                    indicator_screen[0],
-                                    indicator_screen[1],
-                                    self.screen_width,
-                                    self.screen_height,
-                                    OFFSCREEN_AIR_INDICATOR_MARGIN,
-                                )
-                                self.offscreen_indicator_state[u_ptr] = {
-                                    "x": edge_x,
-                                    "y": edge_y,
-                                    "side": edge_side,
-                                }
-                            else:
+                            # 🚀 REUSE clamped coordinates directly (No redundant _clamp_to_screen_edge call)
+                            if not (center_screen and center_screen[2] > 0):
                                 edge_x, edge_y = indicator_screen
                             offscreen_air_indicators_to_draw.append({
                                 "u_ptr": u_ptr,
@@ -4481,7 +4507,7 @@ class ESPOverlay(QOpenGLWidget):
                     if OFFSCREEN_AIR_INDICATOR_ONLY and overlay_is_air and indicator_alpha > 0.03:
                         draw_inline_air_overlay = False
 
-                    # 🔊 ต้องเรียกเสียงแจ้งเตือน ก่ อ N box validation
+                    # 🔊 ต้องเรียกเสียงแจ้งเตือน ก่อน box validation
                     # ไม่งั้นเครื่องบินนอกจอ (no valid box) จะข้ามไปเลย
                     if (
                         effective_my_team != 0
@@ -4496,6 +4522,11 @@ class ESPOverlay(QOpenGLWidget):
                             # Air/Recon ที่อยู่นอกจอให้ indicator handle ต่อไป
                             # และไม่เข้าทางวาด on-screen overlay ปกติ
                             continue
+                        continue
+
+                    # 🚀 OFFSCREEN_AIR_INDICATOR_ONLY: ถ้า Indicator ขอบจอกำลังแสดงผล และไม่ใช่เป้าหมายที่ถูกล็อค
+                    # ให้ข้ามการประมวลผล On-screen ทั้งหมด (กรอบ, ตัวหนังสือ, บอลลิสติกส์) เพื่อประหยัด CPU
+                    if OFFSCREEN_AIR_INDICATOR_ONLY and overlay_is_air and not draw_inline_air_overlay and u_ptr != active_target_ptr:
                         continue
                     
                     should_draw_local_axes = (
@@ -4672,7 +4703,7 @@ class ESPOverlay(QOpenGLWidget):
                     # ========================================================
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
-                    vel = pre_vel if (pre_vel and not physics_is_air) else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
+                    vel = pre_vel or (t_snap.vel if t_snap else None) or self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
 
                     # ✈️ Air Speed display below bbox
                     if overlay_is_air and vel and target_box_rect and (draw_inline_air_overlay):
@@ -4820,10 +4851,8 @@ class ESPOverlay(QOpenGLWidget):
                     final_x, final_y, final_z = t_x, t_y, t_z
                     pred_x, pred_y, pred_z = t_x, t_y, t_z
                     
-                    # 🎯 ดึงองศาการเอียงของรถถังเรา (My Unit Rotation)
-                    my_rot = get_unit_rotation(self.scanner, my_unit)
-                    if not my_rot:
-                        my_rot = (1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0)
+                    # 🎯 ดึงองศาการเอียงของรถถังเราจาก frame_my_rot (Zero Syscall)
+                    my_rot = frame_my_rot
                         
                     # 📐 ดึงแกน 'ด้านบน' ของรถถังเรา (Local UP Vector) ออกมาจาก Matrix
                     up_x, up_y, up_z = my_rot[3], my_rot[4], my_rot[5]
@@ -4833,8 +4862,9 @@ class ESPOverlay(QOpenGLWidget):
                     origin_y = my_pos[1] + (1.5 * up_y)
                     origin_z = my_pos[2] + (1.5 * up_z)
 
-                    # 🔄 Iterative TOF Solver (วนลูป 4 รอบเพื่อความนิ่ง)
-                    for _ in range(4):
+                    # 🔄 Fast Iterative TOF Solver (วนลูป 2 รอบ พร้อม Early Exit เมื่อระยะลู่เข้า)
+                    prev_range = -999.0
+                    for _ in range(2):
                         if physics_is_air:
                             pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
                             pred_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
@@ -4858,6 +4888,11 @@ class ESPOverlay(QOpenGLWidget):
                             blend_t = max(0.0, min((elev_ratio - 0.77) / 0.20, 1.0))
                             air_tof_range = horizontal_imp + ((slant_imp - horizontal_imp) * blend_t)
                         
+                        if abs(air_tof_range - prev_range) < 0.5:
+                            final_x, final_y, final_z = pred_x, pred_y, pred_z
+                            break
+                        prev_range = air_tof_range
+
                         if current_bullet_speed > 0:
                             if physics_is_air:
                                 best_t, bullet_drop_sim, _ = _simulate_projectile_range(air_tof_range, ballistic_model, zero_pitch)
@@ -5383,9 +5418,7 @@ class ESPOverlay(QOpenGLWidget):
 
                 # 🚀 AIR-TO-GROUND ROCKET CCIP (Disabled if Bomb CCIP is active)
                 if ENABLE_ROCKET_CCIP and not bomb_impact_pos:
-                    my_rot = get_unit_rotation(self.scanner, my_unit) if my_unit else None
-                    if not my_rot:
-                        my_rot = (1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0)
+                    my_rot = frame_my_rot
                     my_fwd = (my_rot[0], my_rot[1], my_rot[2])
                     my_up = (my_rot[3], my_rot[4], my_rot[5])
 
