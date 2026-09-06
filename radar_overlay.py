@@ -5743,6 +5743,8 @@ class ESPOverlay(QOpenGLWidget):
                         # Filter: missiles within 100km of my position
                         nearby = []
                         for m in active_missiles:
+                            if not m.name or m.name == "":
+                                continue
                             dx = m.pos[0] - my_pos[0]
                             dy = m.pos[1] - my_pos[1]
                             dz = m.pos[2] - my_pos[2]

@@ -108,19 +108,33 @@ def check_ptr_is_rocket(sc, ptr):
             
             if state > 10:
                 continue
-            if owner > 0xFFFFFFFF:
+            if owner == 0 or owner > 0xFFFFFFFF:
                 continue
             if eid == 0 or eid > 10_000_000:
                 continue
+            
+            # Filter dead/impacted rockets pooled on ground
+            is_alive = struct.unpack_from("<I", header, 0x6c0)[0]
+            phase = struct.unpack_from("<I", header, 0x498)[0]
+            detonated = struct.unpack_from("<Q", header, 0x420)[0]
+            if is_alive == 0 or phase == 6 or detonated != 0:
+                continue
+            
+            # Must have valid weapon properties pointer
+            props = struct.unpack_from("<Q", header, props_off)[0]
+            if not is_valid_ptr(props):
+                continue
+            
             if guid != 0 and not is_valid_ptr(guid):
                 continue
             
             rkt_name = ""
-            props = struct.unpack_from("<Q", header, props_off)[0]
-            if is_valid_ptr(props):
-                name_ptr = rp(sc, props + 0x50)
-                if is_valid_ptr(name_ptr):
-                    rkt_name = rstr(sc, name_ptr)
+            name_ptr = rp(sc, props + 0x50)
+            if is_valid_ptr(name_ptr):
+                rkt_name = rstr(sc, name_ptr)
+            
+            if not rkt_name or rkt_name == "" or not rkt_name.endswith(".blk"):
+                continue
             
             return {
                 "ptr": ptr, "set": name,

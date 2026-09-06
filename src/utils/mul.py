@@ -63,7 +63,10 @@ OFF_RKT_POS         = 0x23c       # rocket + this → Vec3 position
 OFF_RKT_VEL         = 0x258       # rocket + this → Vec3 velocity
 OFF_RKT_OWNER       = 0x40        # rocket + this → owner unit id (u32)
 OFF_RKT_STATE       = 0x94        # rocket + this → state byte
+OFF_RKT_DETONATED   = 0x420       # rocket + this → detonation/impact flag (0 = flying, non-zero = detonated)
+OFF_RKT_PHASE       = 0x498       # rocket + this → projectile phase (3 = in-flight, 6 = terminated/impacted)
 OFF_RKT_GUIDANCE    = 0x638       # rocket + this → guidance struct ptr
+OFF_RKT_ALIVE       = 0x6c0       # rocket + this → is_alive (1 = active flying, 0 = dead/inactive)
 OFF_RKT_PROPS       = 0x6c8       # rocket + this → props ptr (name at +0x50)
 OFF_GUID_LOCKED     = 0x50        # guidance + this → isLocked byte
 OFF_GUID_TRACKING   = 0x51        # guidance + this → isTracking byte
