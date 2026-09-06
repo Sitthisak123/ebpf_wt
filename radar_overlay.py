@@ -3417,15 +3417,36 @@ class ESPOverlay(QOpenGLWidget):
                 if not is_air:
                     prev_pos_filtered = prev_meta.get("pos_vel_filtered")
                     # World-space ground lead uses X/Z as horizontal motion; Y is height and must stay zero.
-                    planar_pos_vel = (pos_vel[0], 0.0, pos_vel[2])
-                    if prev_pos_filtered and len(prev_pos_filtered) == 3:
-                        pos_vel = (
-                            (prev_pos_filtered[0] * 0.82) + (planar_pos_vel[0] * 0.18),
+                    raw_planar_pv = (pos_vel[0], 0.0, pos_vel[2])
+                    pos_history = list(prev_meta.get("pos_history") or [])
+                    pos_history.append(raw_planar_pv)
+                    if len(pos_history) > 3:
+                        pos_history.pop(0)
+
+                    if len(pos_history) == 1:
+                        fir_pos_vel = pos_history[0]
+                    elif len(pos_history) == 2:
+                        fir_pos_vel = (
+                            0.50 * pos_history[0][0] + 0.50 * pos_history[1][0],
                             0.0,
-                            (prev_pos_filtered[2] * 0.82) + (planar_pos_vel[2] * 0.18),
+                            0.50 * pos_history[0][2] + 0.50 * pos_history[1][2],
                         )
                     else:
-                        pos_vel = planar_pos_vel
+                        # 3-tap binomial anti-aliasing filter: cancels 30Hz discrete physics tick beat wave!
+                        fir_pos_vel = (
+                            0.25 * pos_history[0][0] + 0.50 * pos_history[1][0] + 0.25 * pos_history[2][0],
+                            0.0,
+                            0.25 * pos_history[0][2] + 0.50 * pos_history[1][2] + 0.25 * pos_history[2][2],
+                        )
+
+                    if prev_pos_filtered and len(prev_pos_filtered) == 3:
+                        pos_vel = (
+                            (prev_pos_filtered[0] * 0.82) + (fir_pos_vel[0] * 0.18),
+                            0.0,
+                            (prev_pos_filtered[2] * 0.82) + (fir_pos_vel[2] * 0.18),
+                        )
+                    else:
+                        pos_vel = fir_pos_vel
 
         chosen_vel = raw_vel
         source = "raw"
@@ -3519,8 +3540,6 @@ class ESPOverlay(QOpenGLWidget):
                 chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
             chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
 
-            # Ground world velocity is derived from noisy local raw fields + short-frame position deltas.
-            # Smooth the final vector to prevent source flapping and visible jitter on moving vehicles.
             if prev_vel and len(prev_vel) == 3 and source != "ground_idle":
                 prev_mag = math.sqrt(prev_vel[0]**2 + prev_vel[1]**2 + prev_vel[2]**2)
                 if prev_mag > 0.0 or raw_mag > idle_speed_exit or pos_mag > idle_speed_exit:
@@ -3532,7 +3551,10 @@ class ESPOverlay(QOpenGLWidget):
                     chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
                     chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
                     source = f"{source}_smoothed"
-        
+
+        if not is_air and source == "ground_idle":
+            pos_history = []
+
         self.velocity_cache[u_ptr] = {
             'time': curr_t,
             'pos': pos,
@@ -3543,7 +3565,8 @@ class ESPOverlay(QOpenGLWidget):
             'raw_vel': raw_vel,
             'raw_mag': raw_mag,
             'pos_vel': pos_vel,
-            'pos_vel_filtered': pos_vel if (pos_vel and not is_air) else None,
+            'pos_history': pos_history if (pos_vel and not is_air) else [],
+            'pos_vel_filtered': pos_vel if (pos_vel and not is_air and source != "ground_idle") else None,
             'pos_mag': pos_mag,
             'chosen_vel': chosen_vel,
             'ground_motion_state': (
