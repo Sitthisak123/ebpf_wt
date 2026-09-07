@@ -399,7 +399,7 @@ AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น Fals
 ESP_BOX_MODE = "3D"  # ตัวเลือก: "2D", "3D", "XRAY", "ALL"
 
 # ตัวเลือกปรับแต่ง X-Ray ESP เพิ่มเติม
-SHOW_XRAY_ESP               = True     # สวิตช์หลักเปิด/ปิด X-Ray (มีผลเมื่อ ESP_BOX_MODE เป็น "XRAY" หรือ "ALL")
+SHOW_XRAY_ESP               = False    # สวิตช์หลักเปิด/ปิด X-Ray (Disabled: ปิดใช้งานเพื่อไม่ให้กระทบ main flow)
 XRAY_MAX_DISTANCE           = 1500.0   # ระยะหวังผลสูงสุดที่จะเรนเดอร์ X-Ray (เมตร) เพื่อรักษา 60 FPS
 XRAY_ONLY_FOCUSED_TARGET    = False    # True = วาด X-Ray เฉพาะเป้าหมายใกล้สุดหรือเป้าหมายที่กำลังเล็ง, False = วาดทุกคันในระยะ
 XRAY_SHOW_CREW              = True     # แสดงพลประจำรถ (Driver, Gunner, Commander, Loader)
@@ -411,7 +411,7 @@ DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = True                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
-SHOW_MY_UNIT_XRAY = True                # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง
+SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
 SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
@@ -3860,7 +3860,7 @@ class ESPOverlay(QOpenGLWidget):
                                             painter.drawLine(*line_pts)
 
                         # 🩺 X-Ray Internal Component ESP on my_unit (Crew, Ammo, Engine, Breech)
-                        if SHOW_MY_UNIT_XRAY and (ESP_BOX_MODE in ("XRAY", "ALL") or SHOW_XRAY_ESP):
+                        if SHOW_MY_UNIT_XRAY and SHOW_XRAY_ESP and (ESP_BOX_MODE in ("XRAY", "ALL") or SHOW_XRAY_ESP):
                             my_xray_components = get_unit_xray_components(self.scanner, my_unit, my_pos, my_rot)
                             if my_xray_components:
                                 ammo_labeled_count = 0
@@ -4518,7 +4518,7 @@ class ESPOverlay(QOpenGLWidget):
                     # ========================================================
                     # 🩺 X-RAY INTERNAL COMPONENT ESP (Crew, Ammo, Engine, Breech)
                     # ========================================================
-                    if (ESP_BOX_MODE in ("XRAY", "ALL") or SHOW_XRAY_ESP) and (not is_air_target) and dist <= XRAY_MAX_DISTANCE:
+                    if SHOW_XRAY_ESP and (ESP_BOX_MODE in ("XRAY", "ALL")) and (not is_air_target) and dist <= XRAY_MAX_DISTANCE:
                         if (not XRAY_ONLY_FOCUSED_TARGET) or (u_ptr == active_target_ptr):
                             xray_components = get_unit_xray_components(self.scanner, u_ptr, pos, rot)
                             if xray_components:

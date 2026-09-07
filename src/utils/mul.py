@@ -1297,12 +1297,17 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
     return None
 
 
+ENABLE_XRAY = False  # ปิดการทำงาน X-Ray เพื่อไม่ให้ส่งผลกระทบต่อ main flow
+
+
 def get_unit_xray_components(scanner, u_ptr, unit_pos, unit_rot_matrix):
     """
     ดึงตำแหน่งชิ้นส่วนภายใน X-Ray (Crew, Ammo, Engine, Breech) ของรถถัง
-    ใช้ระบบแคชโครงสร้างกระดูกต่อคัน และ Single-Chunk WTM Read ความเร็วสูง (0.08ms ต่อคัน)
-    รองรับรถถังทุกยุค (รวมถึงรถถังสมัยใหม่ที่มีจำนวนกระดูกมากกว่า 260 กระดูก เช่น T-64, T-10M, T-90)
+    (ปิดการทำงานชั่วคราวตาม ENABLE_XRAY = False เพื่อไม่ให้มี overhead ใน main flow)
     """
+    if not ENABLE_XRAY:
+        return []
+
     if u_ptr == 0 or not unit_pos or not unit_rot_matrix:
         return []
 
