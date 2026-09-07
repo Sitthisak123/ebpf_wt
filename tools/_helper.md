@@ -6,6 +6,7 @@
 - Ballistic Layout: `tools/ballistic_layout_dumper.py` -> `config/ballistic_layout_persistence.json`
 - Weapon Barrel: `tools/barrel_offset_dumper.py` -> `config/barrel_offset_persistence.json`
 - Ground Subclass: `tools/subclass_offset_dumper.py` -> `config/ground_subclass_persistence.json`
+- Unit Status & Meta: `tools/unit_status_dumper.py` -> `config/unit_status_persistence.json`
 - Documentation: `tools/persistence_system.doc.md`
 
 ## 📁 Subcategory Tools (`tools/sub/`)

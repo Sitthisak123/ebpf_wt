@@ -33,6 +33,8 @@ from src.utils.mul import (
     get_unit_status,
     get_unit_filter_profile,
     get_unit_detailed_dna,
+    get_unit_invulnerable,
+    get_unit_is_real_player,
     get_unit_3d_box_data,
     get_unit_bbox,
     get_unit_rotation,
@@ -46,6 +48,9 @@ from src.utils.mul import (
     OFF_UNIT_INFO,
     OFF_UNIT_TEAM,
     OFF_UNIT_STATE,
+    OFF_INVUL_TIMER,
+    OFF_INVULNERABLE,
+    OFF_PLAYER_INFO,
     MANAGER_OFFSET,
     OFF_CAMERA_PTR,
     OFF_VIEW_MATRIX,
@@ -74,6 +79,9 @@ class TargetSnapshot:
     dist: float = 0.0
     vel: Optional[Tuple[float, float, float]] = None
     is_recon_drone: bool = False
+    is_invul: bool = False
+    invul_timer: float = 0.0
+    is_real_player: bool = True
 
     # Pre-fetched per-target heavy data (avoids re-reading in paintGL)
     box_data: Any = None              # (pos, bmin, bmax, rot) or None
@@ -257,6 +265,11 @@ class DataPumpWorker(QThread):
 
         dprint("DataPumpWorker stopped.", force=True)
 
+    def stop(self):
+        """Signals the worker thread to stop and waits for it to finish."""
+        self._stop_flag = True
+        self.wait(1000)
+
     # ------------------------------------------------------------------
     # Core data gathering (was previously inside paintGL L3150-L3650)
     # ------------------------------------------------------------------
@@ -384,6 +397,7 @@ class DataPumpWorker(QThread):
         ORIGIN_GHOST_MY_MIN = fc.get("ORIGIN_GHOST_MY_DIST_MIN", 250.0)
         IGNORE_ALL_BOATS = fc.get("IGNORE_ALL_BOATS", False)
         NAME_PREFIXES = fc.get("NAME_PREFIXES", [])
+        SHOW_BOT_UNITS = fc.get("SHOW_BOT_UNITS", True)
 
         valid_targets = []
         current_seen_ptrs = set()
@@ -398,22 +412,50 @@ class DataPumpWorker(QThread):
             cached_name = cached_prof.get("resolved_name") if cached_prof else None
             need_read_name = not (cached_name and cached_name.lower() not in ("none", "unknown", "c", ""))
 
-            # Read status
-            info_ptr_raw = self.scanner.read_mem(u_ptr + mul.OFF_UNIT_INFO, 8)
-            info_ptr_now = struct.unpack("<Q", info_ptr_raw)[0] if (info_ptr_raw and len(info_ptr_raw) == 8) else 0
+            # 🚀 Fast single-chunk status read: 0x0E40 to 0x1008 (covers timer, invul, state, player_info, team, info_ptr)
+            start_off = 0x0E40
+            buf_len = max(0x1D0, (mul.OFF_UNIT_INFO - start_off + 8) if mul.OFF_UNIT_INFO else 0x1D0)
+            status_chunk = self.scanner.read_mem(u_ptr + start_off, buf_len)
+            if status_chunk and len(status_chunk) >= 0x140:
+                invul_timer_raw = struct.unpack_from("<f", status_chunk, mul.OFF_INVUL_TIMER - start_off)[0]
+                invul_byte = status_chunk[mul.OFF_INVULNERABLE - start_off]
+                u_state = struct.unpack_from("<H", status_chunk, mul.OFF_UNIT_STATE - start_off)[0] if mul.OFF_UNIT_STATE else 0
+                p_info = struct.unpack_from("<Q", status_chunk, mul.OFF_PLAYER_INFO - start_off)[0] if mul.OFF_PLAYER_INFO else 0
+                u_team = status_chunk[mul.OFF_UNIT_TEAM - start_off] if (mul.OFF_UNIT_TEAM and (mul.OFF_UNIT_TEAM - start_off) < len(status_chunk)) else 0
+                info_ptr_now = struct.unpack_from("<Q", status_chunk, mul.OFF_UNIT_INFO - start_off)[0] if (mul.OFF_UNIT_INFO and (mul.OFF_UNIT_INFO - start_off + 8) <= len(status_chunk)) else 0
 
-            status = get_unit_status(self.scanner, u_ptr, read_name=need_read_name)
-            if not status:
-                continue
+                is_invul = bool(invul_byte != 0 or invul_timer_raw > 0.05)
+                invul_timer = max(0.0, float(invul_timer_raw))
+                is_real_player = is_valid_ptr(p_info)
+            else:
+                is_invul, invul_timer = get_unit_invulnerable(self.scanner, u_ptr)
+                is_real_player = get_unit_is_real_player(self.scanner, u_ptr)
+                info_ptr_raw = self.scanner.read_mem(u_ptr + mul.OFF_UNIT_INFO, 8) if mul.OFF_UNIT_INFO else None
+                info_ptr_now = struct.unpack("<Q", info_ptr_raw)[0] if (info_ptr_raw and len(info_ptr_raw) == 8) else 0
+                status_raw = get_unit_status(self.scanner, u_ptr, read_name=False)
+                u_team, u_state, _, _ = status_raw if status_raw else (0, 0, "", 0)
 
-            u_team, u_state, unit_name, reload_val = status
-
-            if u_state >= 1:
+            # 💀 Dead wreckage filter (state >= 2 means burnt-out wreck; state == 1 is burning/critical)
+            if u_state >= 2:
                 continue
 
             # Team filter
             if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team):
                 continue
+
+            # 🤖 Bot filter (Toggle via SHOW_BOT_UNITS)
+            if not SHOW_BOT_UNITS and not is_real_player:
+                continue
+
+            # Read name & reload only when needed
+            if need_read_name:
+                st = get_unit_status(self.scanner, u_ptr, read_name=True)
+                unit_name = st[2] if st else "UNKNOWN"
+                reload_val = st[3] if st else -1
+            else:
+                unit_name = cached_name or "UNKNOWN"
+                reload_raw = self.scanner.read_mem(u_ptr + mul.OFF_UNIT_RELOAD, 1) if mul.OFF_UNIT_RELOAD else None
+                reload_val = reload_raw[0] if reload_raw else -1
 
             # Cache immutable Profile & DNA to eliminate 6+ syscalls per unit
             if cached_prof and (cached_prof.get("info_ptr") == info_ptr_now or not is_valid_ptr(info_ptr_now)):
@@ -556,6 +598,9 @@ class DataPumpWorker(QThread):
                 vel=pre_vel,
                 is_recon_drone=is_recon_drone,
                 unit_family=unit_family,
+                is_invul=is_invul,
+                invul_timer=invul_timer,
+                is_real_player=is_real_player,
             )
 
             # Pre-fetch box data (heavy memory read optimized with bbox cache)

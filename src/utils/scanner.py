@@ -47,6 +47,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 BBOX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "unit_bbox_persistence.json")
 VIEW_MATRIX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "view_matrix_persistence.json")
 BARREL_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "barrel_offset_persistence.json")
+UNIT_STATUS_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "unit_status_persistence.json")
 DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
 
 
@@ -235,18 +236,56 @@ def _needs_barrel_persistence_update(animchar_off, bone_idx):
     )
 
 
-def _can_overwrite_persistence(path, new_confidence):
+def _can_overwrite_persistence(path, new_confidence=None):
+    # ปิดการบล็อกด้วย Confidence Policy ตามคำสั่งผู้ใช้
+    # เพื่อป้องกัน persistence พังเวลาเกมอัปเดต แม้ค่า confidence จะต่ำกว่า แต่ offset ถูกต้องก็ให้เขียนทับได้เสมอ
+    return True
+
+
+
+def _load_unit_status_persistence():
     try:
-        if not os.path.exists(path):
-            return True
-        with open(path, "r", encoding="utf-8") as f:
-            doc = json.load(f)
-        if not _fingerprint_matches(doc):
-            return True
-        current_confidence = float(doc.get("confidence", 0.0) or 0.0)
-        return float(new_confidence) >= current_confidence
+        if not os.path.exists(UNIT_STATUS_PERSISTENCE_PATH):
+            return None
+        with open(UNIT_STATUS_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not _fingerprint_matches(data):
+            return None
+        offsets = data.get("offsets") or {}
+        if not offsets:
+            return None
+        return {
+            "offsets": {k: int(v) for k, v in offsets.items()},
+            "source": data.get("source") or "persisted",
+            "updated_by_tool": data.get("updated_by_tool", "unknown"),
+            "confidence": float(data.get("confidence", 0.0) or 0.0),
+        }
     except Exception:
-        return True
+        return None
+
+
+def _write_unit_status_persistence(offsets_dict, source, updated_by_tool, confidence=0.95):
+    try:
+        if not _can_overwrite_persistence(UNIT_STATUS_PERSISTENCE_PATH, confidence):
+            print("  [*] Skip auto-save unit status persistence: existing confidence is higher")
+            return None
+        os.makedirs(os.path.dirname(UNIT_STATUS_PERSISTENCE_PATH), exist_ok=True)
+        payload = {
+            "updated_at": __import__("datetime").datetime.now().isoformat(),
+            "source": source,
+            "updated_by_tool": updated_by_tool,
+            "confidence": float(confidence),
+            "notes": "Verified Linux memory struct offsets for Unit status, invulnerability, player info, and classification",
+            "build_fingerprint": _get_binary_fingerprint(),
+            "offsets": {k: int(v) for k, v in offsets_dict.items()},
+            "offsets_hex": {k: hex(int(v)) for k, v in offsets_dict.items()},
+        }
+        with open(UNIT_STATUS_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        return UNIT_STATUS_PERSISTENCE_PATH
+    except Exception:
+        return None
+
 
 # ==========================================
 # 🛠️ คลาสสำหรับอ่าน Memory & Pattern Scanning
@@ -796,35 +835,58 @@ def init_dynamic_offsets(scanner, base_address):
     # ---------------------------------------------------------
     print("[*] 🔍 4/5 ค้นหา Struct ข้อมูลและสถานะรถถัง (Status Offsets)...")
 
+    # 0️⃣ Unit Status Persistence (โหลด Offset ที่ยืนยันแล้ว: Invul, PlayerInfo, State, Team, Info, UnitType)
+    unit_status_persistence = _load_unit_status_persistence()
+    has_status_persistence = False
+    if unit_status_persistence and "offsets" in unit_status_persistence:
+        offs = unit_status_persistence["offsets"]
+        if "invul_timer_off" in offs: mul.OFF_INVUL_TIMER = offs["invul_timer_off"]
+        if "invulnerable_off" in offs: mul.OFF_INVULNERABLE = offs["invulnerable_off"]
+        if "player_info_off" in offs: mul.OFF_PLAYER_INFO = offs["player_info_off"]
+        if "unit_state_off" in offs: mul.OFF_UNIT_STATE = offs["unit_state_off"]
+        if "unit_team_off" in offs: mul.OFF_UNIT_TEAM = offs["unit_team_off"]
+        if "unit_info_off" in offs: mul.OFF_UNIT_INFO = offs["unit_info_off"]
+        if "unit_type_off" in offs: mul.OFF_UNIT_TYPE = offs["unit_type_off"]
+        has_status_persistence = True
+        print(
+            f"  [+] ✅ OVERRIDE! Unit Status Offsets from persistence (invul={hex(mul.OFF_INVULNERABLE)}"
+            f" player_info={hex(mul.OFF_PLAYER_INFO)} state={hex(mul.OFF_UNIT_STATE)}"
+            f" team={hex(mul.OFF_UNIT_TEAM)} info={hex(mul.OFF_UNIT_INFO)})"
+            f" [tool:{unit_status_persistence.get('updated_by_tool')} conf:{unit_status_persistence.get('confidence', 0.9):.2f}]"
+        )
+
     # 1️⃣ หา OFF_UNIT_INFO
-    info_cands = []
-    for p in PAT_UNIT_INFO: info_cands.extend(scanner.find_all_struct_offsets(p, 3))
-    valid_info = [v for v in info_cands if 0xF00 <= v <= 0x1000]
-    if valid_info:
-        top_info, votes = Counter(valid_info).most_common(1)[0]
-        mul.OFF_UNIT_INFO = top_info
-        print(f"  [+] ✅ BINGO! INFO = {hex(top_info)} (โหวต {votes} เสียง)")
-    else: print("  [-] ❌ หา INFO ไม่เจอ")
+    if not has_status_persistence or mul.OFF_UNIT_INFO == 0:
+        info_cands = []
+        for p in PAT_UNIT_INFO: info_cands.extend(scanner.find_all_struct_offsets(p, 3))
+        valid_info = [v for v in info_cands if 0xF00 <= v <= 0x1000]
+        if valid_info:
+            top_info, votes = Counter(valid_info).most_common(1)[0]
+            mul.OFF_UNIT_INFO = top_info
+            print(f"  [+] ✅ BINGO! INFO = {hex(top_info)} (โหวต {votes} เสียง)")
+        else: print("  [-] ❌ หา INFO ไม่เจอ")
 
     # 2️⃣ หา OFF_UNIT_TEAM
-    team_cands = []
-    for p in PAT_UNIT_TEAM: team_cands.extend(scanner.find_all_struct_offsets(p, 3))
-    valid_team = [v for v in team_cands if 0xF00 <= v <= 0x1000]
-    if valid_team:
-        top_team, votes = Counter(valid_team).most_common(1)[0]
-        mul.OFF_UNIT_TEAM = top_team
-        print(f"  [+] ✅ BINGO! TEAM = {hex(top_team)} (โหวต {votes} เสียง)")
-    else: print("  [-] ❌ หา TEAM ไม่เจอ")
+    if not has_status_persistence or mul.OFF_UNIT_TEAM == 0:
+        team_cands = []
+        for p in PAT_UNIT_TEAM: team_cands.extend(scanner.find_all_struct_offsets(p, 3))
+        valid_team = [v for v in team_cands if 0xF00 <= v <= 0x1000]
+        if valid_team:
+            top_team, votes = Counter(valid_team).most_common(1)[0]
+            mul.OFF_UNIT_TEAM = top_team
+            print(f"  [+] ✅ BINGO! TEAM = {hex(top_team)} (โหวต {votes} เสียง)")
+        else: print("  [-] ❌ หา TEAM ไม่เจอ")
 
     # 3️⃣ หา OFF_UNIT_STATE
-    state_cands = []
-    for p in PAT_UNIT_STATE: state_cands.extend(scanner.find_all_struct_offsets(p, 2))
-    valid_state = [v for v in state_cands if 0xF00 <= v <= 0x1000]
-    if valid_state:
-        top_state, votes = Counter(valid_state).most_common(1)[0]
-        mul.OFF_UNIT_STATE = top_state
-        print(f"  [+] ✅ BINGO! STATE = {hex(top_state)} (โหวต {votes} เสียง)")
-    else: print("  [-] ❌ หา STATE ไม่เจอ")
+    if not has_status_persistence or mul.OFF_UNIT_STATE == 0:
+        state_cands = []
+        for p in PAT_UNIT_STATE: state_cands.extend(scanner.find_all_struct_offsets(p, 2))
+        valid_state = [v for v in state_cands if 0xF00 <= v <= 0x1000]
+        if valid_state:
+            top_state, votes = Counter(valid_state).most_common(1)[0]
+            mul.OFF_UNIT_STATE = top_state
+            print(f"  [+] ✅ BINGO! STATE = {hex(top_state)} (โหวต {votes} เสียง)")
+        else: print("  [-] ❌ หา STATE ไม่เจอ")
 
     # 4️⃣ หา OFF_UNIT_RELOAD
     reload_cands = scanner.find_all_struct_offsets(PAT_UNIT_RELOAD, 2)

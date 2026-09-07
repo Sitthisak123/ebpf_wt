@@ -216,9 +216,11 @@ COLOR_INFO_TEXT                 = (255, 228, 64, 255)
 COLOR_BARREL_LINE               = (0, 255, 0, 255)      
 COLOR_BOX_TARGET                = (255, 255, 0, 200)
 COLOR_BOX_SELECT_TARGET         = (255, 255, 0, 255)
+COLOR_BOX_INVULNERABLE          = (0, 225, 255, 240)    # 🛡️ สีฟ้าสว่าง (Cyan) เมื่อยูนิตอยู่ใน Spawn Protection
 COLOR_BOX_MY_UNIT               = (80, 220, 255, 220)
 COLOR_TEXT_GROUND               = (255, 196, 20, 200)    
 COLOR_TEXT_AIR                  = (255, 196, 20, 230)   
+COLOR_TEXT_INVULNERABLE         = (0, 240, 255, 255)    # 🛡️ สีป้าย [INVULNERABLE]   
 COLOR_RELOAD_BG                 = (0, 0, 0, 180)        
 COLOR_RELOAD_READY              = (255, 255, 255, 255)      
 COLOR_RELOAD_LOADING            = (255, 165, 0, 200)    
@@ -380,6 +382,7 @@ DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = False
+SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
@@ -564,19 +567,11 @@ def _fingerprint_matches(doc):
 
 
 
-def _can_overwrite_persistence(path, new_confidence):
-    try:
-        new_confidence = float(new_confidence or 0.0)
-        if not os.path.exists(path):
-            return True
-        with open(path, "r", encoding="utf-8") as f:
-            doc = json.load(f)
-        if not _fingerprint_matches(doc):
-            return True
-        current_confidence = float(doc.get("confidence", 0.0) or 0.0)
-        return new_confidence >= current_confidence  or new_confidence >= 0.60
-    except Exception:
-        return True
+def _can_overwrite_persistence(path, new_confidence=None):
+    # ปิดการบล็อกด้วย Confidence Policy ตามคำสั่งผู้ใช้
+    # เพื่อป้องกัน persistence พังเวลาเกมอัปเดต แม้ค่า confidence จะต่ำกว่า แต่ offset ถูกต้องก็ให้เขียนทับได้เสมอ
+    return True
+
 
 
 def _load_persistence_doc(path):
@@ -2958,6 +2953,7 @@ class ESPOverlay(QOpenGLWidget):
                 "ORIGIN_GHOST_MY_DIST_MIN": ORIGIN_GHOST_MY_DIST_MIN,
                 "IGNORE_ALL_BOATS": IGNORE_ALL_BOATS,
                 "NAME_PREFIXES": NAME_PREFIXES,
+                "SHOW_BOT_UNITS": SHOW_BOT_UNITS,
             },
         )
         self._data_pump.new_frame.connect(self._on_worker_frame)
@@ -3860,9 +3856,14 @@ class ESPOverlay(QOpenGLWidget):
                     
                     u_team, u_state, unit_name, reload_val = cached_prof['status']
 
-                    if u_state >= 1:
+                    if u_state >= 2:
                         continue
                     if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team): continue
+
+                    dna = cached_prof.get('dna') or {}
+                    is_real_player = dna.get('is_real_player', True)
+                    if not SHOW_BOT_UNITS and not is_real_player:
+                        continue
 
                     profile = cached_prof['profile']
                     if profile.get("skip"): continue
@@ -4180,6 +4181,22 @@ class ESPOverlay(QOpenGLWidget):
                         dist_to_me = math.sqrt(dx * dx + dy * dy + dz * dz)
 
                     t_snap = target_snapshot_map.get(u_ptr)
+                    if t_snap:
+                        is_invul = getattr(t_snap, 'is_invul', False)
+                        invul_timer = getattr(t_snap, 'invul_timer', 0.0)
+                        is_real_player = getattr(t_snap, 'is_real_player', True)
+                    else:
+                        cached_dna = self.profile_cache.get(u_ptr, {}).get('dna') or {}
+                        is_invul = cached_dna.get('is_invul', False)
+                        invul_timer = cached_dna.get('invul_timer', 0.0)
+                        is_real_player = cached_dna.get('is_real_player', True)
+
+                    # 🤖 กรองบอทหากผู้ใช้ปิดการแสดงผล
+                    if not SHOW_BOT_UNITS and not is_real_player:
+                        continue
+
+                    is_invul_active = is_invul or (invul_timer > 0.05)
+
                     if t_snap and t_snap.box_data:
                         _, bmin, bmax, rot = t_snap.box_data
                         box_data = (pos, bmin, bmax, rot)
@@ -4331,11 +4348,14 @@ class ESPOverlay(QOpenGLWidget):
                                         (4,5), (4,6), (5,7), (6,7), # ฐานบน
                                         (0,4), (1,5), (2,6), (3,7)  # เสาแนวตั้ง
                                     ]
-                                    box_color = QColor(*COLOR_BOX_TARGET) if not is_air_target else QColor(*COLOR_BOX_TARGET)
-                                    if u_ptr == active_target_ptr:
+                                    if is_invul_active:
+                                        box_color = QColor(*COLOR_BOX_INVULNERABLE)
+                                    elif u_ptr == active_target_ptr:
                                         box_color = QColor(*COLOR_BOX_SELECT_TARGET)
+                                    else:
+                                        box_color = QColor(*COLOR_BOX_TARGET)
                                         
-                                    painter.setPen(QPen(box_color, 1.5))
+                                    painter.setPen(QPen(box_color, 2.0 if is_invul_active else 1.5))
                                     for p1, p2 in edges:
                                         line_pts = _screen_int_tuple(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
                                         if line_pts:
@@ -4354,7 +4374,8 @@ class ESPOverlay(QOpenGLWidget):
                                 cy + half_h >= 0 and cy - half_h <= self.screen_height):
                                 res_pts = _screen_int_tuple(cx, cy)
                                 if res_pts:
-                                    painter.setPen(QPen(QColor(*COLOR_BOX_TARGET), 2))
+                                    box_2d_color = QColor(*COLOR_BOX_INVULNERABLE) if is_invul_active else QColor(*COLOR_BOX_TARGET)
+                                    painter.setPen(QPen(box_2d_color, 2))
                                     painter.drawRect(int(res_pts[0] - half_w), int(res_pts[1] - half_h), int(box_w), int(box_h))
                                     avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - half_h
                                     target_box_rect = (
@@ -4370,6 +4391,8 @@ class ESPOverlay(QOpenGLWidget):
                         if clean_name.lower().startswith(p):
                             clean_name = clean_name[len(p):]
                             break
+                    if not is_real_player:
+                        clean_name = f"[BOT] {clean_name}"
 
                     physics_is_air = is_air_target
                     unit_family = getattr(t_snap, 'unit_family', None) if t_snap else None
@@ -4672,6 +4695,19 @@ class ESPOverlay(QOpenGLWidget):
                             QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
                             max(1, OUTLINE_OVERLAY_TEXT_PX),
                         )
+                        if is_invul_active:
+                            invul_badge = f"🛡️ [INVULNERABLE {invul_timer:.1f}s]" if invul_timer > 0.05 else "🛡️ [INVULNERABLE]"
+                            inv_w = fm.boundingRect(invul_badge).width()
+                            inv_y = text_y - (14 if not has_reload_bar else 18)
+                            _draw_outlined_text(
+                                painter,
+                                int(avg_x - inv_w / 2),
+                                inv_y,
+                                invul_badge,
+                                QColor(*COLOR_TEXT_INVULNERABLE),
+                                QColor(0, 0, 0, 200),
+                                max(1, OUTLINE_OVERLAY_TEXT_PX),
+                            )
 
                     if has_reload_bar:
                         max_val = self.max_reload_cache.setdefault(u_ptr, reload_val)

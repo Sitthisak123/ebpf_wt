@@ -1,0 +1,30 @@
+{
+  "updated_at": "2026-09-07T14:38:10.079706",
+  "source": "unit_status_dumper",
+  "updated_by_tool": "unit_status_dumper",
+  "confidence": 0.95,
+  "notes": "Verified Linux memory struct offsets for Unit status, invulnerability, player info, and classification",
+  "build_fingerprint": {
+    "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
+    "size": 163885312,
+    "mtime_ns": 1788399426000000000
+  },
+  "offsets": {
+    "invul_timer_off": 3660,
+    "invulnerable_off": 3696,
+    "unit_state_off": 3952,
+    "player_info_off": 3960,
+    "unit_team_off": 4080,
+    "unit_info_off": 4096,
+    "unit_type_off": 128
+  },
+  "offsets_hex": {
+    "invul_timer_off": "0xe4c",
+    "invulnerable_off": "0xe70",
+    "unit_state_off": "0xf70",
+    "player_info_off": "0xf78",
+    "unit_team_off": "0xff0",
+    "unit_info_off": "0x1000",
+    "unit_type_off": "0x80"
+  }
+}
