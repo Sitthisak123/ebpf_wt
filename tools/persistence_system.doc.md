@@ -8,7 +8,7 @@
 - ใช้ tools เฉพาะทางเพื่อยืนยัน offset/runtime layout ที่ถูกจริง
 - บันทึกผลลง persistence พร้อม `build_fingerprint`
 - ป้องกันการใช้ offset เก่ากับ binary คนละ build
-- ป้องกันไม่ให้ auto tool ที่ `confidence` ต่ำกว่าไปทับไฟล์ที่ได้จาก tool ยืนยันจริง
+- ยอมให้อัปเดต offset ลง persistence ได้ทันทีเมื่อตรวจพบ offset ใหม่ โดยไม่บล็อกด้วย confidence เก่า
 
 ## Persistence ที่รองรับ
 
@@ -17,6 +17,7 @@
 - `config/ballistic_layout_persistence.json`
 - `config/barrel_offset_persistence.json`
 - `config/ground_subclass_persistence.json`
+- `config/unit_status_persistence.json`
 
 ## Schema หลัก
 
@@ -34,24 +35,24 @@
 - `size`
 - `mtime_ns`
 
-## Confidence Policy
+## Confidence Policy (ยกเลิกการบล็อก / Disabled)
 
-ระบบจะไม่ให้ auto writer ที่ `confidence` ต่ำกว่าเขียนทับไฟล์เดิม ถ้า:
+> [!IMPORTANT]
+> **ระบบไม่บล็อกการเขียนทับด้วย Confidence Policy อีกต่อไป (`_can_overwrite_persistence` return `True` เสมอ):**
+> เดิมทีระบบเคยป้องกันไม่ให้เครื่องมือที่มี `confidence` ต่ำกว่าเขียนทับไฟล์ persistence เดิม แต่เมื่อเกมมีการอัปเดต (Game Update) หรือ offset มีการเปลี่ยนแปลง แม้ auto tool หรือ scanner จะให้ค่า confidence ตัวเลขที่ต่ำกว่า (เช่น 0.78) แต่หากตรวจพบ offset ใหม่ที่ถูกต้อง ระบบจะถูกบล็อกไม่ให้อัปเดตและติดค้างอยู่กับ offset เก่าที่ใช้งานไม่ได้ ดังนั้นจึง **ยกเลิกการบล็อกด้วย Confidence Policy อย่างถาวร** เพื่อให้ offset ที่ตรวจพบใหม่สามารถอัปเดตลง persistence ได้ทันที
 
-- fingerprint ของ build ตรงกัน
-- และไฟล์เดิมมี `confidence` สูงกว่า
-
-ตัวอย่างค่าปัจจุบัน:
-
+ตัวอย่างค่า confidence ในเอกสารอ้างอิง:
 - `find_real_matrix` = `0.95`
 - `bbox_dumper` = `0.95`
 - `subclass_offset_dumper` = `0.95`
 - `barrel_offset_dumper` = `0.95`
+- `unit_status_dumper` = `0.95`
 - `ballistic_layout_dumper` = `0.92`
 - `scanner_auto_view_matrix` = `0.78`
 - `scanner_auto_bbox` = `0.72`
 - `scanner_auto_barrel` = `0.70`
 - `radar_overlay_auto_ballistic` = `0.68`
+
 
 ## Tools ที่ใช้ใน Persistence System
 
@@ -62,6 +63,7 @@
 - `tools/ballistic_layout_dumper.py`
 - `tools/barrel_offset_dumper.py`
 - `tools/subclass_offset_dumper.py`
+- `tools/unit_status_dumper.py`
 
 หน้าที่:
 
@@ -84,6 +86,10 @@
 - `subclass_offset_dumper.py`
   - ยืนยัน Ground Unit Subclass Enum Offsets (`LT`, `MT`, `HT`, `TD`, `AA`)
   - เขียน `ground_subclass_persistence.json`
+
+- `unit_status_dumper.py`
+  - ยืนยัน InvulTimer, Invulnerable, UnitState, PlayerInfo, UnitTeam, UnitInfo, และ UnitType
+  - เขียน `unit_status_persistence.json`
 
 
 

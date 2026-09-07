@@ -2,6 +2,7 @@ import struct
 import math
 import os
 import time
+from typing import Tuple, Optional, Dict, List, Any
 
 try:
     from src.utils.debug import dprint
@@ -36,7 +37,8 @@ OFF_INFO_SHORT_NAME = 0x28         # 🏷️ ชื่อย่อยูนิ�
 OFF_INFO_FAMILY     = 0x38         # 📂 ตระกูลยูนิต (เช่น exp_tank)
 OFF_INFO_STATUS     = 0x290        # 📊 สถานะพิเศษ (Class ID)
 OFF_UNIT_NATION     = 0x98c        # 🏳️ ID ประเทศ
-OFF_UNIT_INVUL      = 0xe58        # 🛡️ สถานะอมตะ (Is Invulnerable)
+OFF_UNIT_INVUL      = 0x0E70       # 🛡️ สถานะอมตะ (Is Invulnerable - 0x0E70)
+OFF_UNIT_TYPE       = 0x80         # ✈️ Unit Type discriminator (0x80=1, 0x84=2 for Air; 0 for Ground)
 OFF_UNIT_CLASS_PTR  = 0      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
 
 OFF_UNIT_TYPE_PTR   = 0      # 🎯 Pointer ไปหาชนิด (เช่น exp_tank)
@@ -80,10 +82,14 @@ FILTER_ZERO_POS_UNITS = True
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก layout_old_guess Persistence ล่าสุด)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
 OFF_CCIP_IMPACT     = 0x1C9C       # 🎯 vec3_t (x, y, z) CCIP Impact Point จาก Dagor Engine
-OFF_BULLET_SPEED    = 0x20E0     # 🎯 ความเร็วต้น (Muzzle Velocity - 8416 / 0x20E0)
-OFF_BULLET_MASS     = 0x20EC      # ⚖️ มวลกระสุน (8428 / 0x20EC)
-OFF_BULLET_CALIBER  = 0x20F0   # 📏 Caliber (8432 / 0x20F0)
-OFF_BULLET_CD       = 0x20F4        # 💨 Drag Coeff (8436 / 0x20F4)
+OFF_BULLET_SPEED    = 0x20E8       # 🎯 ความเร็วต้น (Muzzle Velocity)
+OFF_BULLET_MASS     = 0x20F4       # ⚖️ มวลกระสุน
+OFF_BULLET_CALIBER  = 0x20F8       # 📏 Caliber (เมตร)
+OFF_BULLET_CD       = 0x20FC       # 💨 Drag Coeff
+
+OFF_INVUL_TIMER     = 0x0E4C       # 🛡️ นับถอยหลังอมตะเกิดใหม่ (วินาที)
+OFF_INVULNERABLE    = 0x0E70       # 🛡️ แฟล็กอมตะเกิดใหม่ (bool)
+OFF_PLAYER_INFO     = 0x0F78       # 👤 พอยเตอร์ PlayerInfo (มีค่าเฉพาะผู้เล่นจริง, บอท/ซากเป็น Null)
 
 
 OFF_WEAPON_BARREL   = 0x480  # 🎯 ตัวคูณทิศทางลำกล้อง
@@ -1334,6 +1340,8 @@ def get_unit_detailed_dna(scanner, u_ptr):
             "nation_id": -1, 
             "class_id": -1,
             "is_invul": False,
+            "invul_timer": 0.0,
+            "is_real_player": True,
             "state": -1
         }
         
@@ -1341,9 +1349,17 @@ def get_unit_detailed_dna(scanner, u_ptr):
         nation_raw = scanner.read_mem(u_ptr + OFF_UNIT_NATION, 4)
         dna["nation_id"] = struct.unpack("<i", nation_raw)[0] if nation_raw else -1
         
-        # 2. INVULNERABLE
-        invul_raw = scanner.read_mem(u_ptr + OFF_UNIT_INVUL, 1)
-        dna["is_invul"] = bool(invul_raw[0]) if invul_raw else False
+        # 2. INVULNERABLE & TIMER
+        invul_raw = scanner.read_mem(u_ptr + OFF_INVULNERABLE, 1)
+        timer_raw = scanner.read_mem(u_ptr + OFF_INVUL_TIMER, 4)
+        timer_val = struct.unpack("<f", timer_raw)[0] if timer_raw else 0.0
+        dna["invul_timer"] = max(0.0, timer_val)
+        dna["is_invul"] = bool((invul_raw and invul_raw[0]) or timer_val > 0.05)
+
+        # 2.1 PLAYER INFO (HUMAN VS BOT)
+        pinfo_raw = scanner.read_mem(u_ptr + OFF_PLAYER_INFO, 8)
+        pinfo_val = struct.unpack("<Q", pinfo_raw)[0] if pinfo_raw else 0
+        dna["is_real_player"] = is_valid_ptr(pinfo_val)
         
         # 3. STATE
         state_raw = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 4)
@@ -1685,4 +1701,85 @@ def get_direct_bomb_impact(scanner, cgame_base, unit_ptr=0, my_pos=None):
         return (ix, iy, iz)
     except Exception:
         return None
+
+
+def get_unit_invulnerable(scanner, u_ptr) -> Tuple[bool, float]:
+    """
+    🛡️ อ่านสถานะอมตะเกิดใหม่ (Spawn Protection) ของยูนิต
+    คืนค่า (is_invul: bool, remaining_seconds: float)
+    """
+    if not u_ptr or not scanner:
+        return False, 0.0
+    try:
+        raw = scanner.read_mem(u_ptr + OFF_INVUL_TIMER, OFF_INVULNERABLE - OFF_INVUL_TIMER + 1)
+        if not raw:
+            return False, 0.0
+        timer = struct.unpack_from("<f", raw, 0)[0]
+        invul_byte = raw[OFF_INVULNERABLE - OFF_INVUL_TIMER]
+        is_invul = bool(invul_byte != 0 or timer > 0.05)
+        return is_invul, max(0.0, float(timer))
+    except Exception:
+        return False, 0.0
+
+
+def get_unit_is_real_player(scanner, u_ptr) -> bool:
+    """
+    👤 ตรวจสอบว่าเป็นผู้เล่นจริง (Human Player) หรือ AI Bot / ยูนิตเสริม
+    คืนค่า True หากมี PlayerInfo pointer ที่ถูกต้อง, คืนค่า False หากเป็น AI Bot
+    """
+    if not u_ptr or not scanner:
+        return False
+    try:
+        raw = scanner.read_mem(u_ptr + OFF_PLAYER_INFO, 8)
+        if not raw:
+            return False
+        p_info = struct.unpack("<Q", raw)[0]
+        return is_valid_ptr(p_info)
+    except Exception:
+        return False
+
+
+def get_dynamic_weapon_info(scanner, cgame_base) -> Tuple[float, float, float, float]:
+    """
+    🔫 ดึงข้อมูล Ballistics & Caliber สดจาก CGame Weapon Container
+    คืนค่า (speed_mps, mass_kg, caliber_mm, drag_cd)
+    """
+    if not cgame_base or not scanner:
+        return 0.0, 0.0, 0.0, 0.0
+    try:
+        raw_w = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
+        if not raw_w:
+            return 0.0, 0.0, 0.0, 0.0
+        w_ptr = struct.unpack("<Q", raw_w)[0]
+        if not is_valid_ptr(w_ptr):
+            return 0.0, 0.0, 0.0, 0.0
+        raw_b = scanner.read_mem(w_ptr + OFF_BULLET_SPEED, 0x18)
+        if not raw_b:
+            return 0.0, 0.0, 0.0, 0.0
+        speed = struct.unpack_from("<f", raw_b, 0)[0]
+        mass = struct.unpack_from("<f", raw_b, OFF_BULLET_MASS - OFF_BULLET_SPEED)[0]
+        caliber_m = struct.unpack_from("<f", raw_b, OFF_BULLET_CALIBER - OFF_BULLET_SPEED)[0]
+        cd = struct.unpack_from("<f", raw_b, OFF_BULLET_CD - OFF_BULLET_SPEED)[0]
+        return float(speed), float(mass), float(caliber_m * 1000.0), float(cd)
+    except Exception:
+        return 0.0, 0.0, 0.0, 0.0
+
+
+def is_unit_air_fast(scanner, u_ptr) -> bool:
+    """
+    ✈️ ตรวจสอบอย่างรวดเร็วระดับ O(1) ว่ายูนิตเป็นอากาศยานหรือไม่
+    (Air/Heli จะมีค่าคงที่ 0x0000000200000001 ที่ offset 0x80)
+    """
+    if not u_ptr or not scanner:
+        return False
+    try:
+        raw = scanner.read_mem(u_ptr + OFF_UNIT_TYPE, 8)
+        if not raw or len(raw) < 8:
+            return False
+        val64 = struct.unpack("<Q", raw)[0]
+        return val64 == 0x0000000200000001
+    except Exception:
+        return False
+
+
 
