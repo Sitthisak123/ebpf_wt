@@ -1,8 +1,13 @@
 import os
 import sys
 import re
-import cv2
-import pytesseract
+try:
+    import cv2
+    import pytesseract
+except ImportError:
+    cv2 = None
+    pytesseract = None
+
 
 def extract_folder(img_dir, header_title, output_file="dumps/flightpath.txt"):
     if not os.path.exists(img_dir):

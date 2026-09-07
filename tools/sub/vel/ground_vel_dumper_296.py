@@ -1,51 +1,62 @@
 #!/usr/bin/env python3
 """
-War Thunder Ground Velocity Comparator
-เครื่องมือเปรียบเทียบความเร็วภาคพื้นดินระหว่าง:
-  1. Commit 296c2e78fa6a86f2939b4f05ec70cae343fe8f0f (Baseline 2-Stage EMA)
-  2. Latest Version Logic (Zero-Jitter Hysteresis Lock ใน radar_overlay.py ปัจจุบัน)
+War Thunder Ground Velocity Dumper & Telemetry Analyzer (Commit 296c2e78 Edition)
+เครื่องมือสำหรับ Dump และวิเคราะห์ความเร็วภาคพื้นดิน (Ground Velocity)
+โดยใช้ตรรกะการคำนวณและกรองความเร็ว (Velocity Stabilization Logic) จาก Commit:
+  296c2e78fa6a86f2939b4f05ec70cae343fe8f0f
 
-โหมดการทำงาน:
-  • Live Mode: ต่อเข้าเกมจริงสดๆ และแสดงการเปรียบเทียบแบบ Side-by-Side เฟรมต่อเฟรม
-  • Replay Mode: นำไฟล์ Telemetry CSV เดิมมาเล่นซ้ำเพื่อเปรียบเทียบผลลัพธ์ทันที
+ความสามารถ:
+1. Live Dumper: ดึงความเร็ว My Unit และ Enemy Ground Target ในเกมแบบ Real-time (60 FPS)
+2. Side-by-Side Comparison: เทียบความเร็วจาก Commit 296c2e78 vs Zero-Jitter Lock vs Raw vs Pos Delta
+3. Blackbox Logger: บันทึก Telemetry ทั้งหมดลงไฟล์ CSV อย่างละเอียด
+4. Replay Mode (--replay): จำลองรันข้อมูล Telemetry จากไฟล์ CSV เพื่อวิเคราะห์ประสิทธิภาพ
 """
 
 import os
 import sys
 import time
 import math
+import struct
 import csv
 import signal
 import argparse
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, PROJECT_ROOT)
+# Add project root to path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from src.utils.scanner import (
     MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 )
 from src.utils.mul import (
     get_cgame_base, get_all_units, get_local_team, get_unit_pos,
-    get_ground_velocity, get_air_velocity, get_unit_status, is_valid_ptr
+    get_ground_velocity, get_air_velocity, get_unit_status,
+    get_unit_filter_profile, get_view_matrix, world_to_screen, is_valid_ptr,
+    OFF_GROUND_MOVEMENT, OFF_GROUND_VEL
 )
 
-DEFAULT_LOG_PATH = os.path.join(PROJECT_ROOT, "tools", "ground_vel_log.csv")
-DEFAULT_COMPARE_CSV = os.path.join(PROJECT_ROOT, "tools", "vel_comparison_report.csv")
+DEFAULT_CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ground_vel_dump_296.csv")
 
 
 # ==============================================================================
-# 1️⃣ COMMIT 296c2e78 LOGIC (BASELINE)
+# 🎯 VELOCITY STABILIZER (COMMIT 296c2e78 EXACT LOGIC)
 # ==============================================================================
 class VelocityStabilizer296:
     """
-    ตรรกะการคำนวณและกรองความเร็วภาคพื้นดินจาก Commit 296c2e78fa6a86f2939b4f05ec70cae343fe8f0f
-    - Stage 1: EMA 0.82 / 0.18 บน planar pos_vel
-    - Stage 2: Smoothing EMA 0.84 / 0.16
+    ถอดแบบตรรกะการคำนวณความเร็วจาก radar_overlay.py ใน Commit 296c2e78fa6a86f2939b4f05ec70cae343fe8f0f
+    - คำนวณ Pos Delta พร้อม Stage 1 Horizontal Planar EMA (0.82 / 0.18)
+    - ระบบเลือก Source: pos_only, pos_ground_world, pos_ground_axis_fix, blended, sticky, idle
+    - Stage 2 Smoothing EMA (0.84 / 0.16)
     """
     def __init__(self, scanner=None):
         self.scanner = scanner
         self.velocity_cache = {}
         self.last_velocity_meta = {}
+
+    def reset(self):
+        self.velocity_cache.clear()
+        self.last_velocity_meta.clear()
 
     def stabilize(self, u_ptr, is_air, pos, curr_t, raw_override=None):
         if raw_override is not None:
@@ -140,7 +151,7 @@ class VelocityStabilizer296:
                     chosen_vel = pos_vel
                     source = "pos_ground_sticky"
 
-            idle_speed_enter = 0.22
+            idle_speed_enter = 0.22  # m/s (~0.8 km/h)
             idle_speed_exit = 0.38
             stale_raw_idle_max = 2.0
             prev_motion_state = prev_meta.get("ground_motion_state", "")
@@ -202,15 +213,14 @@ class VelocityStabilizer296:
 
 
 # ==============================================================================
-# 2️⃣ LATEST VERSION LOGIC (CONTINUOUS ANTI-ALIASED SMOOTHING - ZERO SQUARE WAVE)
+# 🛡️ VELOCITY STABILIZER (ZERO-JITTER HYSTERESIS LOCK)
 # ==============================================================================
-class VelocityStabilizerLatest:
+class VelocityStabilizerZeroJitter:
     """
     ตรรกะการคำนวณและกรองความเร็วภาคล่าสุดใน radar_overlay.py:
-    - 3-Tap Binomial FIR Anti-Aliasing Filter [0.25, 0.50, 0.25] (หักล้าง 30Hz Discrete Physics Tick Beat Wave)
-    - Dual-stage Horizontal Planar Continuous EMA (0.82 / 0.84)
-    - ถอด Deadband Hysteresis ออก 100%: ไม่มีอาการ Square Wave / ขั้นบันได / ค้างกระตุก
-    - ความเร็วลื่นไหลเป็น Analog Curve ต่อเนื่อง ตอบสนองทันทีแบบ Zero Lag
+    - Dual-stage Horizontal Planar Smoothing
+    - Zero-Jitter Hysteresis Deadband (Speed deadband: 1.0 km/h, Heading: 2.0 deg)
+    - กำจัด Sub-tick aliasing Jitter จาก Dagor Engine 84.8Hz vs 60Hz 100%
     """
     def __init__(self, scanner=None):
         self.scanner = scanner
@@ -398,17 +408,17 @@ class VelocityStabilizerLatest:
 
 
 # ==============================================================================
-# 📊 REPLAY COMPARISON
+# 🔄 REPLAY MODE
 # ==============================================================================
-def compare_replay(csv_input_path, output_report_path=DEFAULT_COMPARE_CSV):
+def run_replay(csv_input_path, output_csv_path=None):
     if not os.path.isfile(csv_input_path):
         print(f"❌ ไม่พบไฟล์ Telemetry: {csv_input_path}")
         return
 
-    print("=" * 76)
-    print("📈 VELOCITY COMPARISON TOOL: Commit 296c2e78 vs Latest Version (Replay)")
-    print("=" * 76)
-    print(f"[*] แหล่งข้อมูล: {csv_input_path}")
+    print("=" * 72)
+    print("🔁 WAR THUNDER GROUND VELOCITY DUMPER — REPLAY MODE (Commit 296c2e78)")
+    print("=" * 72)
+    print(f"[*] กำลังโหลดข้อมูลจาก: {csv_input_path}")
 
     rows = []
     with open(csv_input_path, mode="r", encoding="utf-8") as f:
@@ -417,61 +427,70 @@ def compare_replay(csv_input_path, output_report_path=DEFAULT_COMPARE_CSV):
             rows.append(r)
 
     if not rows:
-        print("❌ ไฟล์ข้อมูลว่างเปล่า")
+        print("❌ ไฟล์ Telemetry ว่างเปล่า")
         return
 
-    s296 = VelocityStabilizer296(None)
-    slatest = VelocityStabilizerLatest(None)
+    stabilizer_296 = VelocityStabilizer296(None)
+    stabilizer_zj = VelocityStabilizerZeroJitter(None)
 
-    out_file = open(output_report_path, mode="w", newline="", buffering=1)
+    out_csv_path = output_csv_path or DEFAULT_CSV_PATH
     fieldnames = [
         "frame_id", "timestamp", "dt_ms",
         "my_x", "my_y", "my_z",
-        "raw_kmh", "pos_delta_kmh",
-        "v296_kmh", "v296_delta_kmh", "v296_source",
-        "latest_kmh", "latest_delta_kmh", "latest_source",
-        "diff_kmh"
+        "my_raw_kmh", "my_pos_kmh",
+        "my_vel_296_kmh", "my_delta_296_kmh", "my_src_296",
+        "my_vel_zj_kmh", "my_delta_zj_kmh",
+        "tg_ptr", "tg_raw_kmh", "tg_pos_kmh",
+        "tg_vel_296_kmh", "tg_vel_zj_kmh"
     ]
+
+    out_file = open(out_csv_path, mode="w", newline="", buffering=1)
     writer = csv.DictWriter(out_file, fieldnames=fieldnames)
     writer.writeheader()
 
-    last_296 = 0.0
-    last_latest = 0.0
+    last_v_296_kmh = 0.0
+    last_v_zj_kmh = 0.0
 
-    deltas_296 = []
-    deltas_latest = []
-    diffs = []
+    spikes_296 = 0
+    spikes_zj = 0
+    total_moving = 0
 
-    u_ptr = 0x2960001
+    max_jump_296 = 0.0
+    max_jump_zj = 0.0
 
-    print(f"[+] บันทึกผลรายงานเปรียบเทียบไปที่: {output_report_path}")
-    print("-" * 76)
+    u_ptr = 0x10000000
+
+    print(f"[+] บันทึกผลการ Replay ลงที่: {out_csv_path}")
+    print("-" * 72)
 
     for r in rows:
         fid = int(r.get("frame_id", 0))
         t = float(r.get("timestamp", 0.0))
         pos = (float(r.get("my_x", 0.0)), float(r.get("my_y", 0.0)), float(r.get("my_z", 0.0)))
-        raw = (float(r.get("my_raw_vx", 0.0)), float(r.get("my_raw_vy", 0.0)), float(r.get("my_raw_vz", 0.0)))
+        raw_override = (float(r.get("my_raw_vx", 0.0)), float(r.get("my_raw_vy", 0.0)), float(r.get("my_raw_vz", 0.0)))
 
-        v1, raw_v, pos_v, src1 = s296.stabilize(u_ptr, False, pos, t, raw_override=raw)
-        v2, _, _, src2 = slatest.stabilize(u_ptr, False, pos, t, raw_override=raw)
+        # Run 296 logic
+        v296, raw_v, pos_v, src296 = stabilizer_296.stabilize(u_ptr, False, pos, t, raw_override=raw_override)
+        spd_296 = math.sqrt(v296[0]**2 + v296[1]**2 + v296[2]**2) * 3.6
+        pos_spd = (math.sqrt(pos_v[0]**2 + pos_v[1]**2 + pos_v[2]**2) * 3.6) if pos_v else 0.0
+        raw_spd = math.sqrt(raw_v[0]**2 + raw_v[1]**2 + raw_v[2]**2) * 3.6
 
-        spd_296 = math.hypot(v1[0], v1[2]) * 3.6
-        spd_latest = math.hypot(v2[0], v2[2]) * 3.6
-        raw_spd = math.hypot(raw_v[0], raw_v[2]) * 3.6
-        pos_spd = (math.hypot(pos_v[0], pos_v[2]) * 3.6) if pos_v else 0.0
+        # Run ZeroJitter logic
+        vzj, _, _, _ = stabilizer_zj.stabilize(u_ptr, False, pos, t, raw_override=raw_override)
+        spd_zj = math.sqrt(vzj[0]**2 + vzj[1]**2 + vzj[2]**2) * 3.6
 
-        d_296 = abs(spd_296 - last_296)
-        d_latest = abs(spd_latest - last_latest)
-        diff = abs(spd_latest - spd_296)
+        d296 = abs(spd_296 - last_v_296_kmh)
+        dzj = abs(spd_zj - last_v_zj_kmh)
 
-        if spd_296 > 2.0 or spd_latest > 2.0:
-            deltas_296.append(d_296)
-            deltas_latest.append(d_latest)
-            diffs.append(diff)
+        if spd_296 > 2.0 or spd_zj > 2.0:
+            total_moving += 1
+            if d296 > 3.0: spikes_296 += 1
+            if dzj > 3.0: spikes_zj += 1
+            if d296 > max_jump_296: max_jump_296 = d296
+            if dzj > max_jump_zj: max_jump_zj = dzj
 
-        last_296 = spd_296
-        last_latest = spd_latest
+        last_v_296_kmh = spd_296
+        last_v_zj_kmh = spd_zj
 
         writer.writerow({
             "frame_id": fid,
@@ -480,64 +499,49 @@ def compare_replay(csv_input_path, output_report_path=DEFAULT_COMPARE_CSV):
             "my_x": f"{pos[0]:.3f}",
             "my_y": f"{pos[1]:.3f}",
             "my_z": f"{pos[2]:.3f}",
-            "raw_kmh": f"{raw_spd:.1f}",
-            "pos_delta_kmh": f"{pos_spd:.1f}",
-            "v296_kmh": f"{spd_296:.1f}",
-            "v296_delta_kmh": f"{d_296:.2f}",
-            "v296_source": src1,
-            "latest_kmh": f"{spd_latest:.1f}",
-            "latest_delta_kmh": f"{d_latest:.2f}",
-            "latest_source": src2,
-            "diff_kmh": f"{diff:.2f}"
+            "my_raw_kmh": f"{raw_spd:.1f}",
+            "my_pos_kmh": f"{pos_spd:.1f}",
+            "my_vel_296_kmh": f"{spd_296:.1f}",
+            "my_delta_296_kmh": f"{d296:.2f}",
+            "my_src_296": src296,
+            "my_vel_zj_kmh": f"{spd_zj:.1f}",
+            "my_delta_zj_kmh": f"{dzj:.2f}",
+            "tg_ptr": r.get("tg_ptr", "0"),
+            "tg_raw_kmh": r.get("tg_raw_kmh", "0.0"),
+            "tg_pos_kmh": r.get("tg_pos_kmh", "0.0"),
+            "tg_vel_296_kmh": r.get("tg_chosen_kmh", "0.0"),
+            "tg_vel_zj_kmh": r.get("tg_chosen_kmh", "0.0"),
         })
 
-        if fid % 12 == 0:
-            still_sym = "🔒 STILL" if d_latest <= 0.05 else "📈 MOVE"
+        if fid % 10 == 0:
             sys.stdout.write(
-                f"\r[F{fid:04d}] "
-                f"296: {spd_296:4.1f} km/h (Δ{d_296:4.2f}) | "
-                f"Latest: {spd_latest:4.1f} km/h (Δ{d_latest:4.2f}) [{still_sym}] | "
+                f"\r[Frame {fid:04d}] "
+                f"Vel_296: {spd_296:4.1f} km/h (Δ:{d296:4.2f}) | "
+                f"Vel_ZeroJitter: {spd_zj:4.1f} km/h (Δ:{dzj:4.2f}) | "
                 f"Pos: {pos_spd:4.1f} km/h"
             )
             sys.stdout.flush()
 
     out_file.close()
 
-    # สรุปผล
-    n = len(deltas_296)
-    spikes_296 = sum(1 for d in deltas_296 if d > 3.0)
-    spikes_latest = sum(1 for d in deltas_latest if d > 3.0)
-    still_296 = sum(1 for d in deltas_296 if d <= 0.05)
-    still_latest = sum(1 for d in deltas_latest if d <= 0.05)
-
-    print("\n" + "=" * 76)
-    print("📊 สรุปผลการเปรียบเทียบประสิทธิภาพเชิงลึก:")
-    print("=" * 76)
-    print(f"  • จำนวนเฟรมที่วิเคราะห์ขณะเคลื่อนที่: {n} เฟรม")
-    print(f"\n  [1] Commit 296c2e78fa6a86f2939b4f05ec70cae343fe8f0f:")
-    print(f"      - Jitter Spikes (>3 km/h jump):     {spikes_296:4d} ครั้ง ({(spikes_296/n)*100:.1f}%)")
-    print(f"      - Maximum Frame Jump:                {max(deltas_296):6.2f} km/h")
-    print(f"      - Average Frame Jump (Jitter):       {sum(deltas_296)/n:6.3f} km/h")
-    print(f"      - เฟรมที่ความเร็วนิ่งสนิท (Δ <= 0.05): {still_296:4d} เฟรม ({(still_296/n)*100:.1f}%)")
-
-    print(f"\n  [2] Latest Version (Continuous Anti-Aliased Smoothing - Zero Square Wave):")
-    print(f"      - Jitter Spikes (>3 km/h jump):     {spikes_latest:4d} ครั้ง ({(spikes_latest/n)*100:.1f}%)")
-    print(f"      - Maximum Frame Jump:                {max(deltas_latest):6.2f} km/h")
-    print(f"      - Average Frame Jump (Jitter):       {sum(deltas_latest)/n:6.3f} km/h")
-    print(f"      - เฟรมที่ความเร็วนิ่งสนิท (Δ <= 0.05): {still_latest:4d} เฟรม ({(still_latest/n)*100:.1f}%)")
-
-    print(f"\n  ⭐ ผลสรุป: Latest Version ลดการสั่นไหวได้ {((sum(deltas_296)/n)/(sum(deltas_latest)/n)):.1f} เท่า!")
-    print(f"  ⭐ บันทึกข้อมูลเปรียบเทียบสมบูรณ์ที่: {output_report_path}")
-    print("=" * 76)
+    print("\n" + "=" * 72)
+    print("📊 ผลการเปรียบเทียบเชิงลึก (COMPARISON SUMMARY):")
+    print("=" * 72)
+    print(f"  • จำนวนเฟรมที่วิเคราะห์: {len(rows)} เฟรม")
+    print(f"  • เฟรมขณะเคลื่อนที่ (>2 km/h): {total_moving} เฟรม")
+    print(f"  • Commit 296c2e78 Jitter Spikes (>3 km/h): {spikes_296} ครั้ง | Max Jump: {max_jump_296:.2f} km/h")
+    print(f"  • Zero-Jitter Hysteresis Spikes (>3 km/h): {spikes_zj} ครั้ง | Max Jump: {max_jump_zj:.2f} km/h")
+    print(f"  • บันทึกไฟล์ CSV สมบูรณ์ที่: {out_csv_path}")
+    print("=" * 72)
 
 
 # ==============================================================================
-# 🎮 LIVE COMPARISON (REAL GAME)
+# 🎮 LIVE DUMPING MODE
 # ==============================================================================
-def compare_live(target_fps=60.0, output_report_path=DEFAULT_COMPARE_CSV):
-    print("=" * 76)
-    print("🎮 LIVE VELOCITY COMPARATOR: Commit 296c2e78 vs Latest Version")
-    print("=" * 76)
+def run_live(target_fps=60.0, output_csv_path=None, dump_all=False):
+    print("=" * 72)
+    print("🚗 WAR THUNDER GROUND VELOCITY DUMPER (Commit 296c2e78 Live Edition)")
+    print("=" * 72)
 
     try:
         pid = get_game_pid()
@@ -550,47 +554,52 @@ def compare_live(target_fps=60.0, output_report_path=DEFAULT_COMPARE_CSV):
     scanner = MemoryScanner(pid)
     base_address = get_game_base_address(pid)
     if not base_address:
-        print("❌ ไม่สามารถหา Base address ได้")
+        print("❌ ไม่สามารถหา Module base address ได้")
         sys.exit(1)
+    print(f"[*] Base Address: {hex(base_address)}")
     init_dynamic_offsets(scanner, base_address)
 
     cgame = get_cgame_base(scanner, base_address)
     if not cgame:
         print("❌ ไม่สามารถหา CGame Base ได้ (กรุณาเข้าห้องรบหรือ Test Drive)")
         sys.exit(1)
+    print(f"[*] CGame Base: {hex(cgame)}")
 
-    s296 = VelocityStabilizer296(scanner)
-    slatest = VelocityStabilizerLatest(scanner)
+    stabilizer_296 = VelocityStabilizer296(scanner)
+    stabilizer_zj = VelocityStabilizerZeroJitter(scanner)
 
-    out_file = open(output_report_path, mode="w", newline="", buffering=1)
+    out_csv_path = output_csv_path or DEFAULT_CSV_PATH
     fieldnames = [
         "frame_id", "timestamp", "dt_ms",
         "my_ptr", "my_x", "my_y", "my_z",
         "my_raw_kmh", "my_pos_kmh",
-        "my_296_kmh", "my_296_delta",
-        "my_latest_kmh", "my_latest_delta",
-        "tg_ptr", "tg_dist",
-        "tg_296_kmh", "tg_latest_kmh"
+        "my_vel_296_kmh", "my_delta_296_kmh", "my_src_296",
+        "my_vel_zj_kmh", "my_delta_zj_kmh",
+        "tg_ptr", "tg_name", "tg_dist",
+        "tg_raw_kmh", "tg_pos_kmh",
+        "tg_vel_296_kmh", "tg_vel_zj_kmh", "tg_src_296"
     ]
-    writer = csv.DictWriter(out_file, fieldnames=fieldnames)
+
+    csv_file = open(out_csv_path, mode="w", newline="", buffering=1)
+    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
     writer.writeheader()
 
     running = True
     def sigint_handler(sig, frame):
         nonlocal running
         running = False
-        print("\n[!] หยุดการเปรียบเทียบสด... กำลังสรุปข้อมูล")
+        print("\n[!] ได้รับคำสั่งหยุด (Ctrl+C)... กำลังสรุปข้อมูล")
 
     signal.signal(signal.SIGINT, sigint_handler)
 
-    print(f"[+] บันทึก Log ไปที่: {output_report_path}")
-    print("[+] เริ่มการอ่านและเปรียบเทียบสดที่ ~60 FPS (กด Ctrl+C เพื่อหยุด)...")
-    print("=" * 76)
+    print(f"[+] บันทึก Log ลงที่: {out_csv_path}")
+    print(f"[+] เป้าหมาย FPS: {target_fps:.0f} Hz | เริ่มต้นการดัมพ์ข้อมูลสด...")
+    print("=" * 72)
 
     frame_id = 0
-    last_frame_t = time.time()
-    last_my_296 = 0.0
-    last_my_latest = 0.0
+    last_frame_time = time.time()
+    last_my_296_kmh = 0.0
+    last_my_zj_kmh = 0.0
 
     frame_interval = 1.0 / target_fps
 
@@ -598,54 +607,65 @@ def compare_live(target_fps=60.0, output_report_path=DEFAULT_COMPARE_CSV):
         while running:
             loop_start = time.time()
             curr_t = loop_start
-            dt = curr_t - last_frame_t
-            last_frame_t = curr_t
+            dt = curr_t - last_frame_time
+            last_frame_time = curr_t
             frame_id += 1
 
-            # 1. My Unit
+            # 1. อ่านข้อมูล My Unit
             my_unit, my_team = get_local_team(scanner, base_address)
             my_pos = get_unit_pos(scanner, my_unit) if my_unit else None
 
-            my_v296, my_raw_v, my_pos_v, _ = s296.stabilize(my_unit, False, my_pos, curr_t)
-            my_vlatest, _, _, _ = slatest.stabilize(my_unit, False, my_pos, curr_t)
+            # คำนวณ My Velocity ด้วย 296 และ ZeroJitter
+            my_v296, my_raw_v, my_pos_v, my_src_296 = stabilizer_296.stabilize(my_unit, False, my_pos, curr_t)
+            my_vzj, _, _, _ = stabilizer_zj.stabilize(my_unit, False, my_pos, curr_t)
 
-            my_296_kmh = math.hypot(my_v296[0], my_v296[2]) * 3.6
-            my_latest_kmh = math.hypot(my_vlatest[0], my_vlatest[2]) * 3.6
-            my_raw_kmh = math.hypot(my_raw_v[0], my_raw_v[2]) * 3.6 if my_raw_v else 0.0
-            my_pos_kmh = (math.hypot(my_pos_v[0], my_pos_v[2]) * 3.6) if my_pos_v else 0.0
+            my_296_kmh = math.sqrt(my_v296[0]**2 + my_v296[1]**2 + my_v296[2]**2) * 3.6
+            my_zj_kmh = math.sqrt(my_vzj[0]**2 + my_vzj[1]**2 + my_vzj[2]**2) * 3.6
+            my_raw_kmh = math.sqrt(my_raw_v[0]**2 + my_raw_v[1]**2 + my_raw_v[2]**2) * 3.6 if my_raw_v else 0.0
+            my_pos_kmh = (math.sqrt(my_pos_v[0]**2 + my_pos_v[1]**2 + my_pos_v[2]**2) * 3.6) if my_pos_v else 0.0
 
-            d_296 = abs(my_296_kmh - last_my_296)
-            d_latest = abs(my_latest_kmh - last_my_latest)
-            last_my_296 = my_296_kmh
-            last_my_latest = my_latest_kmh
+            d_296 = abs(my_296_kmh - last_my_296_kmh)
+            d_zj = abs(my_zj_kmh - last_my_zj_kmh)
+            last_my_296_kmh = my_296_kmh
+            last_my_zj_kmh = my_zj_kmh
 
-            # 2. Closest Target
+            # 2. ค้นหายูนิตศัตรูภาคพื้นดิน
             all_units = get_all_units(scanner, cgame)
-            best_tg = 0
-            best_tg_pos = None
-            best_tg_dist = 99999.0
+            best_target_ptr = 0
+            best_target_name = "UNKNOWN"
+            best_target_dist = 99999.0
+            best_target_pos = None
 
             for u_ptr, is_air in all_units:
                 if u_ptr == my_unit or is_air:
                     continue
-                st = get_unit_status(scanner, u_ptr, read_name=False)
-                if st and st[0] != my_team and st[1] == 0:
-                    tp = get_unit_pos(scanner, u_ptr)
-                    if tp and my_pos:
-                        d = math.hypot(tp[0] - my_pos[0], tp[2] - my_pos[2])
-                        if d < best_tg_dist:
-                            best_tg_dist = d
-                            best_tg = u_ptr
-                            best_tg_pos = tp
+                status = get_unit_status(scanner, u_ptr, read_name=False)
+                if status and status[0] != my_team and status[1] == 0:  # Enemy alive
+                    t_pos = get_unit_pos(scanner, u_ptr)
+                    if t_pos and my_pos:
+                        dist = math.hypot(t_pos[0] - my_pos[0], t_pos[2] - my_pos[2])
+                        if dist < best_target_dist:
+                            best_target_dist = dist
+                            best_target_ptr = u_ptr
+                            best_target_pos = t_pos
 
+            # คำนวณ Target Velocity
             tg_296_kmh = 0.0
-            tg_latest_kmh = 0.0
-            if best_tg and best_tg_pos:
-                tg_v1, _, _, _ = s296.stabilize(best_tg, False, best_tg_pos, curr_t)
-                tg_v2, _, _, _ = slatest.stabilize(best_tg, False, best_tg_pos, curr_t)
-                tg_296_kmh = math.hypot(tg_v1[0], tg_v1[2]) * 3.6
-                tg_latest_kmh = math.hypot(tg_v2[0], tg_v2[2]) * 3.6
+            tg_zj_kmh = 0.0
+            tg_raw_kmh = 0.0
+            tg_pos_kmh = 0.0
+            tg_src_296 = "none"
 
+            if best_target_ptr and best_target_pos:
+                tg_v296, tg_raw, tg_pos, tg_src_296 = stabilizer_296.stabilize(best_target_ptr, False, best_target_pos, curr_t)
+                tg_vzj, _, _, _ = stabilizer_zj.stabilize(best_target_ptr, False, best_target_pos, curr_t)
+
+                tg_296_kmh = math.sqrt(tg_v296[0]**2 + tg_v296[1]**2 + tg_v296[2]**2) * 3.6
+                tg_zj_kmh = math.sqrt(tg_vzj[0]**2 + tg_vzj[1]**2 + tg_vzj[2]**2) * 3.6
+                tg_raw_kmh = math.sqrt(tg_raw[0]**2 + tg_raw[1]**2 + tg_raw[2]**2) * 3.6 if tg_raw else 0.0
+                tg_pos_kmh = (math.sqrt(tg_pos[0]**2 + tg_pos[1]**2 + tg_pos[2]**2) * 3.6) if tg_pos else 0.0
+
+            # บันทึก CSV
             writer.writerow({
                 "frame_id": frame_id,
                 "timestamp": f"{curr_t:.4f}",
@@ -656,23 +676,31 @@ def compare_live(target_fps=60.0, output_report_path=DEFAULT_COMPARE_CSV):
                 "my_z": f"{my_pos[2]:.3f}" if my_pos else "0",
                 "my_raw_kmh": f"{my_raw_kmh:.1f}",
                 "my_pos_kmh": f"{my_pos_kmh:.1f}",
-                "my_296_kmh": f"{my_296_kmh:.1f}",
-                "my_296_delta": f"{d_296:.2f}",
-                "my_latest_kmh": f"{my_latest_kmh:.1f}",
-                "my_latest_delta": f"{d_latest:.2f}",
-                "tg_ptr": hex(best_tg) if best_tg else "0",
-                "tg_dist": f"{best_tg_dist:.1f}" if best_tg else "0.0",
-                "tg_296_kmh": f"{tg_296_kmh:.1f}",
-                "tg_latest_kmh": f"{tg_latest_kmh:.1f}",
+                "my_vel_296_kmh": f"{my_296_kmh:.1f}",
+                "my_delta_296_kmh": f"{d_296:.2f}",
+                "my_src_296": my_src_296,
+                "my_vel_zj_kmh": f"{my_zj_kmh:.1f}",
+                "my_delta_zj_kmh": f"{d_zj:.2f}",
+                "tg_ptr": hex(best_target_ptr) if best_target_ptr else "0",
+                "tg_name": best_target_name,
+                "tg_dist": f"{best_target_dist:.1f}" if best_target_ptr else "0.0",
+                "tg_raw_kmh": f"{tg_raw_kmh:.1f}",
+                "tg_pos_kmh": f"{tg_pos_kmh:.1f}",
+                "tg_vel_296_kmh": f"{tg_296_kmh:.1f}",
+                "tg_vel_zj_kmh": f"{tg_zj_kmh:.1f}",
+                "tg_src_296": tg_src_296,
             })
 
+            # แสดงผลแบบ Live Terminal ทุกๆ 6 เฟรม (~100ms)
             if frame_id % 6 == 0:
-                tg_info = f"Tg296:{tg_296_kmh:4.1f} TgZJ:{tg_latest_kmh:4.1f}" if best_tg else "Tg: None"
+                tg_str = f"Tg:{tg_296_kmh:4.1f}km/h({best_target_dist:.0f}m)" if best_target_ptr else "Tg: None"
                 status_line = (
                     f"\r[F{frame_id:04d}] "
-                    f"My296:{my_296_kmh:4.1f}km/h(Δ{d_296:4.2f}) | "
-                    f"MyLatest:{my_latest_kmh:4.1f}km/h(Δ{d_latest:4.2f}) | "
-                    f"{tg_info}"
+                    f"My 296:{my_296_kmh:4.1f}km/h(Δ{d_296:4.2f}) "
+                    f"My ZJ:{my_zj_kmh:4.1f}km/h(Δ{d_zj:4.2f}) "
+                    f"Pos:{my_pos_kmh:4.1f} "
+                    f"{tg_str} "
+                    f"Src:{my_src_296:<16}"
                 )
                 sys.stdout.write(status_line)
                 sys.stdout.flush()
@@ -681,38 +709,44 @@ def compare_live(target_fps=60.0, output_report_path=DEFAULT_COMPARE_CSV):
             time.sleep(max(0.001, frame_interval - elapsed))
 
     finally:
-        out_file.close()
-        print("\n" + "=" * 76)
-        print("✅ บันทึกผลการเปรียบเทียบเรียบร้อยที่:", output_report_path)
-        print("=" * 76)
+        csv_file.close()
+        print("\n" + "=" * 72)
+        print("✅ บันทึก Telemetry สำเร็จ!")
+        print(f"  • จำนวนเฟรมทั้งหมด: {frame_id}")
+        print(f"  • บันทึกไฟล์ CSV ที่: {out_csv_path}")
+        print("=" * 72)
 
 
 # ==============================================================================
-# 🚀 MAIN
+# 🚀 ENTRY POINT
 # ==============================================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="War Thunder Ground Velocity Comparator (Commit 296c2e78 vs Latest)"
+        description="War Thunder Ground Velocity Dumper (Commit 296c2e78 Edition)"
     )
     parser.add_argument(
-        "--replay", nargs="?", const=DEFAULT_LOG_PATH,
-        help="Replay comparison from a CSV file (default: tools/ground_vel_log.csv)"
+        "--replay", nargs="?", const=os.path.join(PROJECT_ROOT, "tools", "ground_vel_log.csv"),
+        help="Replay telemetries from a CSV file (default: tools/ground_vel_log.csv)"
     )
     parser.add_argument(
-        "--csv", default=DEFAULT_COMPARE_CSV,
-        help=f"Output comparison CSV path (default: {DEFAULT_COMPARE_CSV})"
+        "--csv", default=DEFAULT_CSV_PATH,
+        help=f"Output CSV path (default: {DEFAULT_CSV_PATH})"
     )
     parser.add_argument(
         "--fps", type=float, default=60.0,
-        help="Target sampling rate (default: 60 FPS)"
+        help="Live dump sampling rate (default: 60.0 FPS)"
+    )
+    parser.add_argument(
+        "--all", action="store_true",
+        help="Dump all visible enemy ground units"
     )
 
     args = parser.parse_args()
 
     if args.replay:
-        compare_replay(args.replay, output_report_path=args.csv)
+        run_replay(args.replay, output_csv_path=args.csv)
     else:
-        compare_live(target_fps=args.fps, output_report_path=args.csv)
+        run_live(target_fps=args.fps, output_csv_path=args.csv, dump_all=args.all)
 
 
 if __name__ == "__main__":
