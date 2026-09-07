@@ -2937,6 +2937,12 @@ class ESPOverlay(QOpenGLWidget):
             "right": False,
         }
 
+        # 🔎 PiP Sniper Scope Anti-Blink & Smoothing State
+        self.last_active_sniper_data = None
+        self.sniper_hold_until = 0.0
+        self.sniper_active_target_ptr = 0
+        self._last_sniper_qimg = None
+
         self._update_screen_metrics()
         
         # 🚀 บังคับเปิดระบบประสานผิวภาพโปร่งใสในระดับฮาร์ดแวร์การ์ดจอ (Nvidia VIP)
@@ -4259,6 +4265,17 @@ class ESPOverlay(QOpenGLWidget):
 
             active_sniper_data = None
 
+            # 🛡️ Match & Loading Screen Gate:
+            # หากไม่มีตัวรถของตนเอง (Loading Screen, Hangar, เลือกเกิด) หรือไม่มีเป้าหมายในฉาก
+            # ให้ล้างสถานะ Sniper ทั้งหมด และไม่ประมวลผลวาดกล่องเป้าหมายเด็ดขาด
+            if (not my_unit) or (not my_pos) or (not current_seen_ptrs):
+                self.last_active_sniper_data = None
+                self.sniper_hold_until = 0.0
+                self.sniper_active_target_ptr = 0
+                self._last_sniper_qimg = None
+                active_sniper_data = None
+                valid_targets = []
+
             locked_ground_target_y = None
             for (
                 u_ptr,
@@ -4446,9 +4463,9 @@ class ESPOverlay(QOpenGLWidget):
                                 else:
                                     pts.append(None)
                                     
-                            # 4. ลากเส้นเชื่อมมุมทั้ง 8 (ถ้าอยู่บนหน้าจอครบ)
-                            if pts.count(None) == 0:
-                                valid_pts = [p for p in pts if p]
+                            # 4. ลากเส้นเชื่อมมุม (วาดได้เมื่อมีมุมอย่างน้อย 4 มุมอยู่บนหน้าจอ)
+                            valid_pts = [p for p in pts if p]
+                            if len(valid_pts) >= 4:
                                 min_y = min(p[1] for p in valid_pts)
                                 avg_x = sum(p[0] for p in valid_pts) / len(valid_pts)
                                 avg_y = sum(p[1] for p in valid_pts) / len(valid_pts)
@@ -4483,9 +4500,10 @@ class ESPOverlay(QOpenGLWidget):
                                     elif ESP_BOX_MODE in ("3D", "ALL"):
                                         # 📦 วาดกล่อง 3D Wireframe Box (กล่องทรงลูกบาศก์หมุนตามทิศทางรถถัง)
                                         for p1, p2 in edges:
-                                            line_pts = _screen_int_tuple(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
-                                            if line_pts:
-                                                painter.drawLine(*line_pts)
+                                            if pts[p1] and pts[p2]:
+                                                line_pts = _screen_int_tuple(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
+                                                if line_pts:
+                                                    painter.drawLine(*line_pts)
                                         has_valid_box = True
                                     elif ESP_BOX_MODE == "XRAY":
                                         # 🩺 โหมด X-Ray อย่างเดียว: ไม่วาดเส้นกล่อง แต่เก็บพิกัด has_valid_box ไว้คำนวณตำแหน่งป้าย
@@ -4503,9 +4521,11 @@ class ESPOverlay(QOpenGLWidget):
                                 cy + half_h >= 0 and cy - half_h <= self.screen_height):
                                 res_pts = _screen_int_tuple(cx, cy)
                                 if res_pts:
-                                    box_2d_color = QColor(*COLOR_BOX_INVULNERABLE) if is_invul_active else QColor(*COLOR_BOX_TARGET)
-                                    painter.setPen(QPen(box_2d_color, 2))
-                                    painter.drawRect(int(res_pts[0] - half_w), int(res_pts[1] - half_h), int(box_w), int(box_h))
+                                    # 🛡️ ป้องกัน 2D box โผล่แวบขึ้นมาบนพื้นเมื่อใช้โหมด 3D หรือเมื่อกล้อง/วิวเมทริกซ์เพิ่งเปลี่ยน
+                                    if (ESP_BOX_MODE in ("2D", "ALL")) or is_air_target:
+                                        box_2d_color = QColor(*COLOR_BOX_INVULNERABLE) if is_invul_active else QColor(*COLOR_BOX_TARGET)
+                                        painter.setPen(QPen(box_2d_color, 2))
+                                        painter.drawRect(int(res_pts[0] - half_w), int(res_pts[1] - half_h), int(box_w), int(box_h))
                                     avg_x, avg_y, min_y = res_pts[0], res_pts[1], res_pts[1] - half_h
                                     target_box_rect = (
                                         cx - half_w,
@@ -5518,14 +5538,22 @@ class ESPOverlay(QOpenGLWidget):
                                                 mapped_hitpoint[0] - self.center_x,
                                                 mapped_hitpoint[1] - self.center_y,
                                             )
-                                            if (not my_is_air) and sniper_anchor_dist <= SNIPER_CROSSHAIR_MAX_PX:
+                                            # Hysteresis: เข้าสู่โหมด Sniper เมื่อ <= 180px, และยังคงอยู่ต่อไปได้จนถึง 250px เพื่อป้องกันการกระพริบเข้าๆ ออกๆ
+                                            is_currently_active = (getattr(self, 'last_active_sniper_data', None) is not None) and (getattr(self, 'sniper_active_target_ptr', 0) == u_ptr)
+                                            max_anchor_dist = (SNIPER_CROSSHAIR_MAX_PX * 1.40) if is_currently_active else SNIPER_CROSSHAIR_MAX_PX
+
+                                            if (not my_is_air) and sniper_anchor_dist <= max_anchor_dist:
                                                 active_sniper_data = {
                                                     'center_x': avg_x,
                                                     'center_y': avg_y,
                                                     'hitpoint': mapped_hitpoint,
                                                     'target_box_rect': target_box_rect,
                                                     'distance': dist,
+                                                    'target_ptr': u_ptr,
                                                 }
+                                                self.last_active_sniper_data = active_sniper_data
+                                                self.sniper_hold_until = curr_t + 0.20
+                                                self.sniper_active_target_ptr = u_ptr
 
                                             # 🛠️ BUG FIX: ย้ายฟังก์ชันวาดกากบาทสีฟ้า (Calibration) เข้ามาด้วย!
                                             calib_point = self._handle_hitpoint_calibration({
@@ -5569,6 +5597,18 @@ class ESPOverlay(QOpenGLWidget):
                 except Exception as e:
                     if "NaN" not in str(e):
                         print(f"Main processing error: {e}")
+
+            # 🎯 Sniper Anti-Blink Hold: ถ้าหลุดเงื่อนไข hitpoint ไปเพียง 1-2 เฟรม ให้ถือค่าเดิมไว้ 200ms
+            if not active_sniper_data and getattr(self, 'last_active_sniper_data', None) and curr_t < getattr(self, 'sniper_hold_until', 0.0):
+                if my_unit and (getattr(self, 'sniper_active_target_ptr', 0) in current_seen_ptrs):
+                    active_sniper_data = self.last_active_sniper_data
+                else:
+                    self.last_active_sniper_data = None
+                    self.sniper_active_target_ptr = 0
+            elif not active_sniper_data:
+                self.last_active_sniper_data = None
+                self.sniper_active_target_ptr = 0
+
             # =========================================================
             # 💣 & 🚀 AIR-TO-GROUND CCIP (BOMB & ROCKET SIMULATION)
             # =========================================================
@@ -6120,7 +6160,7 @@ class ESPOverlay(QOpenGLWidget):
             # ========================================================
             # 🔎 PICTURE-IN-PICTURE (PiP) SNIPER SCOPE RENDERER
             # ========================================================
-            if ENABLE_SNIPER_MODE and (not my_is_air) and active_sniper_data:
+            if ENABLE_SNIPER_MODE and (not my_is_air) and my_unit and my_pos and active_sniper_data:
                 try:
                     if float(active_sniper_data.get('distance', 0.0) or 0.0) < SNIPER_MIN_RANGE:
                         raise ValueError("sniper_min_range_skip")
@@ -6152,9 +6192,16 @@ class ESPOverlay(QOpenGLWidget):
                     
                     # ใช้ RGB path เดิมของ mss สำหรับ PiP sniper เพราะ BGRA/ARGB32 ทำสีเพี้ยนบนเครื่องนี้
                     raw_rgb = img.rgb
-                    if SNIPER_REJECT_WHITE_CAPTURE and _is_probably_white_capture(raw_rgb, img.width, img.height):
-                        raise ValueError("sniper_white_capture_skip")
-                    qimg = QImage(raw_rgb, img.width, img.height, img.width * 3, QImage.Format_RGB888).copy()
+                    is_white = SNIPER_REJECT_WHITE_CAPTURE and _is_probably_white_capture(raw_rgb, img.width, img.height)
+                    if not is_white:
+                        self._last_sniper_qimg = QImage(raw_rgb, img.width, img.height, img.width * 3, QImage.Format_RGB888).copy()
+
+                    qimg = getattr(self, '_last_sniper_qimg', None)
+                    if qimg is None:
+                        if is_white:
+                            raise ValueError("sniper_white_capture_skip")
+                        qimg = QImage(raw_rgb, img.width, img.height, img.width * 3, QImage.Format_RGB888).copy()
+                        self._last_sniper_qimg = qimg
                     
                     # 3. วาดภาพซูมลงมุมซ้ายบน
                     painter.drawImage(QRect(SNIPER_POS_X, SNIPER_POS_Y, SNIPER_WINDOW_SIZE, SNIPER_WINDOW_SIZE), qimg)

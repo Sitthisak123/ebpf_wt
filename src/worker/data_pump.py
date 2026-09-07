@@ -292,12 +292,17 @@ class DataPumpWorker(QThread):
         # --- 1. CGame Base ---
         cgame_base = get_cgame_base(self.scanner, self.base_address)
         if cgame_base == 0:
+            self.profile_cache.clear()
+            self.active_targets.clear()
+            self.last_cgame_base = 0
+            self.last_my_unit = 0
+            snap.is_valid = False
             return snap
 
         if cgame_base != self.last_cgame_base:
             self.last_cgame_base = cgame_base
-            self.profile_cache = {}
-            self.active_targets = {}
+            self.profile_cache.clear()
+            self.active_targets.clear()
         snap.cgame_base = cgame_base
 
         # --- 2. View Matrix ---
@@ -331,11 +336,21 @@ class DataPumpWorker(QThread):
         my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
         snap.my_pos = my_pos
 
-        # Cache reset only when my_unit changes between two non-zero units
-        if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
-            self.profile_cache = {}
-            self.active_targets = {}
+        # 🛡️ Match / Vehicle Gate: หากไม่มีตัวรถของตนเอง หรือไม่มีเป้าหมายในฉาก (Loading Screen, Hangar, Spectator)
+        # ให้ล้างแคชเป้าหมายทิ้งทันที และไม่ส่งเป้าหมายหลอกที่ค้างอยู่เด็ดขาด
+        if (not my_unit) or (not my_pos) or (len(all_units_data) == 0):
+            self.profile_cache.clear()
+            self.active_targets.clear()
+            self.last_my_unit = 0
+            snap.all_unit_ptrs = set()
+            snap.valid_targets = []
+            snap.is_valid = False
+            return snap
 
+        # Cache reset on my_unit change
+        if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
+            self.profile_cache.clear()
+            self.active_targets.clear()
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
         elif my_unit and not self.last_my_unit:
@@ -657,17 +672,21 @@ class DataPumpWorker(QThread):
 
             valid_targets.append(t_snap)
 
-        # Anti-blink tracking: preserve targets across momentary frame dropouts (250ms grace)
+        # Anti-blink tracking: preserve targets across momentary frame dropouts (80ms grace)
         now_valid_ptrs = {t.u_ptr for t in valid_targets}
         for t in valid_targets:
             self.active_targets[t.u_ptr] = {"snapshot": t, "last_seen": now}
 
-        for u_ptr, trk in list(self.active_targets.items()):
-            if u_ptr not in now_valid_ptrs:
-                if (now - trk["last_seen"]) <= 0.25:
-                    valid_targets.append(trk["snapshot"])
-                else:
-                    del self.active_targets[u_ptr]
+        if now_valid_ptrs:
+            for u_ptr, trk in list(self.active_targets.items()):
+                if u_ptr not in now_valid_ptrs:
+                    # 80ms grace (approx 4-6 frames) to bridge temporary memory read collision
+                    if (now - trk["last_seen"]) <= 0.08:
+                        valid_targets.append(trk["snapshot"])
+                    else:
+                        del self.active_targets[u_ptr]
+        else:
+            self.active_targets.clear()
 
         # Clean profile cache (5-second grace period)
         for ptr in list(self.profile_cache.keys()):
