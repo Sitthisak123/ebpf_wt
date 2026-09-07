@@ -73,8 +73,8 @@ OFF_GUID_TRACKING   = 0x51        # guidance + this → isTracking byte
 OFF_GUID_TARGET_ID  = 0x8C        # guidance + this → target unit id (i16)
 
 OFF_GROUND_UNITS    = (0x358, False)
-OFF_GROUND_MOVEMENT = 0x1118
-OFF_GROUND_VEL      = 0x00FC
+OFF_GROUND_MOVEMENT = 0x0D30
+OFF_GROUND_VEL      = 0x0068
 OFF_GROUND_OMEGA    = 0
 FILTER_ZERO_POS_UNITS = True
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก layout_old_guess Persistence ล่าสุด)
@@ -451,7 +451,7 @@ VELOCITY_PROFILES = {
             "label": "GROUND_PRIMARY",
             "mov_off": lambda: OFF_GROUND_MOVEMENT,
             "vel_off": lambda: OFF_GROUND_VEL,
-            "fmt": "fff",
+            "fmt": "ddd",
             "max_speed": 500.0,
             "shuffle": (0, 1, 2),
         },
@@ -1459,6 +1459,16 @@ def get_my_air_velocity(scanner, my_unit_ptr):
 
 def get_ground_velocity(scanner, u_ptr):
     try:
+        # 🌟 1. Fast Path: Read Move Pointer (0x0D30) -> Velocity (0x0068 as double <ddd>)
+        mov_raw = scanner.read_mem(u_ptr + OFF_GROUND_MOVEMENT, 8)
+        if mov_raw:
+            mov_ptr = struct.unpack("<Q", mov_raw)[0]
+            if is_valid_ptr(mov_ptr):
+                vel_raw = scanner.read_mem(mov_ptr + OFF_GROUND_VEL, 24)
+                if vel_raw and len(vel_raw) == 24:
+                    vx, vy, vz = struct.unpack("<ddd", vel_raw)
+                    if all(math.isfinite(v) for v in (vx, vy, vz)) and all(abs(v) < 500.0 for v in (vx, vy, vz)):
+                        return (vx, vy, vz)
         return _read_velocity_by_profile(scanner, u_ptr, "ground")
     except Exception as e:
         dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=GROUND | error={e}", force=False)
