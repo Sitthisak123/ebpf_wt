@@ -644,11 +644,12 @@ class DataPumpWorker(QThread):
                 pass
 
             # Pre-fetch barrel data (ground targets only within 3500m combat distance, no log spam)
-            if t_snap.box_data and (not resolved_is_air) and dist_to_me <= 3500.0:
+            rot_for_barrel = t_snap.rot or (t_snap.box_data[3] if t_snap.box_data and len(t_snap.box_data) > 3 else None)
+            if rot_for_barrel and (not resolved_is_air) and dist_to_me <= 3500.0:
                 try:
                     t_snap.barrel_data = get_weapon_barrel(
                         self.scanner, u_ptr,
-                        t_snap.pos, t_snap.box_data[3],
+                        t_snap.pos, rot_for_barrel,
                         should_log=False,
                     )
                 except Exception:
