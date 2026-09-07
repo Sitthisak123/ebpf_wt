@@ -54,36 +54,16 @@ class VelocityStabilizer:
                 pos_vel = (dx / dt, dy / dt, dz / dt)
                 if not is_air:
                     prev_pos_filtered = prev_meta.get("pos_vel_filtered")
-                    raw_planar_pv = (pos_vel[0], 0.0, pos_vel[2])
-                    pos_history = list(prev_meta.get("pos_history") or [])
-                    pos_history.append(raw_planar_pv)
-                    if len(pos_history) > 3:
-                        pos_history.pop(0)
-
-                    if len(pos_history) == 1:
-                        fir_pos_vel = pos_history[0]
-                    elif len(pos_history) == 2:
-                        fir_pos_vel = (
-                            0.50 * pos_history[0][0] + 0.50 * pos_history[1][0],
-                            0.0,
-                            0.50 * pos_history[0][2] + 0.50 * pos_history[1][2],
-                        )
-                    else:
-                        # 3-tap binomial anti-aliasing filter: cancels 30Hz discrete physics tick beat wave!
-                        fir_pos_vel = (
-                            0.25 * pos_history[0][0] + 0.50 * pos_history[1][0] + 0.25 * pos_history[2][0],
-                            0.0,
-                            0.25 * pos_history[0][2] + 0.50 * pos_history[1][2] + 0.25 * pos_history[2][2],
-                        )
-
+                    # World-space ground lead uses X/Z as horizontal motion; Y is height and must stay zero.
+                    planar_pos_vel = (pos_vel[0], 0.0, pos_vel[2])
                     if prev_pos_filtered and len(prev_pos_filtered) == 3:
                         pos_vel = (
-                            (prev_pos_filtered[0] * 0.82) + (fir_pos_vel[0] * 0.18),
+                            (prev_pos_filtered[0] * 0.82) + (planar_pos_vel[0] * 0.18),
                             0.0,
-                            (prev_pos_filtered[2] * 0.82) + (fir_pos_vel[2] * 0.18),
+                            (prev_pos_filtered[2] * 0.82) + (planar_pos_vel[2] * 0.18),
                         )
                     else:
-                        pos_vel = fir_pos_vel
+                        pos_vel = planar_pos_vel
 
         chosen_vel = raw_vel
         source = "raw"
@@ -131,36 +111,15 @@ class VelocityStabilizer:
                     chosen_vel = pos_vel
                     source = "pos_ground_sticky"
 
-            idle_speed_enter = 0.22
-            idle_speed_exit = 0.38
-            stale_raw_idle_max = 2.0
-            prev_motion_state = prev_meta.get("ground_motion_state", "")
-            chosen_planar_mag = math.hypot(chosen_vel[0], chosen_vel[2])
-            pos_confirms_idle = (
-                pos_vel is not None
-                and pos_mag <= idle_speed_enter
-                and raw_mag <= stale_raw_idle_max
-            )
-            can_enter_idle = (
-                raw_mag <= idle_speed_enter
-                and (pos_vel is None or pos_mag <= idle_speed_enter)
-                and chosen_planar_mag <= idle_speed_enter
-            )
-            can_stay_idle = (
-                raw_mag <= idle_speed_exit
-                and (pos_vel is None or pos_mag <= idle_speed_exit)
-                and chosen_planar_mag <= idle_speed_exit
-            )
-            if pos_confirms_idle or can_enter_idle or (prev_motion_state == "idle" and can_stay_idle):
-                chosen_vel = (0.0, 0.0, 0.0)
-                source = "ground_idle"
-            else:
-                chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
+            # Ground lead solver should not react to height/slope noise as vertical motion.
+            chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
             chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
 
-            if prev_vel and len(prev_vel) == 3 and source != "ground_idle":
+            # Ground world velocity is derived from noisy local raw fields + short-frame position deltas.
+            # Smooth the final vector to prevent source flapping and visible jitter on moving vehicles.
+            if prev_vel and len(prev_vel) == 3:
                 prev_mag = math.sqrt(prev_vel[0]**2 + prev_vel[1]**2 + prev_vel[2]**2)
-                if prev_mag > 0.0 or raw_mag > idle_speed_exit or pos_mag > idle_speed_exit:
+                if prev_mag > 0.0 or raw_mag > 0.05 or pos_mag > 0.05:
                     smoothing = 0.84 if source.startswith("pos_") else 0.72
                     chosen_vel = tuple(
                         (prev_vel[i] * smoothing) + (chosen_vel[i] * (1.0 - smoothing))
@@ -169,9 +128,6 @@ class VelocityStabilizer:
                     chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
                     chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
                     source = f"{source}_smoothed"
-
-        if not is_air and source == "ground_idle":
-            pos_history = []
 
         self.velocity_cache[u_ptr] = {
             'time': curr_t,
@@ -183,15 +139,10 @@ class VelocityStabilizer:
             'raw_vel': raw_vel,
             'raw_mag': raw_mag,
             'pos_vel': pos_vel,
-            'pos_history': pos_history if (pos_vel and not is_air) else [],
-            'pos_vel_filtered': pos_vel if (pos_vel and not is_air and source != "ground_idle") else None,
+            'pos_vel_filtered': pos_vel if (pos_vel and not is_air) else None,
             'pos_mag': pos_mag,
             'chosen_vel': chosen_vel,
-            'ground_motion_state': (
-                "idle"
-                if ((not is_air) and source == "ground_idle")
-                else ("move" if not is_air else "")
-            ),
+            'ground_motion_state': "move" if not is_air else "",
         }
         return chosen_vel, raw_vel, pos_vel, source
 

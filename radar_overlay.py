@@ -2961,8 +2961,8 @@ class ESPOverlay(QOpenGLWidget):
             },
         )
         self._data_pump.new_frame.connect(self._on_worker_frame)
-        # 🚧 Worker ยังไม่เริ่มจนกว่า paintGL จะ migrate ไปใช้ snapshot (ปิดไว้ตาม commit 296c2e78 เพื่อความนิ่ง 100% ไร้ Jitter)
-        # self._data_pump.start()
+        # 🚀 Hybrid Lockstep: เริ่ม Background Worker เพื่อประมวลผลงานหนัก (Missile, BBox, Barrels, Profiles)
+        self._data_pump.start()
 
 
     def _fatal_shutdown(self, reason, detail=""):
@@ -3417,36 +3417,15 @@ class ESPOverlay(QOpenGLWidget):
                 if not is_air:
                     prev_pos_filtered = prev_meta.get("pos_vel_filtered")
                     # World-space ground lead uses X/Z as horizontal motion; Y is height and must stay zero.
-                    raw_planar_pv = (pos_vel[0], 0.0, pos_vel[2])
-                    pos_history = list(prev_meta.get("pos_history") or [])
-                    pos_history.append(raw_planar_pv)
-                    if len(pos_history) > 3:
-                        pos_history.pop(0)
-
-                    if len(pos_history) == 1:
-                        fir_pos_vel = pos_history[0]
-                    elif len(pos_history) == 2:
-                        fir_pos_vel = (
-                            0.50 * pos_history[0][0] + 0.50 * pos_history[1][0],
-                            0.0,
-                            0.50 * pos_history[0][2] + 0.50 * pos_history[1][2],
-                        )
-                    else:
-                        # 3-tap binomial anti-aliasing filter: cancels 30Hz discrete physics tick beat wave!
-                        fir_pos_vel = (
-                            0.25 * pos_history[0][0] + 0.50 * pos_history[1][0] + 0.25 * pos_history[2][0],
-                            0.0,
-                            0.25 * pos_history[0][2] + 0.50 * pos_history[1][2] + 0.25 * pos_history[2][2],
-                        )
-
+                    planar_pos_vel = (pos_vel[0], 0.0, pos_vel[2])
                     if prev_pos_filtered and len(prev_pos_filtered) == 3:
                         pos_vel = (
-                            (prev_pos_filtered[0] * 0.82) + (fir_pos_vel[0] * 0.18),
+                            (prev_pos_filtered[0] * 0.82) + (planar_pos_vel[0] * 0.18),
                             0.0,
-                            (prev_pos_filtered[2] * 0.82) + (fir_pos_vel[2] * 0.18),
+                            (prev_pos_filtered[2] * 0.82) + (planar_pos_vel[2] * 0.18),
                         )
                     else:
-                        pos_vel = fir_pos_vel
+                        pos_vel = planar_pos_vel
 
         chosen_vel = raw_vel
         source = "raw"
@@ -3510,39 +3489,15 @@ class ESPOverlay(QOpenGLWidget):
                     chosen_vel = pos_vel
                     source = "pos_ground_sticky"
 
-            # Ground units often have tiny noisy vectors around zero.
-            idle_speed_enter = 0.22  # m/s (~0.8 km/h)
-            idle_speed_exit = 0.38
-            stale_raw_idle_max = 2.0  # m/s; ground mem velocity can hold stale low-speed values after stopping.
-            prev_motion_state = prev_meta.get("ground_motion_state", "")
-            idle_speed = idle_speed_exit if prev_motion_state == "idle" else idle_speed_enter
-            chosen_planar_mag = math.hypot(chosen_vel[0], chosen_vel[2])
-            pos_confirms_idle = (
-                pos_vel is not None
-                and pos_mag <= idle_speed_enter
-                and raw_mag <= stale_raw_idle_max
-            )
-            can_enter_idle = (
-                raw_mag <= idle_speed_enter
-                and (pos_vel is None or pos_mag <= idle_speed_enter)
-                and chosen_planar_mag <= idle_speed_enter
-            )
-            can_stay_idle = (
-                raw_mag <= idle_speed_exit
-                and (pos_vel is None or pos_mag <= idle_speed_exit)
-                and chosen_planar_mag <= idle_speed_exit
-            )
-            if pos_confirms_idle or can_enter_idle or (prev_motion_state == "idle" and can_stay_idle):
-                chosen_vel = (0.0, 0.0, 0.0)
-                source = "ground_idle"
-            else:
-                # Ground lead solver should not react to height/slope noise as vertical motion.
-                chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
+            # Ground lead solver should not react to height/slope noise as vertical motion.
+            chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
             chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
 
-            if prev_vel and len(prev_vel) == 3 and source != "ground_idle":
+            # Ground world velocity is derived from noisy local raw fields + short-frame position deltas.
+            # Smooth the final vector to prevent source flapping and visible jitter on moving vehicles.
+            if prev_vel and len(prev_vel) == 3:
                 prev_mag = math.sqrt(prev_vel[0]**2 + prev_vel[1]**2 + prev_vel[2]**2)
-                if prev_mag > 0.0 or raw_mag > idle_speed_exit or pos_mag > idle_speed_exit:
+                if prev_mag > 0.0 or raw_mag > 0.05 or pos_mag > 0.05:
                     smoothing = 0.84 if source.startswith("pos_") else 0.72
                     chosen_vel = tuple(
                         (prev_vel[i] * smoothing) + (chosen_vel[i] * (1.0 - smoothing))
@@ -3551,9 +3506,6 @@ class ESPOverlay(QOpenGLWidget):
                     chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
                     chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
                     source = f"{source}_smoothed"
-
-        if not is_air and source == "ground_idle":
-            pos_history = []
 
         self.velocity_cache[u_ptr] = {
             'time': curr_t,
@@ -3565,15 +3517,10 @@ class ESPOverlay(QOpenGLWidget):
             'raw_vel': raw_vel,
             'raw_mag': raw_mag,
             'pos_vel': pos_vel,
-            'pos_history': pos_history if (pos_vel and not is_air) else [],
-            'pos_vel_filtered': pos_vel if (pos_vel and not is_air and source != "ground_idle") else None,
+            'pos_vel_filtered': pos_vel if (pos_vel and not is_air) else None,
             'pos_mag': pos_mag,
             'chosen_vel': chosen_vel,
-            'ground_motion_state': (
-                "idle"
-                if ((not is_air) and source == "ground_idle")
-                else ("move" if not is_air else "")
-            ),
+            'ground_motion_state': "move" if not is_air else "",
         }
 
         if source not in ("raw", "ground_idle") and u_ptr != 0:
@@ -3812,6 +3759,15 @@ class ESPOverlay(QOpenGLWidget):
                 my_box_data = snapshot.my_box_data
                 my_barrel_data = snapshot.my_barrel_data
                 my_dynamic_geometry = snapshot.my_dynamic_geometry
+                if my_box_data and my_pos:
+                    b_orig = my_box_data[0]
+                    my_box_data = (my_pos, my_box_data[1], my_box_data[2], my_box_data[3])
+                    if my_barrel_data and b_orig:
+                        b_diff = (my_pos[0] - b_orig[0], my_pos[1] - b_orig[1], my_pos[2] - b_orig[2])
+                        my_barrel_data = (
+                            (my_barrel_data[0][0] + b_diff[0], my_barrel_data[0][1] + b_diff[1], my_barrel_data[0][2] + b_diff[2]),
+                            (my_barrel_data[1][0] + b_diff[0], my_barrel_data[1][1] + b_diff[1], my_barrel_data[1][2] + b_diff[2]),
+                        )
                 if my_barrel_data:
                     my_ground_shot_origin = my_barrel_data[1] or my_barrel_data[0] or my_pos
                     if SHOW_MY_UNIT_BOX:
@@ -4055,6 +4011,8 @@ class ESPOverlay(QOpenGLWidget):
 
             # 🎯 เลือกเป้าหมายจากลิสต์ที่มองเห็น โดยล็อกตัวที่ใกล้ crosshair ที่สุดเสมอ
             visible_targets = []
+            live_pos_map = {}
+            pre_vel_map = {}
             for (
                 u_ptr,
                 raw_name,
@@ -4071,6 +4029,22 @@ class ESPOverlay(QOpenGLWidget):
                 pre_vel,
                 is_recon_drone,
             ) in valid_targets:
+                # 🎯 Hybrid Lockstep: อ่าน Live Position สดๆ (0.002ms) เพื่อความนิ่ง 100% ไร้ Jitter
+                live_pos = get_unit_pos(self.scanner, u_ptr)
+                if live_pos:
+                    pos = live_pos
+                live_pos_map[u_ptr] = pos
+
+                if my_pos and pos:
+                    dx = pos[0] - my_pos[0]
+                    dy = pos[1] - my_pos[1]
+                    dz = pos[2] - my_pos[2]
+                    dist_to_me = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+                if not is_air_target:
+                    pre_vel = self._stabilize_velocity(u_ptr, False, pos, curr_t)
+                    pre_vel_map[u_ptr] = pre_vel
+
                 select_screen = None
                 select_box_rect = None
                 select_fire_origin = my_ground_shot_origin if my_ground_shot_origin else my_pos
@@ -4081,9 +4055,13 @@ class ESPOverlay(QOpenGLWidget):
                     # Ground selection: compare by leadmark-like point, not raw unit center.
                     try:
                         t_snap = target_snapshot_map.get(u_ptr)
-                        if t_snap:
-                            select_box_data = t_snap.box_data
+                        if t_snap and t_snap.box_data:
+                            _, bmin, bmax, rot = t_snap.box_data
+                            select_box_data = (pos, bmin, bmax, rot)
                             _select_box_source = t_snap.dynamic_box_source or "unit_bbox"
+                        elif t_snap:
+                            select_box_data = None
+                            _select_box_source = ""
                         else:
                             select_box_data, _select_box_source = _get_dynamic_target_box_data(self.scanner, u_ptr, False)
                         select_box_rect = _project_target_box_rect(
@@ -4225,10 +4203,21 @@ class ESPOverlay(QOpenGLWidget):
             ) in valid_targets:
                 seen_targets_this_frame.add(u_ptr)
                 try:
+                    # 🎯 Hybrid Lockstep: ใช้ Live Position และ Pre-calculated Velocity ที่คำนวณสดในเฟรมนี้
+                    pos = live_pos_map.get(u_ptr, pos)
+                    pre_vel = pre_vel_map.get(u_ptr, pre_vel)
+                    if my_pos and pos:
+                        dx, dy, dz = pos[0] - my_pos[0], pos[1] - my_pos[1], pos[2] - my_pos[2]
+                        dist_to_me = math.sqrt(dx * dx + dy * dy + dz * dz)
+
                     t_snap = target_snapshot_map.get(u_ptr)
-                    if t_snap:
-                        box_data = t_snap.box_data
+                    if t_snap and t_snap.box_data:
+                        _, bmin, bmax, rot = t_snap.box_data
+                        box_data = (pos, bmin, bmax, rot)
                         dynamic_box_source = t_snap.dynamic_box_source or "unit_bbox"
+                    elif t_snap:
+                        box_data = None
+                        dynamic_box_source = ""
                     else:
                         box_data, dynamic_box_source = _get_dynamic_target_box_data(self.scanner, u_ptr, is_air_target)
                     pos = box_data[0] if box_data else pos

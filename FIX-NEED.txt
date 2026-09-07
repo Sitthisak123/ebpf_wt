@@ -1,4 +1,7 @@
+@add
 - increase Thread warning angle when My_Unit is Air and Thread is SPAA/Ground
+
+@Fix
 - add air ghost filter [if air_unit_vel > 0 and pos == prev_pos]
 - target lock cuase ground Hitpoint simulation
 - sniper Mode: window are blinking
