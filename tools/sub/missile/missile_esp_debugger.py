@@ -17,14 +17,16 @@ import time
 import struct
 import math
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address
 from src.utils.mul import (
     get_cgame_base, get_view_matrix, get_local_team, get_unit_pos,
     world_to_screen, GHIDRA_BASE
 )
-from tools.missile_starned_dumper import brute_force_entries as dumper_brute_force, rp
+from tools.sub.missile.missile_starned_dumper import brute_force_entries as dumper_brute_force, rp
 
 def main():
     print("🔍 MISSILE ESP DEBUGGER & DIAGNOSTIC TOOL")

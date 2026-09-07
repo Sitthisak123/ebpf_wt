@@ -16,7 +16,7 @@ def analyze(csv_file_path=None):
     path = csv_file_path or CSV_PATH
     if not os.path.isfile(path):
         print(f"❌ ไม่พบไฟล์ log: {path}")
-        print("กรุณารัน 'tools/ground_vel_debugger.py' ก่อนเพื่อบันทึกข้อมูล")
+        print("กรุณารัน 'tools/sub/vel/ground_vel_debugger.py' ก่อนเพื่อบันทึกข้อมูล")
         return
 
     print("=" * 70)
