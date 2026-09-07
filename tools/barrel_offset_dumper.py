@@ -10,7 +10,16 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets, _get_binary_fingerprint, _can_overwrite_persistence
+from src.utils.scanner import (
+    MemoryScanner,
+    get_game_pid,
+    get_game_base_address,
+    init_dynamic_offsets,
+    _get_binary_fingerprint,
+    _can_overwrite_persistence,
+    BARREL_PERSISTENCE_PATH,
+)
+import src.utils.mul as mul
 
 def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bone_idx, bone_name, confidence=0.95):
     """บันทึกค่า Barrel Offset ลง persistence พร้อม build fingerprint และนโยบาย Rate Overwrite ตาม Confidence"""
@@ -58,7 +67,7 @@ def dump_barrel_offset(write_persistence=True):
         print("[-] ไม่สามารถดึง CGame Base ได้")
         return None
 
-    my_unit = mul.get_my_unit(scanner, base)
+    my_unit, _ = mul.get_local_team(scanner, base)
     if not my_unit:
         print("[-] ไม่พบ My Unit ในหน่วยความจำ")
         return None
@@ -101,7 +110,7 @@ def dump_barrel_offset(write_persistence=True):
                         score = -100
 
                     if score > best_score:
-                        for wtm_off in [0x00, 0x10]:
+                        for wtm_off in [0x00]:
                             wtm_base_raw = scanner.read_mem(tree_ptr + wtm_off, 8)
                             if not wtm_base_raw: continue
                             w_ptr = struct.unpack("<Q", wtm_base_raw)[0]

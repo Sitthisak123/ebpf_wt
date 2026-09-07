@@ -248,6 +248,16 @@ COLOR_CALIBRATION_HIT           = (0, 150, 255, 255)
 COLOR_CLASS_ICON_GROUND         = (255, 215, 96, 235)
 COLOR_CLASS_ICON_AIR            = (120, 220, 255, 235)
 
+# 🩺 X-RAY INTERNAL COMPONENT COLORS
+COLOR_XRAY_AMMO                 = (255, 60, 40, 230)     # 🔴 สีแดงสดสำหรับคลังกระสุน (One-Shot Kill)
+COLOR_XRAY_GUNNER               = (0, 230, 255, 240)     # 🔵 สีฟ้าสว่างสำหรับพลปืน (Gunner)
+COLOR_XRAY_DRIVER               = (40, 255, 120, 240)    # 🟢 สีเขียวนีออนสำหรับพลขับ (Driver)
+COLOR_XRAY_COMMANDER            = (220, 110, 255, 230)   # 🟣 สีม่วงสำหรับผบ.รถ (Commander)
+COLOR_XRAY_LOADER               = (180, 180, 255, 230)   # ⚪ สีฟ้าอ่อนสำหรับพลโหลด (Loader)
+COLOR_XRAY_BREECH               = (255, 235, 40, 240)    # 🟡 สีเหลืองสำหรับท้ายรังเพลิง (Breech)
+COLOR_XRAY_ENGINE               = (255, 140, 30, 230)    # 🟠 สีส้มเพลิงสำหรับเครื่องยนต์ (Engine)
+COLOR_XRAY_TRANS                = (255, 180, 80, 220)    # 🟠 สีส้มอ่อนสำหรับระบบส่งกำลัง (Transmission)
+
 # 🚀 MISSILE WARNING COLORS
 COLOR_MISSILE_MARKER            = (255, 40, 40, 255)     # Red diamond marker
 COLOR_MISSILE_MARKER_UNGUIDED   = (255, 160, 40, 200)    # Orange for unguided
@@ -378,10 +388,30 @@ ESP_POINT_ONLY_MODE = False             # เปลี่ยนเป็น Fals
 GROUND_USE_SIMPLE_SCREEN_BOX = False    # เปลี่ยนเป็น False เพื่อปิดโหมดกล่อง 2D แบนๆ
 AIR_USE_SIMPLE_SCREEN_BOX = False       # เปลี่ยนเป็น False
 
+# ==============================================================================
+# 📦 ESP BOX & VISUALIZATION MODE
+# ==============================================================================
+# โหมดการแสดงผล Bounding Box และชิ้นส่วนภายใน X-Ray:
+# "2D"   : วาด 2D Bounding Box (กรอบสี่เหลี่ยมระนาบหน้าจอ 2D Box)
+# "3D"   : วาด 3D Bounding Box (กล่องทรงลูกบาศก์ 3 มิติหมุนตามตัวรถ) [ค่าเริ่มต้น]
+# "XRAY" : วาดเฉพาะโมดูลภายใน X-Ray (Ammo, Crew, Engine, Breech)
+# "ALL"  : แสดงผลทั้ง 3D Box และโมดูล X-Ray ควบคู่กัน
+ESP_BOX_MODE = "3D"  # ตัวเลือก: "2D", "3D", "XRAY", "ALL"
+
+# ตัวเลือกปรับแต่ง X-Ray ESP เพิ่มเติม
+SHOW_XRAY_ESP               = True     # สวิตช์หลักเปิด/ปิด X-Ray (มีผลเมื่อ ESP_BOX_MODE เป็น "XRAY" หรือ "ALL")
+XRAY_MAX_DISTANCE           = 1500.0   # ระยะหวังผลสูงสุดที่จะเรนเดอร์ X-Ray (เมตร) เพื่อรักษา 60 FPS
+XRAY_ONLY_FOCUSED_TARGET    = False    # True = วาด X-Ray เฉพาะเป้าหมายใกล้สุดหรือเป้าหมายที่กำลังเล็ง, False = วาดทุกคันในระยะ
+XRAY_SHOW_CREW              = True     # แสดงพลประจำรถ (Driver, Gunner, Commander, Loader)
+XRAY_SHOW_AMMO              = True     # แสดงคลังกระสุน (Ammo Racks)
+XRAY_SHOW_ENGINE            = True     # แสดงเครื่องยนต์และระบบส่งกำลัง (Engine / Transmission)
+XRAY_SHOW_BREECH            = True     # แสดงท้ายรังเพลิงปืน (Cannon Breech)
+
 DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
-SHOW_MY_UNIT_BOX = False
+SHOW_MY_UNIT_BOX = True                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
+SHOW_MY_UNIT_XRAY = True                # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง
 SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
@@ -3770,7 +3800,7 @@ class ESPOverlay(QOpenGLWidget):
                     my_ground_shot_origin = my_pos
                     my_dynamic_geometry = None
 
-            if SHOW_MY_UNIT_BOX and my_unit and my_pos:
+            if (SHOW_MY_UNIT_BOX or SHOW_MY_UNIT_XRAY) and my_unit and my_pos:
                 try:
                     if my_box_data:
                         my_bmin = my_box_data[1]
@@ -3779,44 +3809,119 @@ class ESPOverlay(QOpenGLWidget):
                     else:
                         my_bmin, my_bmax = get_unit_bbox(self.scanner, my_unit)
                         my_rot = get_unit_rotation(self.scanner, my_unit)
-                    if my_bmin and my_bmax and my_rot:
-                        
-                        my_w = abs(my_bmax[0] - my_bmin[0])
-                        my_h = abs(my_bmax[1] - my_bmin[1])
-                        my_l = abs(my_bmax[2] - my_bmin[2])
-                        my_c_bmin = [-my_w/2.0, my_bmin[1], -my_l/2.0]
-                        my_c_bmax = [ my_w/2.0, my_bmax[1],  my_l/2.0]
+                    if my_rot:
+                        # 📦 2D / 3D Bounding Box Rendering on my_unit
+                        if SHOW_MY_UNIT_BOX and (ESP_BOX_MODE in ("2D", "3D", "ALL")) and my_bmin and my_bmax:
+                            my_w = abs(my_bmax[0] - my_bmin[0])
+                            my_h = abs(my_bmax[1] - my_bmin[1])
+                            my_l = abs(my_bmax[2] - my_bmin[2])
+                            my_c_bmin = [-my_w/2.0, my_bmin[1], -my_l/2.0]
+                            my_c_bmax = [ my_w/2.0, my_bmax[1],  my_l/2.0]
 
-                        my_corners = [
-                            (my_c_bmin[0], my_c_bmin[1], my_c_bmin[2]), (my_c_bmin[0], my_c_bmin[1], my_c_bmax[2]),
-                            (my_c_bmin[0], my_c_bmax[1], my_c_bmin[2]), (my_c_bmin[0], my_c_bmax[1], my_c_bmax[2]),
-                            (my_c_bmax[0], my_c_bmin[1], my_c_bmin[2]), (my_c_bmax[0], my_c_bmin[1], my_c_bmax[2]),
-                            (my_c_bmax[0], my_c_bmax[1], my_c_bmin[2]), (my_c_bmax[0], my_c_bmax[1], my_c_bmax[2]),
-                        ]
-                        my_pts = []
-                        m_ax, m_ay, m_az = get_local_axes_from_rotation(my_rot, False)
-                        for c in my_corners:
-                            world_x = my_pos[0] + (c[0] * m_ax[0] + c[1] * m_ay[0] + c[2] * m_az[0])
-                            world_y = my_pos[1] + (c[0] * m_ax[1] + c[1] * m_ay[1] + c[2] * m_az[1])
-                            world_z = my_pos[2] + (c[0] * m_ax[2] + c[1] * m_ay[2] + c[2] * m_az[2])
-
-                            scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
-                            scr_pts = _screen_int_tuple(scr[0], scr[1]) if scr and scr[2] > 0 else None
-                            if scr_pts:
-                                my_pts.append(scr_pts)
-                            else:
-                                my_pts.append(None)
-                        if my_pts.count(None) == 0:
-                            my_edges = [
-                                (0, 1), (0, 2), (1, 3), (2, 3),
-                                (4, 5), (4, 6), (5, 7), (6, 7),
-                                (0, 4), (1, 5), (2, 6), (3, 7),
+                            my_corners = [
+                                (my_c_bmin[0], my_c_bmin[1], my_c_bmin[2]), (my_c_bmin[0], my_c_bmin[1], my_c_bmax[2]),
+                                (my_c_bmin[0], my_c_bmax[1], my_c_bmin[2]), (my_c_bmin[0], my_c_bmax[1], my_c_bmax[2]),
+                                (my_c_bmax[0], my_c_bmin[1], my_c_bmin[2]), (my_c_bmax[0], my_c_bmin[1], my_c_bmax[2]),
+                                (my_c_bmax[0], my_c_bmax[1], my_c_bmin[2]), (my_c_bmax[0], my_c_bmax[1], my_c_bmax[2]),
                             ]
-                            painter.setPen(QPen(QColor(*COLOR_BOX_MY_UNIT), 1.5))
-                            for p1, p2 in my_edges:
-                                line_pts = _screen_int_tuple(my_pts[p1][0], my_pts[p1][1], my_pts[p2][0], my_pts[p2][1])
-                                if line_pts:
-                                    painter.drawLine(*line_pts)
+                            my_pts = []
+                            m_ax, m_ay, m_az = get_local_axes_from_rotation(my_rot, False)
+                            for c in my_corners:
+                                world_x = my_pos[0] + (c[0] * m_ax[0] + c[1] * m_ay[0] + c[2] * m_az[0])
+                                world_y = my_pos[1] + (c[0] * m_ax[1] + c[1] * m_ay[1] + c[2] * m_az[1])
+                                world_z = my_pos[2] + (c[0] * m_ax[2] + c[1] * m_ay[2] + c[2] * m_az[2])
+
+                                scr = world_to_screen(view_matrix, world_x, world_y, world_z, self.screen_width, self.screen_height)
+                                scr_pts = _screen_int_tuple(scr[0], scr[1]) if scr and scr[2] > 0 else None
+                                if scr_pts:
+                                    my_pts.append(scr_pts)
+                                else:
+                                    my_pts.append(None)
+                            if my_pts.count(None) == 0:
+                                if ESP_BOX_MODE in ("2D", "ALL"):
+                                    xs = [p[0] for p in my_pts]
+                                    ys = [p[1] for p in my_pts]
+                                    min_x, max_x = min(xs), max(xs)
+                                    min_y, max_y = min(ys), max(ys)
+                                    painter.setPen(QPen(QColor(*COLOR_BOX_MY_UNIT), 1.5))
+                                    painter.setBrush(Qt.NoBrush)
+                                    painter.drawRect(min_x, min_y, max_x - min_x, max_y - min_y)
+
+                                if ESP_BOX_MODE in ("3D", "ALL"):
+                                    my_edges = [
+                                        (0, 1), (0, 2), (1, 3), (2, 3),
+                                        (4, 5), (4, 6), (5, 7), (6, 7),
+                                        (0, 4), (1, 5), (2, 6), (3, 7),
+                                    ]
+                                    painter.setPen(QPen(QColor(*COLOR_BOX_MY_UNIT), 1.5))
+                                    for p1, p2 in my_edges:
+                                        line_pts = _screen_int_tuple(my_pts[p1][0], my_pts[p1][1], my_pts[p2][0], my_pts[p2][1])
+                                        if line_pts:
+                                            painter.drawLine(*line_pts)
+
+                        # 🩺 X-Ray Internal Component ESP on my_unit (Crew, Ammo, Engine, Breech)
+                        if SHOW_MY_UNIT_XRAY and (ESP_BOX_MODE in ("XRAY", "ALL") or SHOW_XRAY_ESP):
+                            my_xray_components = get_unit_xray_components(self.scanner, my_unit, my_pos, my_rot)
+                            if my_xray_components:
+                                ammo_labeled_count = 0
+                                xray_font = QFont("Arial", 8, QFont.Bold)
+                                for comp in my_xray_components:
+                                    cat = comp["category"]
+                                    if cat == "AMMO" and not XRAY_SHOW_AMMO: continue
+                                    if cat in ("GUNNER", "DRIVER", "COMMANDER", "LOADER") and not XRAY_SHOW_CREW: continue
+                                    if cat in ("ENGINE", "TRANS", "RADIATOR") and not XRAY_SHOW_ENGINE: continue
+                                    if cat == "BREECH" and not XRAY_SHOW_BREECH: continue
+
+                                    wx, wy, wz = comp["world_pos"]
+                                    c_scr = world_to_screen(view_matrix, wx, wy, wz, self.screen_width, self.screen_height)
+                                    if c_scr and c_scr[2] > 0:
+                                        cx, cy = int(c_scr[0]), int(c_scr[1])
+                                        if 0 <= cx <= self.screen_width and 0 <= cy <= self.screen_height:
+                                            if cat == "AMMO":
+                                                comp_color = QColor(*COLOR_XRAY_AMMO)
+                                                painter.setPen(QPen(comp_color, 1.2))
+                                                painter.setBrush(QBrush(comp_color))
+                                                painter.drawPolygon(QPolygon([
+                                                    QPoint(cx, cy - 3),
+                                                    QPoint(cx + 3, cy),
+                                                    QPoint(cx, cy + 3),
+                                                    QPoint(cx - 3, cy)
+                                                ]))
+                                                if ammo_labeled_count < 2:
+                                                    painter.setFont(xray_font)
+                                                    painter.drawText(cx + 5, cy + 3, "[AMMO]")
+                                                ammo_labeled_count += 1
+                                            else:
+                                                if cat == "GUNNER":
+                                                    comp_color = QColor(*COLOR_XRAY_GUNNER)
+                                                    label = "[GUNNER]"
+                                                elif cat == "DRIVER":
+                                                    comp_color = QColor(*COLOR_XRAY_DRIVER)
+                                                    label = "[DRIVER]"
+                                                elif cat == "COMMANDER":
+                                                    comp_color = QColor(*COLOR_XRAY_COMMANDER)
+                                                    label = "[COM]"
+                                                elif cat == "LOADER":
+                                                    comp_color = QColor(*COLOR_XRAY_LOADER)
+                                                    label = "[LOADER]"
+                                                elif cat == "BREECH":
+                                                    comp_color = QColor(*COLOR_XRAY_BREECH)
+                                                    label = "[BREECH]"
+                                                elif cat == "ENGINE":
+                                                    comp_color = QColor(*COLOR_XRAY_ENGINE)
+                                                    label = "[ENGINE]"
+                                                elif cat == "TRANS":
+                                                    comp_color = QColor(*COLOR_XRAY_TRANS)
+                                                    label = "[TRANS]"
+                                                else:
+                                                    comp_color = QColor(255, 255, 255, 200)
+                                                    label = f"[{cat}]"
+
+                                                painter.setPen(QPen(comp_color, 1.5))
+                                                painter.setBrush(QBrush(comp_color))
+                                                painter.drawRect(cx - 3, cy - 3, 6, 6)
+                                                painter.setFont(xray_font)
+                                                painter.drawText(cx + 6, cy + 4, label)
                 except Exception:
                     pass
 
@@ -4197,15 +4302,28 @@ class ESPOverlay(QOpenGLWidget):
 
                     is_invul_active = is_invul or (invul_timer > 0.05)
 
+                    target_rot = None
                     if t_snap and t_snap.box_data:
-                        _, bmin, bmax, rot = t_snap.box_data
-                        box_data = (pos, bmin, bmax, rot)
+                        _, bmin, bmax, target_rot = t_snap.box_data
+                        box_data = (pos, bmin, bmax, target_rot)
                         dynamic_box_source = t_snap.dynamic_box_source or "unit_bbox"
+                    elif t_snap and t_snap.rot:
+                        target_rot = t_snap.rot
+                        bmin = t_snap.bmin
+                        bmax = t_snap.bmax
+                        box_data = (pos, bmin, bmax, target_rot) if (bmin and bmax) else None
+                        dynamic_box_source = t_snap.dynamic_box_source or ""
                     elif t_snap:
                         box_data = None
                         dynamic_box_source = ""
+                        target_rot = get_unit_rotation(self.scanner, u_ptr)
                     else:
                         box_data, dynamic_box_source = _get_dynamic_target_box_data(self.scanner, u_ptr, is_air_target)
+                        if box_data and len(box_data) > 3:
+                            target_rot = box_data[3]
+                        else:
+                            target_rot = get_unit_rotation(self.scanner, u_ptr)
+                    rot = target_rot
                     pos = box_data[0] if box_data else pos
                     if not pos: continue
                     
@@ -4224,10 +4342,10 @@ class ESPOverlay(QOpenGLWidget):
                     # 💥 เพิ่มตัวแปรสำหรับวาดเส้นปืน (Barrel) และแจ้งเตือนภัยคุกคาม
                     barrel_base_2d = None
                     barrel_data = None
-                    if t_snap:
+                    if t_snap and t_snap.barrel_data:
                         barrel_data = t_snap.barrel_data
-                    elif box_data and (not is_air_target):
-                        barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, box_data[3], should_log=False)
+                    elif target_rot and (not is_air_target):
+                        barrel_data = get_weapon_barrel(self.scanner, u_ptr, pos, target_rot, should_log=False)
                         
                     has_valid_box = False
                     avg_x, avg_y, min_y = 0, 0, 0
@@ -4356,13 +4474,24 @@ class ESPOverlay(QOpenGLWidget):
                                         box_color = QColor(*COLOR_BOX_TARGET)
                                         
                                     painter.setPen(QPen(box_color, 2.0 if is_invul_active else 1.5))
-                                    for p1, p2 in edges:
-                                        line_pts = _screen_int_tuple(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
-                                        if line_pts:
-                                            painter.drawLine(*line_pts)
-                                    has_valid_box = True
+                                    if ESP_BOX_MODE == "2D":
+                                        # 📦 วาดกล่อง 2D Bounding Box (กรอบระนาบหน้าจอ 2 มิติ)
+                                        b_w = target_box_rect[2] - target_box_rect[0]
+                                        b_h = target_box_rect[3] - target_box_rect[1]
+                                        painter.drawRect(int(target_box_rect[0]), int(target_box_rect[1]), int(b_w), int(b_h))
+                                        has_valid_box = True
+                                    elif ESP_BOX_MODE in ("3D", "ALL"):
+                                        # 📦 วาดกล่อง 3D Wireframe Box (กล่องทรงลูกบาศก์หมุนตามทิศทางรถถัง)
+                                        for p1, p2 in edges:
+                                            line_pts = _screen_int_tuple(pts[p1][0], pts[p1][1], pts[p2][0], pts[p2][1])
+                                            if line_pts:
+                                                painter.drawLine(*line_pts)
+                                        has_valid_box = True
+                                    elif ESP_BOX_MODE == "XRAY":
+                                        # 🩺 โหมด X-Ray อย่างเดียว: ไม่วาดเส้นกล่อง แต่เก็บพิกัด has_valid_box ไว้คำนวณตำแหน่งป้าย
+                                        has_valid_box = True
 
-                    if (not ESP_POINT_ONLY_MODE) and not has_valid_box:
+                    if (not ESP_POINT_ONLY_MODE) and ESP_BOX_MODE != "XRAY" and not has_valid_box:
                         if center_screen and center_screen[2] > 0:
                             box_w = max(20, int(3000 / (dist + 1))) if is_air_target else max(30, int(4000 / (dist + 1)))
                             box_h = box_w * 0.8 if is_air_target else box_w * 0.6
@@ -4385,6 +4514,75 @@ class ESPOverlay(QOpenGLWidget):
                                         cy + half_h,
                                     )
                                     has_valid_box = True
+
+                    # ========================================================
+                    # 🩺 X-RAY INTERNAL COMPONENT ESP (Crew, Ammo, Engine, Breech)
+                    # ========================================================
+                    if (ESP_BOX_MODE in ("XRAY", "ALL") or SHOW_XRAY_ESP) and (not is_air_target) and dist <= XRAY_MAX_DISTANCE:
+                        if (not XRAY_ONLY_FOCUSED_TARGET) or (u_ptr == active_target_ptr):
+                            xray_components = get_unit_xray_components(self.scanner, u_ptr, pos, rot)
+                            if xray_components:
+                                ammo_labeled_count = 0
+                                xray_font = QFont("Arial", 8, QFont.Bold)
+                                for comp in xray_components:
+                                    cat = comp["category"]
+                                    if cat == "AMMO" and not XRAY_SHOW_AMMO: continue
+                                    if cat in ("GUNNER", "DRIVER", "COMMANDER", "LOADER") and not XRAY_SHOW_CREW: continue
+                                    if cat in ("ENGINE", "TRANS", "RADIATOR") and not XRAY_SHOW_ENGINE: continue
+                                    if cat == "BREECH" and not XRAY_SHOW_BREECH: continue
+
+                                    wx, wy, wz = comp["world_pos"]
+                                    c_scr = world_to_screen(view_matrix, wx, wy, wz, self.screen_width, self.screen_height)
+                                    if c_scr and c_scr[2] > 0:
+                                        cx, cy = int(c_scr[0]), int(c_scr[1])
+                                        if 0 <= cx <= self.screen_width and 0 <= cy <= self.screen_height:
+                                            if cat == "AMMO":
+                                                comp_color = QColor(*COLOR_XRAY_AMMO)
+                                                painter.setPen(QPen(comp_color, 1.2))
+                                                painter.setBrush(QBrush(comp_color))
+                                                painter.drawPolygon(QPolygon([
+                                                    QPoint(cx, cy - 3),
+                                                    QPoint(cx + 3, cy),
+                                                    QPoint(cx, cy + 3),
+                                                    QPoint(cx - 3, cy)
+                                                ]))
+                                                if ammo_labeled_count < 2 and dist < 800:
+                                                    painter.setFont(xray_font)
+                                                    painter.drawText(cx + 5, cy + 3, "[AMMO]")
+                                                ammo_labeled_count += 1
+                                            else:
+                                                if cat == "GUNNER":
+                                                    comp_color = QColor(*COLOR_XRAY_GUNNER)
+                                                    label = "[GUNNER]"
+                                                elif cat == "DRIVER":
+                                                    comp_color = QColor(*COLOR_XRAY_DRIVER)
+                                                    label = "[DRIVER]"
+                                                elif cat == "COMMANDER":
+                                                    comp_color = QColor(*COLOR_XRAY_COMMANDER)
+                                                    label = "[COM]"
+                                                elif cat == "LOADER":
+                                                    comp_color = QColor(*COLOR_XRAY_LOADER)
+                                                    label = "[LOADER]"
+                                                elif cat == "BREECH":
+                                                    comp_color = QColor(*COLOR_XRAY_BREECH)
+                                                    label = "[BREECH]"
+                                                elif cat == "ENGINE":
+                                                    comp_color = QColor(*COLOR_XRAY_ENGINE)
+                                                    label = "[ENGINE]"
+                                                elif cat == "TRANS":
+                                                    comp_color = QColor(*COLOR_XRAY_TRANS)
+                                                    label = "[TRANS]"
+                                                else:
+                                                    comp_color = QColor(255, 255, 255, 200)
+                                                    label = f"[{cat}]"
+
+                                                painter.setPen(QPen(comp_color, 1.5))
+                                                painter.setBrush(QBrush(comp_color))
+                                                painter.drawRect(cx - 3, cy - 3, 6, 6)
+                                                if dist < 1200:
+                                                    painter.setFont(xray_font)
+                                                    painter.drawText(cx + 6, cy + 4, label)
+
 
                     clean_name = raw_name
                     for p in NAME_PREFIXES:

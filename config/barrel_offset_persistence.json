@@ -1,0 +1,19 @@
+{
+  "updated_at": "2026-09-07T14:52:31.844029",
+  "animchar_off": 568,
+  "bone_tree_off": 568,
+  "sub_off": 64,
+  "wtm_off": 0,
+  "bone_idx": 202,
+  "bone_name": "bone_gun_barrel",
+  "row0_forward_offset": 0,
+  "row3_position_offset": 48,
+  "source": "barrel_offset_dumper",
+  "updated_by_tool": "tools/barrel_offset_dumper.py",
+  "confidence": 0.95,
+  "build_fingerprint": {
+    "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
+    "size": 163885312,
+    "mtime_ns": 1788399426000000000
+  }
+}
