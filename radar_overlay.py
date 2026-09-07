@@ -410,9 +410,9 @@ XRAY_SHOW_BREECH            = True     # แสดงท้ายรังเพ
 DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
-SHOW_MY_UNIT_BOX = True                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
+SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
-SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
+SHOW_BOT_UNITS = False               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
