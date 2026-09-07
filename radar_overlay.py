@@ -3445,67 +3445,36 @@ class ESPOverlay(QOpenGLWidget):
                 chosen_vel = raw_vel
                 source = "raw_air_default"
         else:
-            raw_mag_planar = math.hypot(raw_vel[0], raw_vel[2])
-            pos_mag_planar = math.hypot(pos_vel[0], pos_vel[2]) if pos_vel else 0.0
-            max_jump = 12.0
-
-            if pos_vel:
-                diff_mag = math.hypot(raw_vel[0] - pos_vel[0], raw_vel[2] - pos_vel[2])
-                raw_nonzero_axes = sum(1 for v in (raw_vel[0], raw_vel[2]) if abs(v) > 0.05)
-                pos_nonzero_axes = sum(1 for v in (pos_vel[0], pos_vel[2]) if abs(v) > 0.05)
-
-                if raw_mag <= 0.001 and pos_mag > 0.001:
-                    chosen_vel = pos_vel
-                    source = "pos_only"
-                elif pos_mag > 0.5 and (
-                    abs(raw_mag - pos_mag) <= max(3.0, pos_mag * 0.45)
-                    or raw_nonzero_axes <= 1
-                ):
-                    chosen_vel = pos_vel
-                    source = "pos_ground_world"
-                elif raw_nonzero_axes <= 1 and pos_nonzero_axes >= 1 and pos_mag > 0.5:
-                    chosen_vel = pos_vel
-                    source = "pos_ground_axis_fix"
-                elif pos_mag > 0.001 and diff_mag > max_jump:
-                    chosen_vel = pos_vel
-                    source = "pos_reject_raw"
-                elif raw_mag > 0.001 and pos_mag > 0.05:
-                    chosen_vel = (
-                        (raw_vel[0] * 0.65) + (pos_vel[0] * 0.35),
-                        (raw_vel[1] * 0.65) + (pos_vel[1] * 0.35),
-                        (raw_vel[2] * 0.65) + (pos_vel[2] * 0.35),
-                    )
-                    source = "blended"
+            # 🛡️ GROUND: ใช้ความเร็วจาก Physics ของเกม (raw_vel) 100% เสมอหากอ่านค่าได้
+            if raw_vel and any(abs(v) > 0.0001 for v in raw_vel):
+                chosen_vel = raw_vel
+                source = "raw_ground_trusted"
+            elif pos_vel:
+                chosen_vel = pos_vel
+                source = "pos_ground_fallback"
+            else:
+                chosen_vel = raw_vel
+                source = "raw_ground_default"
 
         if not is_air:
-            prev_vel = cached.get('vel') if cached else None
-            prev_source = prev_meta.get("source", "")
-
-            if prev_vel and pos_vel and pos_mag > 0.5 and source in ("raw", "blended"):
-                prev_planar = math.hypot(prev_vel[0], prev_vel[2])
-                chosen_delta = math.hypot(chosen_vel[0] - prev_vel[0], chosen_vel[2] - prev_vel[2])
-                pos_delta = math.hypot(pos_vel[0] - prev_vel[0], pos_vel[2] - prev_vel[2])
-                if prev_source.startswith("pos_") and prev_planar > 0.1 and pos_delta <= (chosen_delta + 0.75):
-                    chosen_vel = pos_vel
-                    source = "pos_ground_sticky"
-
             # Ground lead solver should not react to height/slope noise as vertical motion.
             chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
             chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
 
-            # Ground world velocity is derived from noisy local raw fields + short-frame position deltas.
-            # Smooth the final vector to prevent source flapping and visible jitter on moving vehicles.
-            if prev_vel and len(prev_vel) == 3:
-                prev_mag = math.sqrt(prev_vel[0]**2 + prev_vel[1]**2 + prev_vel[2]**2)
-                if prev_mag > 0.0 or raw_mag > 0.05 or pos_mag > 0.05:
-                    smoothing = 0.84 if source.startswith("pos_") else 0.72
-                    chosen_vel = tuple(
-                        (prev_vel[i] * smoothing) + (chosen_vel[i] * (1.0 - smoothing))
-                        for i in range(3)
-                    )
-                    chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
-                    chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
-                    source = f"{source}_smoothed"
+            # Smooth only if fallback to position delta occurred to prevent jitter on fallback
+            if source.startswith("pos_"):
+                prev_vel = cached.get('vel') if cached else None
+                if prev_vel and len(prev_vel) == 3:
+                    prev_mag = math.sqrt(prev_vel[0]**2 + prev_vel[1]**2 + prev_vel[2]**2)
+                    if prev_mag > 0.0 or pos_mag > 0.05:
+                        smoothing = 0.84
+                        chosen_vel = tuple(
+                            (prev_vel[i] * smoothing) + (chosen_vel[i] * (1.0 - smoothing))
+                            for i in range(3)
+                        )
+                        chosen_vel = (chosen_vel[0], 0.0, chosen_vel[2])
+                        chosen_vel = tuple(0.0 if abs(v) < 0.05 else v for v in chosen_vel)
+                        source = f"{source}_smoothed"
 
         self.velocity_cache[u_ptr] = {
             'time': curr_t,
