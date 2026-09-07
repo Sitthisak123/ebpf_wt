@@ -112,7 +112,7 @@ ALERT_SOUND_HELO = os.path.join(ALERT_AUDIO_DIR, "helo.mp3")
 ALERT_SOUND_RECON = os.path.join(ALERT_AUDIO_DIR, "recon.mp3")
 ALERT_AUDIO_ON = True
 ALERT_AUDIO_VOLUME = 100  # 0..100
-AIR_ALERT_SOUND_COOLDOWN = 2.0
+AIR_ALERT_SOUND_COOLDOWN = 1.0
 ALERT_AUDIO_BACKEND = "auto"  # auto | system | qt
 RECON_GHOST_SPAWN_WINDOW_SEC = 2.0
 RECON_GHOST_POS_EPS_METERS = 1.5
@@ -339,8 +339,8 @@ NON_PLAYABLE_RUNTIME_HINTS = (
     # "hangar",
 )
 NAME_PREFIXES = ["us_", "germ_", "ussr_", "uk_", "jp_", "cn_", "it_", "fr_", "sw_", "il_"]
-MAX_GROUND_TARGET_DISTANCE = 0.0
-MAX_AIR_TARGET_DISTANCE = 30000.0
+MAX_GROUND_TARGET_DISTANCE = 20000.0
+MAX_AIR_TARGET_DISTANCE = 28000.0
 ORIGIN_GHOST_RADIUS = 35.0
 ORIGIN_GHOST_MY_DIST_MIN = 250.0
 
@@ -2850,7 +2850,6 @@ class ESPOverlay(QOpenGLWidget):
         self.last_my_team = 0
         self.vel_window = {} 
         self.velocity_cache = {}
-        self.air_position_history = {}
         self.kalman_filters = {}
         self.last_frame_time = time.time()
         self.current_fps = 0.0
@@ -3758,7 +3757,6 @@ class ESPOverlay(QOpenGLWidget):
                 self.max_reload_cache = {}
                 self.vel_window = {}
                 self.velocity_cache = {}
-                self.air_position_history = {}
                 self.last_velocity_meta = {}
                 self.ai_ghost_queue = []
                 self.recon_spawn_watch = {}
@@ -3994,14 +3992,6 @@ class ESPOverlay(QOpenGLWidget):
 
                     pos = get_unit_pos(self.scanner, u_ptr)
                     if not pos: continue
-                    previous_air_pos = self.air_position_history.get(u_ptr)
-                    self.air_position_history[u_ptr] = tuple(pos)
-                    if resolved_is_air and previous_air_pos:
-                        air_velocity = get_air_velocity(self.scanner, u_ptr)
-                        air_speed = math.sqrt(sum(component * component for component in (air_velocity or (0.0, 0.0, 0.0))))
-                        position_is_frozen = all(abs(pos[index] - previous_air_pos[index]) <= 1e-4 for index in range(3))
-                        if air_speed > 0.01 and position_is_frozen:
-                            continue
                     if is_recon_drone and self._is_fixed_recon_ghost(u_ptr, pos, curr_t):
                         continue
                     if is_recon_drone and not self._is_recon_alert_ready(u_ptr, curr_t):
@@ -4053,9 +4043,6 @@ class ESPOverlay(QOpenGLWidget):
             for ptr in list(self.offscreen_indicator_state.keys()):
                 if ptr not in current_seen_ptrs:
                     del self.offscreen_indicator_state[ptr]
-            for ptr in list(self.air_position_history.keys()):
-                if ptr not in current_seen_ptrs:
-                    del self.air_position_history[ptr]
             
             dprint_frame_stats(
                 self.current_fps, 

@@ -38,7 +38,6 @@ from src.utils.mul import (
     get_unit_rotation,
     get_weapon_barrel,
     get_local_axes_from_rotation,
-    get_air_velocity,
     get_my_air_velocity,
     get_sight_compensation_factor,
     world_to_screen,
@@ -203,7 +202,6 @@ class DataPumpWorker(QThread):
         # ----- Worker-owned caches -----
         self.profile_cache: Dict[int, dict] = {}
         self.active_targets: Dict[int, dict] = {}  # u_ptr -> {"snapshot": t_snap, "last_seen": now}
-        self.air_position_history: Dict[int, Tuple[float, float, float]] = {}
 
         self.last_my_unit: int = 0
         self.last_my_team: int = 0
@@ -287,7 +285,6 @@ class DataPumpWorker(QThread):
             self.last_cgame_base = cgame_base
             self.profile_cache = {}
             self.active_targets = {}
-            self.air_position_history = {}
         snap.cgame_base = cgame_base
 
         # --- 2. View Matrix ---
@@ -325,7 +322,6 @@ class DataPumpWorker(QThread):
         if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
             self.profile_cache = {}
             self.active_targets = {}
-            self.air_position_history = {}
 
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
@@ -504,16 +500,6 @@ class DataPumpWorker(QThread):
             if is_recon_drone and self._is_recon_alert_ready and not self._is_recon_alert_ready(u_ptr, now):
                 continue
 
-            # Reject stale air ghosts: the position is frozen while the unit still reports motion.
-            previous_pos = self.air_position_history.get(u_ptr)
-            self.air_position_history[u_ptr] = tuple(pos)
-            if resolved_is_air and previous_pos:
-                air_velocity = get_air_velocity(self.scanner, u_ptr)
-                air_speed = math.sqrt(sum(component * component for component in (air_velocity or (0.0, 0.0, 0.0))))
-                position_is_frozen = all(abs(pos[index] - previous_pos[index]) <= 1e-4 for index in range(3))
-                if air_speed > 0.01 and position_is_frozen:
-                    continue
-
             # Origin ghost
             pos_origin_dist = math.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2)
             if pos_origin_dist <= ORIGIN_GHOST_RADIUS:
@@ -643,9 +629,6 @@ class DataPumpWorker(QThread):
                 last_seen = self.profile_cache[ptr].get("last_seen", 0.0)
                 if (now - last_seen) > 5.0:
                     del self.profile_cache[ptr]
-        for ptr in list(self.air_position_history.keys()):
-            if ptr not in current_seen_ptrs:
-                del self.air_position_history[ptr]
 
         # Scan for missiles periodically in background thread (0ms in paintGL)
         if (now - self.last_missile_scan_t) >= self.missile_scan_interval:
