@@ -4,3 +4,4 @@
 @Fix
 - add air ghost filter [if air_unit_vel > 0 and pos == prev_pos]
 - target lock cuase ground Hitpoint simulation
+- Missile detection/AUTO_CM: Panic self Missiles
