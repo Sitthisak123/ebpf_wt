@@ -271,6 +271,23 @@ MISSILE_TRACK_TIMEOUT_S         = 0.30                   # Persistence grace per
 MISSILE_EXTRAPOLATION_MAX_S     = 0.35                   # Dead reckoning extrapolation max duration
 MISSILE_SMOOTH_LERP             = 0.45                   # Angular smoothing factor for edge indicator
 
+# ============================================================
+# 🛡️ AUTOMATIC COUNTERMEASURE (FLARE / CHAFF) SYSTEM CONFIG
+# ============================================================
+ENABLE_AUTO_COUNTERMEASURE      = True          # สวิตช์หลักเปิด/ปิดระบบปล่อยเป้าลวงอัตโนมัติ
+AUTO_CM_KEY                     = "right alt"   # ปุ่มสำหรับปล่อย Countermeasure (R.ALT)
+AUTO_CM_REQUIRE_EXACT_LOCK      = False         # True = ต้องมีสัญญาณ Guided==myUnit เท่านั้น, False = หรือมุมปะทะตรงเผงระยะประชิด
+
+# 🟡 STAGE 1: ระยะไกล / เตือนภัยล่วงหน้า (Early Warning - Long Range)
+AUTO_CM_STAGE1_MAX_RANGE        = 5000.0        # ระยะทางไกลสุดที่เริ่มทำงาน (เมตร)
+AUTO_CM_STAGE1_TIME_LEFT        = 6.0           # เวลาบินถึงตัวเครื่อง (วินาที, Time of Flight / TTG)
+AUTO_CM_STAGE1_COUNTDOWN        = 0.80          # ระยะห่างการกดปล่อยซ้ำ (วินาที)
+
+# 🔴 STAGE 2: ระยะประชิด / ภาวะวิกฤต (Panic / Close Range)
+AUTO_CM_STAGE2_MAX_RANGE        = 2000.0        # ระยะทางประชิด (เมตร)
+AUTO_CM_STAGE2_TIME_LEFT        = 2.5           # เวลาบินถึงตัวระยะวิกฤต (วินาที)
+AUTO_CM_STAGE2_COUNTDOWN        = 0.25          # ระยะห่างการกดปล่อยซ้ำแบบเร่งด่วน (วินาที)
+
 BULLET_GRAVITY       = 9.80665   
 BOMB_CCIP_DRAG_K     = 0.0000175  # Small drag trim: 0.0001 was too much, 0.0 was slightly too little.
 
@@ -1400,6 +1417,10 @@ def _is_recon_drone_like(token):
     recon_patterns = (
         "recon micro",
         "recon_micro",
+        "ucav_recon",
+        "recon_drone",
+        "scout_drone",
+        "recon_uav",
     )
     return any(p in token for p in recon_patterns)
 
@@ -2919,6 +2940,12 @@ class ESPOverlay(QOpenGLWidget):
         self.missile_last_scan = 0.0
         self.missile_warning_active = False
         self.missile_warning_start = 0.0
+
+        # 🛡️ AUTO COUNTERMEASURE (FLARE / CHAFF) STATE
+        self.auto_cm_last_trigger_t = 0.0
+        self.auto_cm_active_stage = 0     # 0 = none, 1 = stage 1, 2 = stage 2
+        self.auto_cm_next_trigger_t = 0.0
+        self.auto_cm_trigger_count = 0
         self.calibration_offset = [0.0, 0.0]
         self.vertical_correction = 0.0
         self.camera_parallax = -4.5  # 🎯 NEW: ค่าแรงเหวี่ยงกล้องเริ่มต้น (T-80U-E1)
@@ -3171,6 +3198,25 @@ class ESPOverlay(QOpenGLWidget):
             return  # normal dedup - no spam
         self.air_alert_seen[u_ptr] = curr_t
         self._play_alert_sound(sound_key, sound_path, curr_t)
+
+    def _trigger_countermeasure(self):
+        """กดปุ่มสำหรับดีดเป้าลวง (Flares/Chaff) โดยหน่วงเวลาปล่อย 40ms เพื่อให้เอนจินเกมตรวจจับคีย์ได้แน่นอน"""
+        if HAS_KEYBOARD:
+            try:
+                keyboard.press(AUTO_CM_KEY)
+                QTimer.singleShot(40, self._release_countermeasure)
+            except Exception:
+                try:
+                    keyboard.press_and_release(AUTO_CM_KEY)
+                except Exception:
+                    pass
+
+    def _release_countermeasure(self):
+        if HAS_KEYBOARD:
+            try:
+                keyboard.release(AUTO_CM_KEY)
+            except Exception:
+                pass
 
     def _is_fixed_recon_ghost(self, u_ptr, pos, curr_t):
         if not u_ptr or not pos:
@@ -3674,6 +3720,7 @@ class ESPOverlay(QOpenGLWidget):
                 my_is_air = snapshot.my_is_air
                 my_name = snapshot.my_name
                 my_name_key = snapshot.my_name_key
+                my_unit_id = getattr(snapshot, 'my_unit_id', -1)
             else:
                 all_units_data = get_all_units(self.scanner, cgame_base)
                 all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
@@ -3697,6 +3744,13 @@ class ESPOverlay(QOpenGLWidget):
                         my_is_air = True
                     elif my_profile.get("kind") == "ground":
                         my_is_air = False
+                my_unit_id = get_unit_id(self.scanner, my_unit) if my_unit else -1
+
+            if my_unit and (my_unit_id == -1 or my_unit_id is None):
+                my_unit_id = get_unit_id(self.scanner, my_unit)
+
+            my_is_recon = _is_recon_drone_like(f"{my_name} {my_name_key}")
+            my_can_auto_cm = bool(my_is_air and not my_is_recon)
 
             # Cache reset on my_unit change
             if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
@@ -3712,6 +3766,10 @@ class ESPOverlay(QOpenGLWidget):
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
                 self.kalman_filters = {}
+                self.auto_cm_active_stage = 0
+                self.auto_cm_last_trigger_t = 0.0
+                self.auto_cm_next_trigger_t = 0.0
+                self.auto_cm_trigger_count = 0
             elif my_unit and not self.last_my_unit:
                 self.last_my_unit = my_unit
             
@@ -3971,11 +4029,6 @@ class ESPOverlay(QOpenGLWidget):
                         continue
                     if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team): continue
 
-                    dna = cached_prof.get('dna') or {}
-                    is_real_player = dna.get('is_real_player', True)
-                    if not SHOW_BOT_UNITS and not is_real_player:
-                        continue
-
                     profile = cached_prof['profile']
                     if profile.get("skip"): continue
                     
@@ -4027,11 +4080,14 @@ class ESPOverlay(QOpenGLWidget):
 
                     is_recon_drone = _is_recon_drone_like(runtime_filter_blob)
 
+                    # 🤖 Bot filter (Toggle via SHOW_BOT_UNITS) - Recon drones bypass bot filter even when uncontrolled
+                    is_real_player = dna.get('is_real_player', True)
+                    if not SHOW_BOT_UNITS and not is_real_player and not is_recon_drone:
+                        continue
+
                     pos = get_unit_pos(self.scanner, u_ptr)
                     if not pos: continue
                     if is_recon_drone and self._is_fixed_recon_ghost(u_ptr, pos, curr_t):
-                        continue
-                    if is_recon_drone and not self._is_recon_alert_ready(u_ptr, curr_t):
                         continue
                     pre_vel = None
                     if not resolved_is_air:
@@ -4072,7 +4128,7 @@ class ESPOverlay(QOpenGLWidget):
                 if ptr not in current_seen_ptrs:
                     del self.profile_cache[ptr]
             for ptr in list(self.recon_spawn_watch.keys()):
-                if ptr not in current_seen_ptrs:
+                if (curr_t - float(self.recon_spawn_watch[ptr].get("last_seen", curr_t))) > 5.0:
                     del self.recon_spawn_watch[ptr]
             for ptr in list(self.offscreen_indicator_alpha.keys()):
                 if ptr not in current_seen_ptrs:
@@ -4184,13 +4240,15 @@ class ESPOverlay(QOpenGLWidget):
                     select_screen = world_to_screen(view_matrix, select_tx, select_ty, select_tz, self.screen_width, self.screen_height)
 
                 res_pos = select_screen
-                if res_pos and res_pos[2] > 0:
+                if res_pos and res_pos[2] > 0.10:
                     select_sx = res_pos[0]
                     select_sy = res_pos[1]
                     if select_box_rect and not is_air_target:
                         select_sx = (select_box_rect[0] + select_box_rect[2]) * 0.5
-                    dist_crosshair = math.hypot(select_sx - self.center_x, select_sy - self.center_y)
-                    visible_targets.append((dist_crosshair, u_ptr, is_air_target))
+                    # Target must be within screen viewport to be selected as visible target
+                    if -80 <= select_sx <= self.screen_width + 80 and -80 <= select_sy <= self.screen_height + 80:
+                        dist_crosshair = math.hypot(select_sx - self.center_x, select_sy - self.center_y)
+                        visible_targets.append((dist_crosshair, u_ptr, is_air_target))
 
             ground_leadmark_allow_ptrs = None
             if visible_targets:
@@ -4313,8 +4371,8 @@ class ESPOverlay(QOpenGLWidget):
                         invul_timer = cached_dna.get('invul_timer', 0.0)
                         is_real_player = cached_dna.get('is_real_player', True)
 
-                    # 🤖 กรองบอทหากผู้ใช้ปิดการแสดงผล
-                    if not SHOW_BOT_UNITS and not is_real_player:
+                    # 🤖 กรองบอทหากผู้ใช้ปิดการแสดงผล (ยกเว้น Recon Drone แม้จะ uncontrol ก็ไม่ถูกกรองทิ้ง)
+                    if not SHOW_BOT_UNITS and not is_real_player and not is_recon_drone:
                         continue
 
                     is_invul_active = is_invul or (invul_timer > 0.05)
@@ -4431,7 +4489,7 @@ class ESPOverlay(QOpenGLWidget):
                         else:
                             bmin, bmax, rot = None, None, None
                         
-                        if bmin and bmax and rot:
+                        if center_screen and center_screen[2] > 0 and bmin and bmax and rot:
                             
                             # 1. สร้างมุมกล่องทั้ง 8 มุมแบบ Local (Centered for X/Z, Original Y!)
                             w_box = abs(bmax[0] - bmin[0])
@@ -4475,9 +4533,19 @@ class ESPOverlay(QOpenGLWidget):
                                     max(p[0] for p in valid_pts),
                                     max(p[1] for p in valid_pts),
                                 )
-                                # 🛡️ Bounding Box ต้องมีพื้นที่เหลื่อมเข้ามาในหน้าจอจริง
-                                if not (target_box_rect[2] < 0 or target_box_rect[0] > self.screen_width or
-                                        target_box_rect[3] < 0 or target_box_rect[1] > self.screen_height):
+                                b_w = target_box_rect[2] - target_box_rect[0]
+                                b_h = target_box_rect[3] - target_box_rect[1]
+
+                                # 🛡️ Viewport Gate: ป้องกัน Near-plane artifact ที่มุมกล่องระเบิดออกนอกจอ หรือยูนิตอยู่นอกจอแต่สแปนข้ามจอ
+                                has_corner_on_screen = any(0 <= p[0] <= self.screen_width and 0 <= p[1] <= self.screen_height for p in valid_pts)
+                                is_center_on_screen = (0 <= center_screen[0] <= self.screen_width and 0 <= center_screen[1] <= self.screen_height)
+                                
+                                if (
+                                    (has_corner_on_screen or is_center_on_screen)
+                                    and (b_w <= self.screen_width * 2.5 and b_h <= self.screen_height * 2.5)
+                                    and not (target_box_rect[2] < 0 or target_box_rect[0] > self.screen_width or
+                                             target_box_rect[3] < 0 or target_box_rect[1] > self.screen_height)
+                                ):
                                     edges = [
                                         (0,1), (0,2), (1,3), (2,3), # ฐานล่าง
                                         (4,5), (4,6), (5,7), (6,7), # ฐานบน
@@ -4609,7 +4677,7 @@ class ESPOverlay(QOpenGLWidget):
                         if clean_name.lower().startswith(p):
                             clean_name = clean_name[len(p):]
                             break
-                    if not is_real_player:
+                    if not is_real_player and not is_recon_drone:
                         clean_name = f"[BOT] {clean_name}"
 
                     physics_is_air = is_air_target
@@ -4697,16 +4765,31 @@ class ESPOverlay(QOpenGLWidget):
                                 "side": edge_side,
                             }
                         else:
-                            indicator_target_alpha = float(self.offscreen_indicator_alpha.get(u_ptr, 0.0))
-                            cached_indicator = self.offscreen_indicator_state.get(u_ptr)
-                            if cached_indicator:
-                                indicator_screen = (
-                                    float(cached_indicator.get("x", self.center_x)),
-                                    float(cached_indicator.get("y", self.center_y)),
-                                )
-                                edge_side = cached_indicator.get("side", "top")
-                            else:
+                            # Target is behind camera or center_screen is invalid:
+                            # Compute real-time direction angle in screen space
+                            target_angle = _compute_screen_direction_angle(
+                                view_matrix, pos, self.screen_width, self.screen_height
+                            )
+                            edge_x, edge_y = _get_screen_edge_pos(
+                                self.center_x, self.center_y, target_angle,
+                                self.screen_width, self.screen_height,
+                                margin=OFFSCREEN_AIR_INDICATOR_MARGIN,
+                            )
+                            if -3.0 * math.pi / 4.0 <= target_angle < -math.pi / 4.0:
                                 edge_side = "top"
+                            elif -math.pi / 4.0 <= target_angle < math.pi / 4.0:
+                                edge_side = "right"
+                            elif math.pi / 4.0 <= target_angle < 3.0 * math.pi / 4.0:
+                                edge_side = "bottom"
+                            else:
+                                edge_side = "left"
+                            indicator_screen = (edge_x, edge_y)
+                            indicator_target_alpha = 1.0
+                            self.offscreen_indicator_state[u_ptr] = {
+                                "x": edge_x,
+                                "y": edge_y,
+                                "side": edge_side,
+                            }
                         prev_indicator_alpha = float(self.offscreen_indicator_alpha.get(u_ptr, 0.0))
                         indicator_alpha = (
                             (prev_indicator_alpha * (1.0 - OFFSCREEN_AIR_SMOOTHING)) +
@@ -5600,8 +5683,16 @@ class ESPOverlay(QOpenGLWidget):
 
             # 🎯 Sniper Anti-Blink Hold: ถ้าหลุดเงื่อนไข hitpoint ไปเพียง 1-2 เฟรม ให้ถือค่าเดิมไว้ 200ms
             if not active_sniper_data and getattr(self, 'last_active_sniper_data', None) and curr_t < getattr(self, 'sniper_hold_until', 0.0):
-                if my_unit and (getattr(self, 'sniper_active_target_ptr', 0) in current_seen_ptrs):
-                    active_sniper_data = self.last_active_sniper_data
+                target_ptr = getattr(self, 'sniper_active_target_ptr', 0)
+                if my_unit and (target_ptr in current_seen_ptrs):
+                    # ยืนยันว่าเป้าหมายยังอยู่ในระนาบหน้าจอจริง (ไม่หลุดออกนอกจอเมื่อหันกล้องหนี)
+                    t_pos = live_pos_map.get(target_ptr) or get_unit_pos(self.scanner, target_ptr)
+                    t_scr = world_to_screen(view_matrix, t_pos[0], t_pos[1], t_pos[2], self.screen_width, self.screen_height) if t_pos else None
+                    if t_scr and t_scr[2] > 0.10 and (0 <= t_scr[0] <= self.screen_width and 0 <= t_scr[1] <= self.screen_height):
+                        active_sniper_data = self.last_active_sniper_data
+                    else:
+                        self.last_active_sniper_data = None
+                        self.sniper_active_target_ptr = 0
                 else:
                     self.last_active_sniper_data = None
                     self.sniper_active_target_ptr = 0
@@ -6359,26 +6450,79 @@ class ESPOverlay(QOpenGLWidget):
                         # Check if any missile is tracking ME
                         incoming = []
                         for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:
+                            # ตรวจสอบสถานะ Guidance
+                            is_guided_to_me = (my_unit_id != -1 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
+                            is_guided_to_other = (m.target_id != -1 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked))
+
                             # Check if missile is heading toward me
+                            is_heading_to_me = False
+                            time_to_impact = 999.0
                             if dist > 0:
                                 dx = my_pos[0] - smooth_pos[0]
                                 dy = my_pos[1] - smooth_pos[1]
                                 dz = my_pos[2] - smooth_pos[2]
-                                # Dot product of velocity and direction-to-me
                                 dot = vel[0]*dx + vel[1]*dy + vel[2]*dz
                                 if dot > 0 and speed > 20.0:  # Moving toward me
-                                    # Angle between velocity and direction-to-me
-                                    v_len = speed
-                                    d_len = dist
-                                    if v_len > 0 and d_len > 0:
-                                        cos_angle = dot / (v_len * d_len)
-                                        if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3):  # Within cone or close threat
-                                            time_to_impact = dist / speed if speed > 0 else 999
-                                            incoming.append((m, smooth_pos, dist, time_to_impact, tr))
+                                    cos_angle = dot / (speed * dist)
+                                    if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3):
+                                        is_heading_to_me = True
+                                    time_to_impact = dist / speed
 
-                        # Sort by distance (closest first)
-                        incoming.sort(key=lambda x: x[2])
+                            # ประเมินว่าเป็นภัยคุกคามต่อตัวเราหรือไม่:
+                            # 1) ถ้า Guided == myUnit (ล็อกเครื่องเราโดยตรง) -> ถือเป็นภัยคุกคามทันที
+                            # 2) ถ้าไม่ล็อกเครื่องอื่น และหัวขีปนาวุธพุ่งตรงมาที่เรา -> พิจารณาตาม AUTO_CM_REQUIRE_EXACT_LOCK
+                            threat_to_me = False
+                            if is_guided_to_me:
+                                threat_to_me = True
+                            elif is_heading_to_me and not is_guided_to_other:
+                                if not AUTO_CM_REQUIRE_EXACT_LOCK:
+                                    threat_to_me = True
+
+                            if threat_to_me:
+                                incoming.append((m, smooth_pos, dist, time_to_impact, tr, is_guided_to_me))
+
+                        # Sort incoming: ให้ความสำคัญกับขีปนาวุธที่ล็อกเราตรงๆ ก่อน ตามด้วยเวลาที่จะชน (TTI)
+                        incoming.sort(key=lambda x: (0 if x[5] else 1, x[3]))
                         active_missile_entries.sort(key=lambda x: x[4])
+
+                        # 🛡️ Auto Countermeasure Logic (กด R.ALT อัตโนมัติสำหรับเครื่องบินที่ไม่ใช่โดรน)
+                        auto_cm_highest_stage = 0
+                        if incoming and my_can_auto_cm and ENABLE_AUTO_COUNTERMEASURE:
+                            for m_inc, _, d_inc, tti_inc, _, inc_guided in incoming:
+                                # ถ้า REQUIRE_EXACT_LOCK เป็น True ต้องเป็น Guided==myUnit เท่านั้น
+                                if AUTO_CM_REQUIRE_EXACT_LOCK and not inc_guided:
+                                    continue
+                                
+                                # Stage 2 (ระยะประชิด / ภาวะวิกฤต): ระยะ <= STAGE2_MAX_RANGE หรือ TTI <= STAGE2_TIME_LEFT
+                                if d_inc <= AUTO_CM_STAGE2_MAX_RANGE or tti_inc <= AUTO_CM_STAGE2_TIME_LEFT:
+                                    auto_cm_highest_stage = 2
+                                    break  # Stage 2 คือระดับสูงสุดแล้ว
+                                # Stage 1 (ระยะไกล / เตือนภัยล่วงหน้า): ระยะ <= STAGE1_MAX_RANGE หรือ TTI <= STAGE1_TIME_LEFT
+                                elif d_inc <= AUTO_CM_STAGE1_MAX_RANGE or tti_inc <= AUTO_CM_STAGE1_TIME_LEFT:
+                                    auto_cm_highest_stage = max(auto_cm_highest_stage, 1)
+
+                        if auto_cm_highest_stage > 0:
+                            cd_interval = AUTO_CM_STAGE2_COUNTDOWN if auto_cm_highest_stage == 2 else AUTO_CM_STAGE1_COUNTDOWN
+                            # ยิงเป้าลวงเมื่อครบกำหนดเวลา หรือเมื่อเข้าสู่ Stage 2 ทันทีถ้าผ่านช่วงคูลดาวน์ Stage 2 แล้ว
+                            should_trigger = False
+                            if curr_t >= self.auto_cm_next_trigger_t:
+                                should_trigger = True
+                            elif auto_cm_highest_stage == 2 and self.auto_cm_active_stage != 2:
+                                if (curr_t - self.auto_cm_last_trigger_t) >= AUTO_CM_STAGE2_COUNTDOWN:
+                                    should_trigger = True
+
+                            if should_trigger:
+                                self._trigger_countermeasure()
+                                self.auto_cm_last_trigger_t = curr_t
+                                self.auto_cm_next_trigger_t = curr_t + cd_interval
+                                self.auto_cm_trigger_count += 1
+
+                            self.auto_cm_active_stage = auto_cm_highest_stage
+                        else:
+                            if self.auto_cm_active_stage != 0:
+                                self.auto_cm_active_stage = 0
+                                self.auto_cm_trigger_count = 0
+                                self.auto_cm_next_trigger_t = 0.0
 
                         # Draw missile markers (on-screen and offscreen edge indicators)
                         painter.setFont(QFont("Arial", 10, QFont.Bold))
@@ -6390,6 +6534,8 @@ class ESPOverlay(QOpenGLWidget):
                                 smooth_pos[0], smooth_pos[1], smooth_pos[2],
                                 self.screen_width, self.screen_height
                             )
+                            is_guided_me = (my_unit_id != -1 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
+                            is_guided_other = (m.target_id != -1 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked))
                             is_incoming = any(im[0].ptr == m.ptr for im in incoming)
                             dist_km = dist / 1000.0
                             speed_label = f"{speed:.0f}m/s"
@@ -6399,8 +6545,14 @@ class ESPOverlay(QOpenGLWidget):
                             if m.name:
                                 short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
 
-                            # Hide name when not a danger/threat
-                            if is_incoming:
+                            # ป้ายชื่อและสัญลักษณ์ตามระดับภัยคุกคาม
+                            if is_guided_me:
+                                label = f"🚨 [LOCKED ON YOU!] {short_name} ({dist_label} {speed_label})"
+                                t_str = f"🚨 [LOCKED YOU] {dist_label}"
+                            elif is_guided_other:
+                                label = f"[TGT #{m.target_id}] {short_name} ({dist_label})"
+                                t_str = f"[TGT #{m.target_id}] {dist_label}"
+                            elif is_incoming:
                                 label = f"{short_name} ({dist_label} {speed_label})"
                                 t_str = f"{short_name} {dist_label}"
                             else:
@@ -6412,7 +6564,13 @@ class ESPOverlay(QOpenGLWidget):
                                 tr['smooth_angle'] = None
                                 sx, sy, sw = w2s
                                 # Diamond marker
-                                if is_incoming:
+                                if is_guided_me:
+                                    marker_color = QColor(255, 30, 30, 255)
+                                    size = 12
+                                elif is_guided_other:
+                                    marker_color = QColor(255, 150, 20, 220)
+                                    size = 8
+                                elif is_incoming:
                                     marker_color = QColor(*COLOR_MISSILE_MARKER)
                                     size = 10
                                 else:
@@ -6429,7 +6587,15 @@ class ESPOverlay(QOpenGLWidget):
                                 ])
                                 painter.drawPolygon(diamond)
 
-                                text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
+                                if is_guided_me:
+                                    text_color = QColor(255, 60, 60, 255)
+                                elif is_guided_other:
+                                    text_color = QColor(255, 180, 50, 230)
+                                elif is_incoming:
+                                    text_color = QColor(*COLOR_MISSILE_WARNING_TEXT)
+                                else:
+                                    text_color = QColor(*COLOR_MISSILE_INFO_TEXT)
+
                                 _draw_outlined_text(
                                     painter, int(sx + size + 4), int(sy + 4),
                                     label, text_color,
@@ -6456,11 +6622,22 @@ class ESPOverlay(QOpenGLWidget):
 
                                 arrow_x, arrow_y = _get_screen_edge_pos(cx, cy, angle, self.screen_width, self.screen_height, margin=OFFSCREEN_MISSILE_INDICATOR_MARGIN)
 
-                                arr_col = QColor(*COLOR_MISSILE_MARKER) if is_incoming else QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
+                                if is_guided_me:
+                                    arr_col = QColor(255, 30, 30, 255)
+                                    arrow_size = 14
+                                elif is_guided_other:
+                                    arr_col = QColor(255, 150, 20, 220)
+                                    arrow_size = 9
+                                elif is_incoming:
+                                    arr_col = QColor(*COLOR_MISSILE_MARKER)
+                                    arrow_size = 12
+                                else:
+                                    arr_col = QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
+                                    arrow_size = 8
+
                                 painter.setPen(QPen(arr_col, 2))
                                 painter.setBrush(QBrush(arr_col))
 
-                                arrow_size = 12 if is_incoming else 9
                                 tip_x = arrow_x + math.cos(angle) * arrow_size
                                 tip_y = arrow_y + math.sin(angle) * arrow_size
                                 left_x = arrow_x + math.cos(angle + 2.5) * arrow_size
@@ -6474,7 +6651,15 @@ class ESPOverlay(QOpenGLWidget):
                                 ]))
 
                                 # Position text nicely inside screen area
-                                text_color = QColor(*COLOR_MISSILE_INFO_TEXT) if not is_incoming else QColor(*COLOR_MISSILE_WARNING_TEXT)
+                                if is_guided_me:
+                                    text_color = QColor(255, 60, 60, 255)
+                                elif is_guided_other:
+                                    text_color = QColor(255, 180, 50, 230)
+                                elif is_incoming:
+                                    text_color = QColor(*COLOR_MISSILE_WARNING_TEXT)
+                                else:
+                                    text_color = QColor(*COLOR_MISSILE_INFO_TEXT)
+
                                 cos_a = math.cos(angle)
                                 sin_a = math.sin(angle)
                                 fm = painter.fontMetrics()
@@ -6521,9 +6706,18 @@ class ESPOverlay(QOpenGLWidget):
 
                             # Warning text at top
                             closest = incoming[0]
-                            m_closest, pos_closest, dist_closest, tti, tr_closest = closest
+                            m_closest, pos_closest, dist_closest, tti, tr_closest, inc_locked = closest
 
-                            warn_text = f"⚠️ MISSILE WARNING - {len(incoming)} INCOMING"
+                            if inc_locked:
+                                if auto_cm_highest_stage == 2:
+                                    warn_text = f"🚨 CRITICAL: MISSILE LOCKED ON YOU! - STAGE 2 (PANIC FLARES)"
+                                elif auto_cm_highest_stage == 1:
+                                    warn_text = f"⚠️ WARNING: MISSILE LOCKED ON YOU! - STAGE 1 (AUTO FLARES)"
+                                else:
+                                    warn_text = f"⚠️ WARNING: MISSILE LOCKED ON YOU!"
+                            else:
+                                warn_text = f"⚠️ MISSILE WARNING - {len(incoming)} INCOMING"
+
                             if tti < 999:
                                 warn_text += f" - IMPACT {tti:.1f}s"
 
@@ -6539,6 +6733,23 @@ class ESPOverlay(QOpenGLWidget):
                                 warn_color,
                                 QColor(0, 0, 0, 200), 2
                             )
+
+                            # Sub-text for Auto Countermeasure status
+                            if ENABLE_AUTO_COUNTERMEASURE and my_can_auto_cm and auto_cm_highest_stage > 0:
+                                cd_left = max(0.0, self.auto_cm_next_trigger_t - curr_t)
+                                cm_sub = f"[AUTO CM: R.ALT | STAGE {auto_cm_highest_stage} | NEXT: {cd_left:.2f}s | FIRED: {self.auto_cm_trigger_count}]"
+                                painter.setFont(QFont("Arial", 12, QFont.Bold))
+                                fm_sub = painter.fontMetrics()
+                                tw_sub = fm_sub.boundingRect(cm_sub).width()
+                                sub_color = QColor(255, 230, 40, min(255, flash_alpha + 100)) if auto_cm_highest_stage == 2 else QColor(100, 255, 100, 230)
+                                _draw_outlined_text(
+                                    painter,
+                                    int((self.screen_width - tw_sub) / 2),
+                                    98,
+                                    cm_sub,
+                                    sub_color,
+                                    QColor(0, 0, 0, 200), 2
+                                )
 
                             # Direction arrow at screen edge pointing to closest missile
                             w2s_m = world_to_screen(
@@ -6579,8 +6790,16 @@ class ESPOverlay(QOpenGLWidget):
                             painter.setFont(QFont("Arial", 12, QFont.Bold))
                         else:
                             self.missile_warning_active = False
+                            if self.auto_cm_active_stage != 0:
+                                self.auto_cm_active_stage = 0
+                                self.auto_cm_trigger_count = 0
+                                self.auto_cm_next_trigger_t = 0.0
                     else:
                         self.missile_warning_active = False
+                        if self.auto_cm_active_stage != 0:
+                            self.auto_cm_active_stage = 0
+                            self.auto_cm_trigger_count = 0
+                            self.auto_cm_next_trigger_t = 0.0
                 except Exception as e:
                     dprint(f"Missile warning error: {e}", force=True)
 

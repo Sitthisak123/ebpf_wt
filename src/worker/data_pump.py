@@ -31,6 +31,7 @@ from src.utils.mul import (
     get_local_team,
     get_unit_pos,
     get_unit_status,
+    get_unit_id,
     get_unit_filter_profile,
     get_unit_detailed_dna,
     get_unit_invulnerable,
@@ -125,6 +126,7 @@ class FrameSnapshot:
 
     # My unit
     my_unit: int = 0
+    my_unit_id: int = -1
     my_team: int = 0
     my_pos: Optional[Tuple[float, float, float]] = None
     my_vel: Tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -331,6 +333,7 @@ class DataPumpWorker(QThread):
             self.last_my_team = my_team
         effective_my_team = my_team or self.last_my_team
         snap.my_unit = my_unit
+        snap.my_unit_id = get_unit_id(self.scanner, my_unit) if my_unit else -1
         snap.my_team = effective_my_team
 
         my_pos = get_unit_pos(self.scanner, my_unit) if my_unit else None
@@ -431,7 +434,7 @@ class DataPumpWorker(QThread):
             start_off = 0x0E40
             buf_len = max(0x1D0, (mul.OFF_UNIT_INFO - start_off + 8) if mul.OFF_UNIT_INFO else 0x1D0)
             status_chunk = self.scanner.read_mem(u_ptr + start_off, buf_len)
-            if status_chunk and len(status_chunk) >= 0x140:
+            if status_chunk and len(status_chunk) >= buf_len:
                 invul_timer_raw = struct.unpack_from("<f", status_chunk, mul.OFF_INVUL_TIMER - start_off)[0]
                 invul_byte = status_chunk[mul.OFF_INVULNERABLE - start_off]
                 u_state = struct.unpack_from("<H", status_chunk, mul.OFF_UNIT_STATE - start_off)[0] if mul.OFF_UNIT_STATE else 0
@@ -452,14 +455,11 @@ class DataPumpWorker(QThread):
 
             # 💀 Dead wreckage filter (state >= 2 means burnt-out wreck; state == 1 is burning/critical)
             if u_state >= 2:
+                self.active_targets.pop(u_ptr, None)
                 continue
 
             # Team filter
             if u_team == 0 or (effective_my_team != 0 and u_team == effective_my_team):
-                continue
-
-            # 🤖 Bot filter (Toggle via SHOW_BOT_UNITS)
-            if not SHOW_BOT_UNITS and not is_real_player:
                 continue
 
             # Read name & reload only when needed
@@ -546,15 +546,17 @@ class DataPumpWorker(QThread):
             if self._is_recon_drone:
                 is_recon_drone = self._is_recon_drone(runtime_filter_blob)
 
+            # 🤖 Bot filter (Toggle via SHOW_BOT_UNITS) - Recon drones bypass bot filter even when uncontrolled
+            if not SHOW_BOT_UNITS and not is_real_player and not is_recon_drone:
+                continue
+
             # Position
             pos = get_unit_pos(self.scanner, u_ptr)
-            if not pos:
+            if not pos or all(abs(v) < 0.1 for v in pos):
                 continue
 
             # Recon ghost drone filter (synced with radar_overlay)
             if is_recon_drone and self._is_fixed_recon_ghost and self._is_fixed_recon_ghost(u_ptr, pos, now):
-                continue
-            if is_recon_drone and self._is_recon_alert_ready and not self._is_recon_alert_ready(u_ptr, now):
                 continue
 
             # Origin ghost
@@ -680,8 +682,9 @@ class DataPumpWorker(QThread):
         if now_valid_ptrs:
             for u_ptr, trk in list(self.active_targets.items()):
                 if u_ptr not in now_valid_ptrs:
-                    # 80ms grace (approx 4-6 frames) to bridge temporary memory read collision
-                    if (now - trk["last_seen"]) <= 0.08:
+                    # 80ms grace (approx 4-6 frames) to bridge temporary memory read collision,
+                    # but only if the unit still exists in the game unit list (not despawned)
+                    if u_ptr in current_seen_ptrs and (now - trk["last_seen"]) <= 0.08:
                         valid_targets.append(trk["snapshot"])
                     else:
                         del self.active_targets[u_ptr]
