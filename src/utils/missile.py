@@ -41,8 +41,8 @@ OFF_GUID_LOCKED    = 0x50
 OFF_GUID_TRACKING  = 0x51
 OFF_GUID_TARGET_ID = 0x8C
 
-# Active ECS node entries window (Rockets are located in active entries 0..250)
-NODE_ENTRY_WINDOW = 250
+# Active ECS node entries window (Rockets are located in active entries 0..350)
+NODE_ENTRY_WINDOW = 350
 
 # ====================================================================
 # Helpers
@@ -160,6 +160,7 @@ class MissileScanner:
         self._last_scan_time = 0.0
         self._initialized = False
         self._name_cache = {}
+        self._props_name_cache = {}
     
     def _init_ecs(self, scanner, base):
         """Initialize ECS manager pointers dynamically from mul.OFF_ECS_MANAGER"""
@@ -227,14 +228,13 @@ class MissileScanner:
             # Skip empty (count==0), unallocated (capacity==0), or corrupted tables (count > capacity).
             count = struct.unpack_from("<I", data, 8)[0]
             capacity = struct.unpack_from("<I", data, 0x14)[0]
-            if count == 0 or capacity == 0 or count > capacity or capacity > 2048:
+            if count == 0 or capacity == 0 or count > capacity or capacity > 8192:
                 continue
             
             # In Dagor ECS, storage is a Structure of Arrays (SOA).
             # Component column offsets scale with capacity (e.g. col 1 ~ cap*5.5, col 2 ~ cap*7.5).
-            # With proper table bounds check, reading min(max(capacity * 8, 64), 1024) safely covers
-            # all active rocket component columns in < 2ms without scanning unallocated memory!
-            read_count = min(max(capacity * 8, 64), 1024)
+            # Reading min(max(capacity * 8, 128), 16384) covers all active columns across capacities 512, 1024, 2048+
+            read_count = min(max(capacity * 8, 128), 16384)
             bulk = scanner.read_mem(storage, read_count * 8)
             if not bulk or len(bulk) < 8:
                 continue
@@ -306,53 +306,69 @@ class MissileScanner:
         guid = struct.unpack_from("<Q", header, OFF_RKT_GUIDANCE)[0] if len(header) >= OFF_RKT_GUIDANCE + 8 else 0
         
         # Resolve weapon definition name
+        # Caching by props (the static weapon definition pointer in Dagor Engine) guarantees that
+        # when entity memory ptr is recycled for a newly dropped flare/chaff, it will NEVER inherit the old missile name!
+        props = struct.unpack_from("<Q", header, OFF_RKT_PROPS)[0] if len(header) >= OFF_RKT_PROPS + 8 else 0
         name = ""
-        if ptr in self._name_cache:
-            name = self._name_cache[ptr]
-        else:
-            # Priority A: props pointer (+0x6c8 -> +0x50)
-            props = struct.unpack_from("<Q", header, OFF_RKT_PROPS)[0] if len(header) >= OFF_RKT_PROPS + 8 else 0
-            if _is_valid_ptr(props):
+        
+        # Priority A: props pointer (+0x6c8 -> +0x50)
+        if _is_valid_ptr(props):
+            if props in self._props_name_cache:
+                cached = self._props_name_cache[props]
+                if cached is None:
+                    return None  # Known flare / chaff / non-missile
+                name = cached
+            else:
                 name_ptr = _rp(scanner, props + 0x50)
                 if _is_valid_ptr(name_ptr):
                     s = _rstr(scanner, name_ptr)
+                    # 🚫 ตรวจพบว่าเป็น Flare / Chaff ให้คัดทิ้งทันที และบันทึกใน props cache
+                    if s and any(ign in s.lower() for ign in ("flare", "chaff")):
+                        self._props_name_cache[props] = None
+                        return None
                     if s and (s.endswith(".blk") or any(k in s.lower() for k in ("missile", "rocket", "aim", "sam"))):
                         name = s
-            
-            # Priority B: Component weapon pointers (+0x420, +0x440)
-            if not name:
-                for off in (0x420, 0x440):
-                    if len(header) >= off + 8:
-                        comp_p = struct.unpack_from("<Q", header, off)[0]
-                        if _is_valid_ptr(comp_p):
-                            s = _rstr(scanner, comp_p + 0x08, 48)
-                            if s and any(k in s for k in ("missile", "rocket", "sam", "aim", "agm", "r_")):
-                                clean_s = s.split("\x00")[0].split("*")[0].strip()
-                                if clean_s:
-                                    name = clean_s + ".blk"
-                                    break
-            
-            # Priority C: Raw Header strings
-            if not name:
-                for off in [0x230, 0x240, 0x380]:
-                    if len(header) >= off + 40:
-                        s = header[off:off+40]
-                        if b"aim_" in s or b"rocket" in s or b"missile" in s or b".blk" in s:
-                            name = s.split(b"\x00")[0].decode("utf-8", errors="ignore")
-                            break
-            
-            # Priority D: Fallback name for SAM / SPAA bot missiles without string
-            if not name:
-                name = "sam_missile.blk"
-            
-            if len(self._name_cache) > 500:
-                self._name_cache.clear()
-            self._name_cache[ptr] = name
+                        if len(self._props_name_cache) > 500:
+                            self._props_name_cache.clear()
+                        self._props_name_cache[props] = name
         
-        # 🚫 FILTER OUT FLARES / CHAFF / DECOYS (Commented out per request to allow tracking flares/chaff)
-        # name_lower = name.lower()
-        # if any(ign in name_lower for ign in ["flare", "chaff"]):
-        #     return None
+        # Priority B: Component weapon pointers (+0x420, +0x440)
+        if not name:
+            for off in (0x420, 0x440):
+                if len(header) >= off + 8:
+                    comp_p = struct.unpack_from("<Q", header, off)[0]
+                    if _is_valid_ptr(comp_p):
+                        s = _rstr(scanner, comp_p + 0x08, 48)
+                        if s and any(ign in s.lower() for ign in ("flare", "chaff")):
+                            return None
+                        if s and any(k in s for k in ("missile", "rocket", "sam", "aim", "agm", "r_")):
+                            clean_s = s.split("\x00")[0].split("*")[0].strip()
+                            if clean_s:
+                                name = clean_s + ".blk"
+                                break
+        
+        # Priority C: Raw Header strings
+        if not name:
+            for off in [0x230, 0x240, 0x380]:
+                if len(header) >= off + 40:
+                    s = header[off:off+40]
+                    if b"aim_" in s or b"rocket" in s or b"missile" in s or b".blk" in s:
+                        name = s.split(b"\x00")[0].decode("utf-8", errors="ignore")
+                        break
+        
+        # Priority D: Fallback name for SAM / SPAA bot missiles without string
+        # ต้องมีระบบนำวิถี (guid != 0) หรือความเร็วระดับจรวดจริง (> 250 m/s) เท่านั้น
+        # ป้องกันไม่ให้เป้าลวง/เศษซาก (ความเร็วต่ำ 20-100 m/s) ถูกเข้าใจผิดว่าเป็นขีปนาวุธ
+        if not name:
+            if guid != 0 or speed > 250.0:
+                name = "sam_missile.blk"
+            else:
+                return None
+        
+        # 🚫 FILTER OUT FLARES / CHAFF / DECOYS
+        name_lower = name.lower()
+        if any(ign in name_lower for ign in ["flare", "chaff"]):
+            return None
         
         # Build MissileInfo
         m = MissileInfo()

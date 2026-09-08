@@ -2983,6 +2983,7 @@ class ESPOverlay(QOpenGLWidget):
         self.auto_cm_next_trigger_t = 0.0
         self.auto_cm_trigger_count = 0
         self.auto_cm_is_pressing = False  # ป้องกันการกดซ้ำซ้อนขณะปุ่มกำลังถูกกดค้างอยู่
+        self.my_projectile_owner = 0      # 🎯 Owner handle/ID ของขีปนาวุธเราเอง (ป้องกันระบบเตือนภัย/ยิงแฟลร์ใส่จรวดตัวเอง)
         self.calibration_offset = [0.0, 0.0]
         self.vertical_correction = 0.0
         self.camera_parallax = -4.5  # 🎯 NEW: ค่าแรงเหวี่ยงกล้องเริ่มต้น (T-80U-E1)
@@ -3817,6 +3818,7 @@ class ESPOverlay(QOpenGLWidget):
                 self.auto_cm_last_trigger_t = 0.0
                 self.auto_cm_next_trigger_t = 0.0
                 self.auto_cm_trigger_count = 0
+                self.my_projectile_owner = 0
             elif my_unit and not self.last_my_unit:
                 self.last_my_unit = my_unit
             
@@ -6451,13 +6453,46 @@ class ESPOverlay(QOpenGLWidget):
                         for m in result:
                             if not m.name or m.name == "":
                                 continue
+
+                            spawn_dist = math.sqrt(
+                                (m.pos[0] - my_pos[0])**2 +
+                                (m.pos[1] - my_pos[1])**2 +
+                                (m.pos[2] - my_pos[2])**2
+                            ) if my_pos else 99999.0
+
+                            is_my = False
+                            if spawn_dist < 45.0:
+                                is_my = True
+                                if m.owner != 0:
+                                    self.my_projectile_owner = m.owner
+                            elif self.my_projectile_owner != 0 and m.owner == self.my_projectile_owner:
+                                is_my = True
+
                             if m.ptr in self.missile_tracks:
                                 tr = self.missile_tracks[m.ptr]
-                                tr['base_pos'] = m.pos
-                                tr['vel'] = m.vel
-                                tr['speed'] = m.speed
-                                tr['last_seen'] = curr_t
-                                tr['missile'] = m
+                                # เช็คว่า pointer ถูกนำกลับมาใช้ใหม่ (recycled) หรือไม่ โดยดูจาก entity_id
+                                if tr.get('entity_id') == m.entity_id:
+                                    tr['base_pos'] = m.pos
+                                    tr['vel'] = m.vel
+                                    tr['speed'] = m.speed
+                                    tr['last_seen'] = curr_t
+                                    tr['missile'] = m
+                                    if not tr.get('is_my_missile') and is_my:
+                                        tr['is_my_missile'] = True
+                                else:
+                                    # Recycled pointer -> สถาปนาแทร็กใหม่
+                                    self.missile_tracks[m.ptr] = {
+                                        'base_pos': m.pos,
+                                        'vel': m.vel,
+                                        'speed': m.speed,
+                                        'last_seen': curr_t,
+                                        'smooth_pos': m.pos,
+                                        'smooth_angle': None,
+                                        'was_offscreen': False,
+                                        'missile': m,
+                                        'entity_id': m.entity_id,
+                                        'is_my_missile': is_my,
+                                    }
                             else:
                                 self.missile_tracks[m.ptr] = {
                                     'base_pos': m.pos,
@@ -6468,6 +6503,8 @@ class ESPOverlay(QOpenGLWidget):
                                     'smooth_angle': None,
                                     'was_offscreen': False,
                                     'missile': m,
+                                    'entity_id': m.entity_id,
+                                    'is_my_missile': is_my,
                                 }
 
                     # Purge stale missile tracks (grace period exceeded)
@@ -6497,6 +6534,10 @@ class ESPOverlay(QOpenGLWidget):
                         # Check if any missile is tracking ME
                         incoming = []
                         for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:
+                            # 🚫 ไม่นำขีปนาวุธที่เรายิงออกไปเองมาประเมินเป็นภัยคุกคาม / ไซเรนเตือนภัย / ยิงแฟลร์แก้
+                            if tr.get('is_my_missile') or (self.my_projectile_owner != 0 and m.owner == self.my_projectile_owner):
+                                continue
+
                             # Check if missile is heading toward me
                             is_heading_to_me = False
                             time_to_impact = 999.0
@@ -6505,11 +6546,14 @@ class ESPOverlay(QOpenGLWidget):
                                 dy = my_pos[1] - smooth_pos[1]
                                 dz = my_pos[2] - smooth_pos[2]
                                 dot = vel[0]*dx + vel[1]*dy + vel[2]*dz
-                                if dot > 0 and speed > 20.0:  # Moving toward me
+                                closing_speed = dot / dist
+                                # ต้องเคลื่อนที่เข้าหาเรา และมีความเร็วเข้าหา (closing speed) > 30 m/s
+                                if dot > 0 and speed > 20.0 and closing_speed > 30.0:
                                     cos_angle = dot / (speed * dist)
-                                    if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3) or (dist < 600):
+                                    # มุมพุ่งเข้าหาตรงๆ (>0.7) หรือเข้าหาในระยะใกล้ 1.5km (>0.3)
+                                    if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3):
                                         is_heading_to_me = True
-                                    time_to_impact = dist / speed
+                                    time_to_impact = dist / max(closing_speed, speed)
 
                             # ตรวจสอบสถานะ Guidance
                             # 1) ล็อกเป้าหมายเครื่องเราโดยตรงผ่าน target_id (AAM เช่น AIM-120, R-77, AIM-7)
@@ -6595,12 +6639,13 @@ class ESPOverlay(QOpenGLWidget):
                                 smooth_pos[0], smooth_pos[1], smooth_pos[2],
                                 self.screen_width, self.screen_height
                             )
-                            is_guided_me = bool(
+                            is_my = bool(tr.get('is_my_missile') or (self.my_projectile_owner != 0 and m.owner == self.my_projectile_owner))
+                            is_guided_me = False if is_my else bool(
                                 (my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)) or
                                 any(im[0].ptr == m.ptr and im[5] for im in incoming)
                             )
-                            is_guided_other = bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me)
-                            is_incoming = any(im[0].ptr == m.ptr for im in incoming)
+                            is_guided_other = False if is_my else bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me)
+                            is_incoming = False if is_my else any(im[0].ptr == m.ptr for im in incoming)
                             dist_km = dist / 1000.0
                             speed_label = f"{speed:.0f}m/s"
                             dist_label = f"{dist_km:.1f}km" if dist_km >= 1 else f"{dist:.0f}m"
@@ -6610,7 +6655,10 @@ class ESPOverlay(QOpenGLWidget):
                                 short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
 
                             # ป้ายชื่อและสัญลักษณ์ตามระดับภัยคุกคาม
-                            if is_guided_me:
+                            if is_my:
+                                label = f"🟢 [MY] {short_name} ({dist_label} {speed_label})"
+                                t_str = f"🟢 [MY] {dist_label}"
+                            elif is_guided_me:
                                 label = f"🚨 [LOCKED ON YOU!] {short_name} ({dist_label} {speed_label})"
                                 t_str = f"🚨 [LOCKED YOU] {dist_label}"
                             elif is_guided_other:
@@ -6628,7 +6676,10 @@ class ESPOverlay(QOpenGLWidget):
                                 tr['smooth_angle'] = None
                                 sx, sy, sw = w2s
                                 # Diamond marker
-                                if is_guided_me:
+                                if is_my:
+                                    marker_color = QColor(40, 220, 120, 240)
+                                    size = 8
+                                elif is_guided_me:
                                     marker_color = QColor(255, 30, 30, 255)
                                     size = 12
                                 elif is_guided_other:
@@ -6651,7 +6702,9 @@ class ESPOverlay(QOpenGLWidget):
                                 ])
                                 painter.drawPolygon(diamond)
 
-                                if is_guided_me:
+                                if is_my:
+                                    text_color = QColor(80, 240, 140, 255)
+                                elif is_guided_me:
                                     text_color = QColor(255, 60, 60, 255)
                                 elif is_guided_other:
                                     text_color = QColor(255, 180, 50, 230)
@@ -6686,7 +6739,10 @@ class ESPOverlay(QOpenGLWidget):
 
                                 arrow_x, arrow_y = _get_screen_edge_pos(cx, cy, angle, self.screen_width, self.screen_height, margin=OFFSCREEN_MISSILE_INDICATOR_MARGIN)
 
-                                if is_guided_me:
+                                if is_my:
+                                    arr_col = QColor(40, 220, 120, 240)
+                                    arrow_size = 9
+                                elif is_guided_me:
                                     arr_col = QColor(255, 30, 30, 255)
                                     arrow_size = 14
                                 elif is_guided_other:
@@ -6715,7 +6771,9 @@ class ESPOverlay(QOpenGLWidget):
                                 ]))
 
                                 # Position text nicely inside screen area
-                                if is_guided_me:
+                                if is_my:
+                                    text_color = QColor(80, 240, 140, 255)
+                                elif is_guided_me:
                                     text_color = QColor(255, 60, 60, 255)
                                 elif is_guided_other:
                                     text_color = QColor(255, 180, 50, 230)
