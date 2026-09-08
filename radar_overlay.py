@@ -2976,6 +2976,10 @@ class ESPOverlay(QOpenGLWidget):
         self.missile_last_scan = 0.0
         self.missile_warning_active = False
         self.missile_warning_start = 0.0
+        self.unit_id_to_name = {}         # target_id (u16 at u_ptr + 0x08) -> unit display name
+        self.unit_id_to_ptr = {}          # target_id -> u_ptr
+        self.my_unit_id = -1
+        self.my_name = ""
 
         # 🛡️ AUTO COUNTERMEASURE (FLARE / CHAFF) STATE
         self.auto_cm_last_trigger_t = 0.0
@@ -3262,6 +3266,61 @@ class ESPOverlay(QOpenGLWidget):
                 keyboard.release(key_target)
             except Exception:
                 pass
+
+    def resolve_unit_by_id(self, target_id: int):
+        """
+        🎯 TARGET TRACKING RESOLVER:
+        ค้นหาชื่อยูนิตและ Unit Pointer จาก target_id (uint16 ที่ unit_ptr + 0x08)
+        ทำให้ Overlay ทราบได้ทันทีว่าขีปนาวุธกำลังพุ่งเข้าหาใคร
+        """
+        if not target_id or target_id <= 0:
+            return None, None
+        if target_id in self.unit_id_to_name:
+            return self.unit_id_to_name[target_id], self.unit_id_to_ptr.get(target_id)
+        
+        # Check my_unit
+        my_u = getattr(self, 'my_unit', 0)
+        my_uid = getattr(self, 'my_unit_id', -1)
+        if my_u and my_uid == target_id:
+            name = getattr(self, 'my_name', '') or "YOU"
+            self.unit_id_to_name[target_id] = name
+            self.unit_id_to_ptr[target_id] = my_u
+            return name, my_u
+
+        # Check profile_cache
+        if hasattr(self, 'profile_cache') and self.profile_cache:
+            for u_ptr, c_prof in self.profile_cache.items():
+                u_id = c_prof.get('unit_id')
+                if u_id is None and self.scanner:
+                    u_id = get_unit_id(self.scanner, u_ptr)
+                    c_prof['unit_id'] = u_id
+                if u_id == target_id:
+                    dna = c_prof.get('dna') or {}
+                    prof = c_prof.get('profile') or {}
+                    status = c_prof.get('status')
+                    name = dna.get('short_name') or prof.get('short_name') or (status[2] if status else '') or prof.get('display_name') or f"Target #{target_id}"
+                    self.unit_id_to_name[target_id] = name
+                    self.unit_id_to_ptr[target_id] = u_ptr
+                    return name, u_ptr
+
+        # Fallback lookup in all_units
+        cgame_base = getattr(self, 'cgame_base', 0)
+        if cgame_base and self.scanner:
+            try:
+                all_u = get_all_units(self.scanner, cgame_base)
+                for u_ptr, _ in all_u:
+                    u_id = get_unit_id(self.scanner, u_ptr)
+                    if u_id == target_id:
+                        prof = get_unit_filter_profile(self.scanner, u_ptr)
+                        dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                        name = prof.get('short_name') or dna.get('short_name') or prof.get('display_name') or f"Target #{target_id}"
+                        self.unit_id_to_name[target_id] = name
+                        self.unit_id_to_ptr[target_id] = u_ptr
+                        return name, u_ptr
+            except Exception:
+                pass
+
+        return None, None
 
     def _is_fixed_recon_ghost(self, u_ptr, pos, curr_t):
         if not u_ptr or not pos:
@@ -3766,6 +3825,9 @@ class ESPOverlay(QOpenGLWidget):
                 my_name = snapshot.my_name
                 my_name_key = snapshot.my_name_key
                 my_unit_id = getattr(snapshot, 'my_unit_id', -1)
+                if hasattr(snapshot, 'unit_name_by_id') and snapshot.unit_name_by_id:
+                    self.unit_id_to_name.update(snapshot.unit_name_by_id)
+                    self.unit_id_to_ptr.update(snapshot.unit_ptr_by_id)
             else:
                 all_units_data = get_all_units(self.scanner, cgame_base)
                 all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
@@ -3794,12 +3856,21 @@ class ESPOverlay(QOpenGLWidget):
             if my_unit and (my_unit_id == -1 or my_unit_id is None):
                 my_unit_id = get_unit_id(self.scanner, my_unit)
 
+            self.my_unit = my_unit
+            self.my_unit_id = my_unit_id
+            self.my_name = my_name
+            if my_unit and my_unit_id > 0:
+                self.unit_id_to_name[my_unit_id] = my_name or "YOU"
+                self.unit_id_to_ptr[my_unit_id] = my_unit
+
             my_is_recon = _is_recon_drone_like(f"{my_name} {my_name_key}")
             my_can_auto_cm = bool(my_is_air and not my_is_recon)
 
             # Cache reset on my_unit change
             if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
                 reset_runtime_caches(clear_view=True)
+                self.unit_id_to_name.clear()
+                self.unit_id_to_ptr.clear()
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {}
                 self.max_reload_cache = {}
                 self.vel_window = {}
@@ -4059,14 +4130,20 @@ class ESPOverlay(QOpenGLWidget):
                         continue
                     profile = get_unit_filter_profile(self.scanner, u_ptr)
                     dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                    unit_id = get_unit_id(self.scanner, u_ptr)
                     cached_prof = {
                         'status': status,
                         'profile': profile,
                         'dna': dna,
                         'is_air_resolved': is_air,
                         'info_ptr': info_ptr_now,
+                        'unit_id': unit_id,
                     }
                     self.profile_cache[u_ptr] = cached_prof
+                    if unit_id > 0:
+                        disp_name = dna.get('short_name') or profile.get('short_name') or profile.get('display_name') or status[2]
+                        self.unit_id_to_name[unit_id] = disp_name
+                        self.unit_id_to_ptr[unit_id] = u_ptr
                     
                     u_team, u_state, unit_name, reload_val = cached_prof['status']
 
@@ -6568,39 +6645,42 @@ class ESPOverlay(QOpenGLWidget):
                                 continue
 
                             # ตรวจสอบสถานะ Guidance
-                            # 1) ล็อกเป้าหมายเครื่องเราโดยตรงผ่าน target_id (AAM เช่น AIM-120, R-77, AIM-7)
-                            is_guided_explicit = bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
+                            # 1) ล็อกเป้าหมายเครื่องเราโดยตรง 100% ผ่าน target_id (IR AAM เช่น AAM-3, AIM-9L หรือ Radar เช่น AIM-120, R-77)
+                            is_exact_locked_me = bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
                             # 2) ขีปนาวุธ SPAA Bot SAM / SACLOS / Command-Guided (target_id <= 0 แต่ล็อก/ติดตาม และวิถีพุ่งตรงเข้าหาเครื่องเรา)
                             is_sam_guided_to_me = bool(is_heading_to_me and (m.is_tracking or m.is_locked) and m.target_id <= 0)
 
-                            is_guided_to_me = is_guided_explicit or is_sam_guided_to_me
+                            is_guided_to_me = is_exact_locked_me or is_sam_guided_to_me
 
                             # ขีปนาวุธล็อกเครื่องอื่น: ต้องเป็น target_id ที่มีตัวตนจริง (> 0) และไม่ใช่ ID ของเรา และทิศทางไม่ได้พุ่งตรงมาที่เรา
                             is_guided_to_other = bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_heading_to_me)
 
                             # ประเมินว่าเป็นภัยคุกคามต่อตัวเราหรือไม่:
-                            # 1) ถ้า Guided == myUnit (ล็อกเครื่องเราโดยตรง หรือ SAM ล็อกพุ่งเข้าหาเรา) -> ถือเป็นภัยคุกคามทันที
-                            # 2) ถ้าหัวขีปนาวุธพุ่งตรงมาที่เรา -> ถือเป็นภัยคุกคามทันที (ยกเว้นล็อกคนอื่นชัดเจนและอยู่นอกระยะอันตราย)
+                            # 1) ถ้า 100% Exact Locked On You -> ถือเป็นภัยคุกคามสูงสุดทันที (Seeker ID Match)
+                            # 2) ถ้า SAM ล็อกพุ่งเข้าหาเรา -> ถือเป็นภัยคุกคามทันที
+                            # 3) ถ้าหัวขีปนาวุธพุ่งตรงมาที่เรา -> ถือเป็นภัยคุกคามทันที (ยกเว้นล็อกคนอื่นชัดเจนและอยู่นอกระยะอันตราย)
                             threat_to_me = False
-                            if is_guided_to_me:
+                            if is_exact_locked_me:
+                                threat_to_me = True
+                            elif is_guided_to_me:
                                 threat_to_me = True
                             elif is_heading_to_me:
                                 if not is_guided_to_other or dist <= AUTO_CM_STAGE1_MAX_RANGE or time_to_impact <= AUTO_CM_STAGE1_TIME_LEFT:
                                     threat_to_me = True
 
                             if threat_to_me:
-                                incoming.append((m, smooth_pos, dist, time_to_impact, tr, is_guided_to_me))
+                                incoming.append((m, smooth_pos, dist, time_to_impact, tr, is_guided_to_me, is_exact_locked_me))
 
-                        # Sort incoming: ให้ความสำคัญกับขีปนาวุธที่ล็อกเราตรงๆ ก่อน ตามด้วยเวลาที่จะชน (TTI)
-                        incoming.sort(key=lambda x: (0 if x[5] else 1, x[3]))
+                        # Sort incoming: ให้ความสำคัญกับ 100% Exact Lock มาอันดับ 1, ตามด้วย SAM Guided อันดับ 2, ตามด้วยเวลาที่จะชน (TTI)
+                        incoming.sort(key=lambda x: (0 if x[6] else (1 if x[5] else 2), x[3]))
                         active_missile_entries.sort(key=lambda x: x[4])
 
                         # 🛡️ Auto Countermeasure Logic (กด R.ALT อัตโนมัติสำหรับเครื่องบินที่ไม่ใช่โดรน)
                         auto_cm_highest_stage = 0
                         if incoming and my_can_auto_cm and ENABLE_AUTO_COUNTERMEASURE:
-                            for m_inc, _, d_inc, tti_inc, _, inc_guided in incoming:
-                                # ถ้า REQUIRE_EXACT_LOCK เป็น True ต้องเป็น Guided==myUnit เท่านั้น
-                                if AUTO_CM_REQUIRE_EXACT_LOCK and not inc_guided:
+                            for m_inc, _, d_inc, tti_inc, _, inc_guided, inc_exact_locked in incoming:
+                                # ถ้า REQUIRE_EXACT_LOCK เป็น True ต้องเป็น Guided==myUnit หรือ Exact Locked เท่านั้น
+                                if AUTO_CM_REQUIRE_EXACT_LOCK and not (inc_guided or inc_exact_locked):
                                     continue
                                 
                                 # Stage 2 (ระยะประชิด / ภาวะวิกฤต): ระยะ <= STAGE2_MAX_RANGE หรือ TTI <= STAGE2_TIME_LEFT
@@ -6653,11 +6733,20 @@ class ESPOverlay(QOpenGLWidget):
                             )
                             is_incoming = any(im[0].ptr == m.ptr for im in incoming)
                             is_my = bool(tr.get('is_my_missile') and not is_incoming)
-                            is_guided_me = False if is_my else bool(
-                                (my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)) or
+                            is_exact_locked_me = False if is_my else bool(
+                                my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)
+                            )
+                            is_guided_me = False if is_my else (
+                                is_exact_locked_me or
                                 any(im[0].ptr == m.ptr and im[5] for im in incoming)
                             )
-                            is_guided_other = False if is_my else bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me)
+                            is_guided_other = False if is_my else bool(
+                                m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me
+                            )
+
+                            # 🎯 TARGET TRACKING: ค้นหาชื่อยูนิตเป้าหมายจาก target_id
+                            tracked_tgt_name, _ = self.resolve_unit_by_id(m.target_id) if m.target_id > 0 else (None, None)
+
                             dist_km = dist / 1000.0
                             speed_label = f"{speed:.0f}m/s"
                             dist_label = f"{dist_km:.1f}km" if dist_km >= 1 else f"{dist:.0f}m"
@@ -6673,14 +6762,22 @@ class ESPOverlay(QOpenGLWidget):
 
                             # ป้ายชื่อและสัญลักษณ์ตามระดับภัยคุกคาม
                             if is_my:
-                                label = f"🟢 [MY] {short_name} ({dist_label} {speed_label})"
-                                t_str = f"🟢 [MY] {dist_label}"
+                                if tracked_tgt_name:
+                                    label = f"🟢 [MY] {short_name} ➔ [{tracked_tgt_name}] ({dist_label} {speed_label})"
+                                    t_str = f"🟢 [MY] ➔ {tracked_tgt_name} {dist_label}"
+                                else:
+                                    label = f"🟢 [MY] {short_name} ({dist_label} {speed_label})"
+                                    t_str = f"🟢 [MY] {dist_label}"
+                            elif is_exact_locked_me:
+                                label = f"🚨 [100% LOCKED ON YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
+                                t_str = f"🚨 [100% LOCKED YOU] {dist_label}"
                             elif is_guided_me:
-                                label = f"🚨 [LOCKED ON YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
-                                t_str = f"🚨 [LOCKED YOU] {dist_label}"
+                                label = f"⚠️ [LOCKED ON YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
+                                t_str = f"⚠️ [LOCKED YOU] {dist_label}"
                             elif is_guided_other:
-                                label = f"[TGT #{m.target_id}] {short_name}{by_str} ({dist_label})"
-                                t_str = f"[TGT #{m.target_id}] {dist_label}"
+                                tgt_disp = tracked_tgt_name if tracked_tgt_name else f"#{m.target_id}"
+                                label = f"🟠 [TRACKING: {tgt_disp}] {short_name}{by_str} ({dist_label})"
+                                t_str = f"🟠 [➔ {tgt_disp}] {dist_label}"
                             elif is_incoming:
                                 label = f"{short_name}{by_str} ({dist_label} {speed_label})"
                                 t_str = f"{short_name} {dist_label}"
@@ -6696,8 +6793,11 @@ class ESPOverlay(QOpenGLWidget):
                                 if is_my:
                                     marker_color = QColor(40, 220, 120, 240)
                                     size = 8
+                                elif is_exact_locked_me:
+                                    marker_color = QColor(255, 10, 10, 255)
+                                    size = 14
                                 elif is_guided_me:
-                                    marker_color = QColor(255, 30, 30, 255)
+                                    marker_color = QColor(255, 40, 40, 255)
                                     size = 12
                                 elif is_guided_other:
                                     marker_color = QColor(255, 150, 20, 220)
@@ -6709,7 +6809,8 @@ class ESPOverlay(QOpenGLWidget):
                                     marker_color = QColor(*COLOR_MISSILE_MARKER_UNGUIDED)
                                     size = 7
 
-                                painter.setPen(QPen(marker_color, 2))
+                                pen_width = 3 if is_exact_locked_me else 2
+                                painter.setPen(QPen(marker_color, pen_width))
                                 painter.setBrush(Qt.NoBrush)
                                 diamond = QPolygon([
                                     QPoint(int(sx), int(sy - size)),
@@ -6721,6 +6822,8 @@ class ESPOverlay(QOpenGLWidget):
 
                                 if is_my:
                                     text_color = QColor(80, 240, 140, 255)
+                                elif is_exact_locked_me:
+                                    text_color = QColor(255, 30, 30, 255)
                                 elif is_guided_me:
                                     text_color = QColor(255, 60, 60, 255)
                                 elif is_guided_other:
@@ -6759,8 +6862,11 @@ class ESPOverlay(QOpenGLWidget):
                                 if is_my:
                                     arr_col = QColor(40, 220, 120, 240)
                                     arrow_size = 9
+                                elif is_exact_locked_me:
+                                    arr_col = QColor(255, 10, 10, 255)
+                                    arrow_size = 16
                                 elif is_guided_me:
-                                    arr_col = QColor(255, 30, 30, 255)
+                                    arr_col = QColor(255, 40, 40, 255)
                                     arrow_size = 14
                                 elif is_guided_other:
                                     arr_col = QColor(255, 150, 20, 220)
@@ -6790,6 +6896,8 @@ class ESPOverlay(QOpenGLWidget):
                                 # Position text nicely inside screen area
                                 if is_my:
                                     text_color = QColor(80, 240, 140, 255)
+                                elif is_exact_locked_me:
+                                    text_color = QColor(255, 30, 30, 255)
                                 elif is_guided_me:
                                     text_color = QColor(255, 60, 60, 255)
                                 elif is_guided_other:
@@ -6845,9 +6953,16 @@ class ESPOverlay(QOpenGLWidget):
 
                             # Warning text at top
                             closest = incoming[0]
-                            m_closest, pos_closest, dist_closest, tti, tr_closest, inc_locked = closest
+                            m_closest, pos_closest, dist_closest, tti, tr_closest, inc_guided, inc_exact_locked = closest
 
-                            if inc_locked:
+                            if inc_exact_locked:
+                                if auto_cm_highest_stage == 2:
+                                    warn_text = f"🚨 CRITICAL: 100% HARD LOCK ON YOU! - STAGE 2 (PANIC FLARES)"
+                                elif auto_cm_highest_stage == 1:
+                                    warn_text = f"🚨 WARNING: 100% HARD LOCK ON YOU! - STAGE 1 (AUTO FLARES)"
+                                else:
+                                    warn_text = f"🚨 WARNING: 100% HARD LOCK ON YOU! (SEEKER TGT #{my_unit_id})"
+                            elif inc_guided:
                                 if auto_cm_highest_stage == 2:
                                     warn_text = f"🚨 CRITICAL: MISSILE LOCKED ON YOU! - STAGE 2 (PANIC FLARES)"
                                 elif auto_cm_highest_stage == 1:
