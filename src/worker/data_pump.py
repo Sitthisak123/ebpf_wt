@@ -153,6 +153,8 @@ class FrameSnapshot:
 
     # Unit list metadata
     all_unit_ptrs: set = field(default_factory=set)
+    unit_name_by_id: Dict[int, str] = field(default_factory=dict)
+    unit_ptr_by_id: Dict[int, int] = field(default_factory=dict)
 
     # Worker performance
     worker_fps: float = 0.0
@@ -480,12 +482,14 @@ class DataPumpWorker(QThread):
             else:
                 profile = get_unit_filter_profile(self.scanner, u_ptr)
                 dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                unit_id = get_unit_id(self.scanner, u_ptr)
                 if is_valid_ptr(info_ptr_now):
                     self.profile_cache[u_ptr] = {
                         "profile": profile,
                         "dna": dna,
                         "info_ptr": info_ptr_now,
                         "last_seen": now,
+                        "unit_id": unit_id,
                     }
                     cached_prof = self.profile_cache[u_ptr]
 
@@ -707,6 +711,25 @@ class DataPumpWorker(QThread):
                     self.latest_missiles = m_res
             except Exception:
                 pass
+
+        # Build unit_id mapping for Target Tracking
+        unit_name_by_id = {}
+        unit_ptr_by_id = {}
+        if snap.my_unit and snap.my_unit_id > 0:
+            unit_name_by_id[snap.my_unit_id] = snap.my_name or "YOU"
+            unit_ptr_by_id[snap.my_unit_id] = snap.my_unit
+        for t_snap in valid_targets:
+            c_prof = self.profile_cache.get(t_snap.u_ptr)
+            if c_prof:
+                uid = c_prof.get("unit_id")
+                if uid is None and self.scanner:
+                    uid = get_unit_id(self.scanner, t_snap.u_ptr)
+                    c_prof["unit_id"] = uid
+                if uid and uid > 0:
+                    unit_name_by_id[uid] = t_snap.short_name or t_snap.raw_name
+                    unit_ptr_by_id[uid] = t_snap.u_ptr
+        snap.unit_name_by_id = unit_name_by_id
+        snap.unit_ptr_by_id = unit_ptr_by_id
 
         snap.missiles = list(self.latest_missiles)
         snap.valid_targets = valid_targets

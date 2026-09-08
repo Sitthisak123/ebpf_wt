@@ -15,7 +15,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address
+from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 
 OFF_ECS_MANAGER    = 0x8225aa0
 OFF_ECS_NODE_TABLE = 0x178
@@ -253,6 +253,28 @@ def main():
     print(f"   node_table:  {hex(node_t)}")
     print(f"   class_table: {hex(class_t)}")
     
+    # Build unit_map to resolve target_id and owner
+    unit_map = {}
+    try:
+        import src.utils.mul as mul
+        init_dynamic_offsets(sc, base)
+        cgame_base = mul.get_cgame_base(sc, base)
+        my_unit, _ = mul.get_local_team(sc, base)
+        all_u = mul.get_all_units(sc, cgame_base)
+        for u_ptr, is_air in all_u:
+            raw = sc.read_mem(u_ptr + 0x08, 2)
+            uid = struct.unpack("<H", raw)[0] if raw and len(raw) == 2 else -1
+            prof = mul.get_unit_filter_profile(sc, u_ptr)
+            dna = mul.get_unit_detailed_dna(sc, u_ptr) or {}
+            uname = dna.get("short_name") or prof.get("short_name") or prof.get("display_name") or "Unit"
+            if u_ptr == my_unit:
+                uname += " (YOU)"
+            if uid > 0:
+                unit_map[uid] = (u_ptr, uname)
+            unit_map[u_ptr] = (u_ptr, uname)
+    except Exception:
+        pass
+
     # Run Pure Direct Offset 0 Batch Entry Scanner
     t0 = time.time()
     unique = brute_force_entries(sc, node_t, 350)
@@ -272,13 +294,16 @@ def main():
         print("   2. หรือกด CTRL+C แล้วยิง missile ใหม่")
     else:
         for idx, r in enumerate(unique):
-            owner_str = f"{hex(r['owner'])} ✅" if 0 < r['owner'] <= 0xFFFFFFFF else f"{hex(r['owner'])} ❌"
+            owner_u = r['owner'] & ~1
+            owner_info = f" [{unit_map[owner_u][1]}]" if owner_u in unit_map else ""
+            owner_str = f"{hex(r['owner'])} ✅{owner_info}" if 0 < r['owner'] <= 0xFFFFFFFFFFFFFFFF else f"{hex(r['owner'])} ❌"
             guid_str = f"{hex(r['guid'])}" if r['guid'] != 0 else "none (unguided)"
             if r['guid'] != 0 and is_valid_ptr(r['guid']):
                 g_lock = r8(sc, r['guid'] + 0x50)
                 g_trk = r8(sc, r['guid'] + 0x51)
                 g_tgt = struct.unpack("<h", sc.read_mem(r['guid'] + 0x8c, 2))[0] if sc.read_mem(r['guid'] + 0x8c, 2) else -1
-                guid_str += f" locked={g_lock} tracking={g_trk} target_id={g_tgt}"
+                tgt_info = f" (🎯 {unit_map[g_tgt][1]})" if g_tgt in unit_map else ""
+                guid_str += f" locked={g_lock} tracking={g_trk} target_id={g_tgt}{tgt_info}"
             
             name_str = f'\n     Name:     "{r["name"]}"' if r["name"] else ""
             
