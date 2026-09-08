@@ -465,7 +465,7 @@ BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
-SHOW_BOT_UNITS = False               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
+SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
@@ -2983,7 +2983,6 @@ class ESPOverlay(QOpenGLWidget):
         self.auto_cm_next_trigger_t = 0.0
         self.auto_cm_trigger_count = 0
         self.auto_cm_is_pressing = False  # ป้องกันการกดซ้ำซ้อนขณะปุ่มกำลังถูกกดค้างอยู่
-        self.my_projectile_owner = 0      # 🎯 Owner handle/ID ของขีปนาวุธเราเอง (ป้องกันระบบเตือนภัย/ยิงแฟลร์ใส่จรวดตัวเอง)
         self.calibration_offset = [0.0, 0.0]
         self.vertical_correction = 0.0
         self.camera_parallax = -4.5  # 🎯 NEW: ค่าแรงเหวี่ยงกล้องเริ่มต้น (T-80U-E1)
@@ -3248,14 +3247,12 @@ class ESPOverlay(QOpenGLWidget):
             try:
                 keyboard.press(key_target)
                 QTimer.singleShot(hold_time, self._release_countermeasure)
-                print(f"🛡️ [AUTO CM] Fired '{AUTO_CM_KEY}' (scancode: {key_target}, hold: {hold_time}ms)! (Stage {self.auto_cm_active_stage})")
-            except Exception as e:
+            except Exception:
                 self.auto_cm_is_pressing = False
                 try:
                     keyboard.press_and_release(key_target)
-                    print(f"🛡️ [AUTO CM] Press&Release '{AUTO_CM_KEY}' (scancode: {key_target})! (Stage {self.auto_cm_active_stage})")
-                except Exception as e2:
-                    print(f"❌ [AUTO CM ERROR] Failed to send key: {e2}")
+                except Exception:
+                    pass
 
     def _release_countermeasure(self):
         self.auto_cm_is_pressing = False
@@ -3818,7 +3815,6 @@ class ESPOverlay(QOpenGLWidget):
                 self.auto_cm_last_trigger_t = 0.0
                 self.auto_cm_next_trigger_t = 0.0
                 self.auto_cm_trigger_count = 0
-                self.my_projectile_owner = 0
             elif my_unit and not self.last_my_unit:
                 self.last_my_unit = my_unit
             
@@ -6454,45 +6450,59 @@ class ESPOverlay(QOpenGLWidget):
                             if not m.name or m.name == "":
                                 continue
 
-                            spawn_dist = math.sqrt(
-                                (m.pos[0] - my_pos[0])**2 +
-                                (m.pos[1] - my_pos[1])**2 +
-                                (m.pos[2] - my_pos[2])**2
-                            ) if my_pos else 99999.0
+                            cur_dist = 99999.0
+                            closing_speed = 0.0
+                            if my_pos:
+                                dx = my_pos[0] - m.pos[0]
+                                dy = my_pos[1] - m.pos[1]
+                                dz = my_pos[2] - m.pos[2]
+                                cur_dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                                if cur_dist > 0:
+                                    dot = m.vel[0]*dx + m.vel[1]*dy + m.vel[2]*dz
+                                    closing_speed = dot / cur_dist
+
+                            is_sam_name = ("sam" in m.name.lower()) if m.name else False
+
+                            # 🎯 DIRECT TAGGED UNIT POINTER CHECK (m.owner & ~1 == unit_ptr)
+                            # ใน Dagor Engine ฟิลด์ Owner ของขีปนาวุธคือ Unit Pointer ที่ถูก Tag บิต 0 (u_ptr | 1)
+                            owner_unit = (m.owner & ~1) if m.owner else 0
+                            is_owner_me = bool(my_unit and owner_unit == my_unit)
+                            is_owner_other = bool(my_unit and owner_unit and owner_unit != my_unit)
+
+                            is_new_track = (m.ptr not in self.missile_tracks) or (self.missile_tracks[m.ptr].get('entity_id') != m.entity_id)
 
                             is_my = False
-                            if spawn_dist < 45.0:
+                            if is_owner_me:
+                                # ตรงกับ Pointer เครื่องเรา 100%
                                 is_my = True
-                                if m.owner != 0:
-                                    self.my_projectile_owner = m.owner
-                            elif self.my_projectile_owner != 0 and m.owner == self.my_projectile_owner:
-                                is_my = True
+                            elif is_owner_other:
+                                # ตรงกับ Pointer ยูนิตอื่น (เช่น บอท SAM ADATS 0x4f361690) -> ไม่มีวันเป็นของเราเด็ดขาด!
+                                is_my = False
+                            elif is_new_track:
+                                # Fallback เมื่อไม่มี owner หรือ owner เป็น 0 (ใช้ launch_pos และ relative motion)
+                                if not (my_is_air and is_sam_name) and closing_speed <= 0.0 and cur_dist < 30.0:
+                                    lpos = getattr(m, 'launch_pos', (0.0, 0.0, 0.0))
+                                    if lpos and lpos != (0.0, 0.0, 0.0) and my_pos:
+                                        ldx = my_pos[0] - lpos[0]
+                                        ldy = my_pos[1] - lpos[1]
+                                        ldz = my_pos[2] - lpos[2]
+                                        launch_dist = math.sqrt(ldx*ldx + ldy*ldy + ldz*ldz)
+                                        if launch_dist < 45.0:
+                                            is_my = True
+                                    else:
+                                        is_my = True
 
-                            if m.ptr in self.missile_tracks:
+                            if m.ptr in self.missile_tracks and not is_new_track:
                                 tr = self.missile_tracks[m.ptr]
-                                # เช็คว่า pointer ถูกนำกลับมาใช้ใหม่ (recycled) หรือไม่ โดยดูจาก entity_id
-                                if tr.get('entity_id') == m.entity_id:
-                                    tr['base_pos'] = m.pos
-                                    tr['vel'] = m.vel
-                                    tr['speed'] = m.speed
-                                    tr['last_seen'] = curr_t
-                                    tr['missile'] = m
-                                    if not tr.get('is_my_missile') and is_my:
-                                        tr['is_my_missile'] = True
-                                else:
-                                    # Recycled pointer -> สถาปนาแทร็กใหม่
-                                    self.missile_tracks[m.ptr] = {
-                                        'base_pos': m.pos,
-                                        'vel': m.vel,
-                                        'speed': m.speed,
-                                        'last_seen': curr_t,
-                                        'smooth_pos': m.pos,
-                                        'smooth_angle': None,
-                                        'was_offscreen': False,
-                                        'missile': m,
-                                        'entity_id': m.entity_id,
-                                        'is_my_missile': is_my,
-                                    }
+                                tr['base_pos'] = m.pos
+                                tr['vel'] = m.vel
+                                tr['speed'] = m.speed
+                                tr['last_seen'] = curr_t
+                                tr['missile'] = m
+                                tr['owner_unit'] = owner_unit
+                                # Safety Fail-safe: ถ้าพุ่งตรงเข้าหาเรา หรือเป็นจรวดที่คนอื่นยิง -> ยกเลิก is_my ทันที!
+                                if tr.get('is_my_missile') and (is_owner_other or closing_speed > 20.0 or (my_is_air and is_sam_name)):
+                                    tr['is_my_missile'] = False
                             else:
                                 self.missile_tracks[m.ptr] = {
                                     'base_pos': m.pos,
@@ -6505,6 +6515,7 @@ class ESPOverlay(QOpenGLWidget):
                                     'missile': m,
                                     'entity_id': m.entity_id,
                                     'is_my_missile': is_my,
+                                    'owner_unit': owner_unit,
                                 }
 
                     # Purge stale missile tracks (grace period exceeded)
@@ -6534,13 +6545,10 @@ class ESPOverlay(QOpenGLWidget):
                         # Check if any missile is tracking ME
                         incoming = []
                         for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:
-                            # 🚫 ไม่นำขีปนาวุธที่เรายิงออกไปเองมาประเมินเป็นภัยคุกคาม / ไซเรนเตือนภัย / ยิงแฟลร์แก้
-                            if tr.get('is_my_missile') or (self.my_projectile_owner != 0 and m.owner == self.my_projectile_owner):
-                                continue
-
                             # Check if missile is heading toward me
                             is_heading_to_me = False
                             time_to_impact = 999.0
+                            closing_speed = 0.0
                             if dist > 0:
                                 dx = my_pos[0] - smooth_pos[0]
                                 dy = my_pos[1] - smooth_pos[1]
@@ -6554,6 +6562,10 @@ class ESPOverlay(QOpenGLWidget):
                                     if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3):
                                         is_heading_to_me = True
                                     time_to_impact = dist / max(closing_speed, speed)
+
+                            # 🚫 กรองข้ามเฉพาะขีปนาวุธที่เรายิงออกไปเองจริงๆ (ต้องไม่พุ่งเข้าหาเราเด็ดขาด)
+                            if tr.get('is_my_missile') and not is_heading_to_me and closing_speed <= 15.0:
+                                continue
 
                             # ตรวจสอบสถานะ Guidance
                             # 1) ล็อกเป้าหมายเครื่องเราโดยตรงผ่าน target_id (AAM เช่น AIM-120, R-77, AIM-7)
@@ -6639,13 +6651,13 @@ class ESPOverlay(QOpenGLWidget):
                                 smooth_pos[0], smooth_pos[1], smooth_pos[2],
                                 self.screen_width, self.screen_height
                             )
-                            is_my = bool(tr.get('is_my_missile') or (self.my_projectile_owner != 0 and m.owner == self.my_projectile_owner))
+                            is_incoming = any(im[0].ptr == m.ptr for im in incoming)
+                            is_my = bool(tr.get('is_my_missile') and not is_incoming)
                             is_guided_me = False if is_my else bool(
                                 (my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)) or
                                 any(im[0].ptr == m.ptr and im[5] for im in incoming)
                             )
                             is_guided_other = False if is_my else bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me)
-                            is_incoming = False if is_my else any(im[0].ptr == m.ptr for im in incoming)
                             dist_km = dist / 1000.0
                             speed_label = f"{speed:.0f}m/s"
                             dist_label = f"{dist_km:.1f}km" if dist_km >= 1 else f"{dist:.0f}m"
@@ -6654,18 +6666,23 @@ class ESPOverlay(QOpenGLWidget):
                             if m.name:
                                 short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
 
+                            owner_u = tr.get('owner_unit', 0)
+                            shooter_dna = (self.profile_cache.get(owner_u) or {}).get('dna') if owner_u else None
+                            shooter_name = shooter_dna.get('short_name') if shooter_dna else None
+                            by_str = f" [by {shooter_name}]" if shooter_name else ""
+
                             # ป้ายชื่อและสัญลักษณ์ตามระดับภัยคุกคาม
                             if is_my:
                                 label = f"🟢 [MY] {short_name} ({dist_label} {speed_label})"
                                 t_str = f"🟢 [MY] {dist_label}"
                             elif is_guided_me:
-                                label = f"🚨 [LOCKED ON YOU!] {short_name} ({dist_label} {speed_label})"
+                                label = f"🚨 [LOCKED ON YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
                                 t_str = f"🚨 [LOCKED YOU] {dist_label}"
                             elif is_guided_other:
-                                label = f"[TGT #{m.target_id}] {short_name} ({dist_label})"
+                                label = f"[TGT #{m.target_id}] {short_name}{by_str} ({dist_label})"
                                 t_str = f"[TGT #{m.target_id}] {dist_label}"
                             elif is_incoming:
-                                label = f"{short_name} ({dist_label} {speed_label})"
+                                label = f"{short_name}{by_str} ({dist_label} {speed_label})"
                                 t_str = f"{short_name} {dist_label}"
                             else:
                                 label = dist_label

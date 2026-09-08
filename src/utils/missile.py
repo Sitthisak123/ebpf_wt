@@ -28,8 +28,6 @@ OFF_RKT_OWNER      = 0x40
 OFF_RKT_STATE      = 0x94
 OFF_RKT_POS        = 0x23c
 OFF_RKT_VEL        = 0x258
-OFF_RKT_ALT_POS    = 0x298   # Layout 2 for SPAA bot / SAM missiles
-OFF_RKT_ALT_VEL    = 0x2b4
 OFF_RKT_DETONATED  = 0x420   # Detonation/impact effect flag (0 = flying, non-zero = detonated in starned)
 OFF_RKT_PHASE      = 0x498   # Projectile lifecycle phase (3 = in-flight, 6 = terminated/impacted)
 OFF_RKT_GUIDANCE   = 0x638
@@ -121,7 +119,7 @@ class MissileInfo:
         'ptr', 'pos', 'vel', 'speed', 'owner', 'state',
         'entity_id', 'guidance_ptr', 'name',
         'is_locked', 'is_tracking', 'target_id',
-        'entry_idx',
+        'entry_idx', 'launch_pos',
     )
     
     def __init__(self):
@@ -138,6 +136,7 @@ class MissileInfo:
         self.is_tracking = False
         self.target_id = -1
         self.entry_idx = -1
+        self.launch_pos = (0.0, 0.0, 0.0)
     
     def __repr__(self):
         return (f"<Missile '{self.name}' pos=({self.pos[0]:.0f},{self.pos[1]:.0f},{self.pos[2]:.0f}) "
@@ -256,48 +255,24 @@ class MissileScanner:
     def _check_rocket(self, scanner, ptr, entry_idx):
         """
         Check if pointer is a valid rocket using 1 SINGLE block memory read (0x720 bytes).
-        Supports both standard player missiles (starned 0x23c) and SPAA bot / SAM missiles (alt 0x298).
+        Pure starned layout (0x23c / 0x258) - applies to all player missiles and bot SAMs.
         """
         header = scanner.read_mem(ptr, 0x720)
-        if not header or len(header) < 0x2c0:
+        if not header or len(header) < 0x270:
             return None
         
-        # 1. Detect layout and extract position & velocity
-        layout = None
-        pos = None
-        vel = None
-        speed = 0.0
-        
-        # Try Layout 1: starned (0x23c, 0x258)
-        pos_cand = struct.unpack_from("<fff", header, OFF_RKT_POS)
-        vel_cand = struct.unpack_from("<fff", header, OFF_RKT_VEL)
-        is_ok, spd = _is_valid_missile_motion(pos_cand, vel_cand)
-        if is_ok:
-            layout = "starned"
-            pos = pos_cand
-            vel = vel_cand
-            speed = spd
-        
-        # Try Layout 2: alt_298 (0x298, 0x2b4) for SPAA bot / SAM missiles
-        if layout is None and len(header) >= 0x2c0:
-            pos_cand = struct.unpack_from("<fff", header, OFF_RKT_ALT_POS)
-            vel_cand = struct.unpack_from("<fff", header, OFF_RKT_ALT_VEL)
-            is_ok, spd = _is_valid_missile_motion(pos_cand, vel_cand)
-            if is_ok:
-                layout = "alt_298"
-                pos = pos_cand
-                vel = vel_cand
-                speed = spd
-        
-        if layout is None:
+        # 1. Extract position & velocity (Pure starned layout: 0x23c, 0x258)
+        pos = struct.unpack_from("<fff", header, OFF_RKT_POS)
+        vel = struct.unpack_from("<fff", header, OFF_RKT_VEL)
+        is_ok, speed = _is_valid_missile_motion(pos, vel)
+        if not is_ok:
             return None
         
-        # Filter out dead/impacted rockets pooled on ground for starned
-        if layout == "starned":
-            phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0]
-            detonated = struct.unpack_from("<Q", header, OFF_RKT_DETONATED)[0]
-            if phase == 6 or detonated != 0:
-                return None
+        # Filter out dead/impacted rockets pooled on ground
+        phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0]
+        detonated = struct.unpack_from("<Q", header, OFF_RKT_DETONATED)[0]
+        if phase == 6 or detonated != 0:
+            return None
         
         # Header metadata
         owner = struct.unpack_from("<Q", header, OFF_RKT_OWNER)[0] if len(header) >= OFF_RKT_OWNER + 8 else 0
@@ -382,6 +357,12 @@ class MissileScanner:
         m.guidance_ptr = guid
         m.name = name
         m.entry_idx = entry_idx
+        
+        # Read original launch position at +0xc0 (if valid 3D float)
+        if len(header) >= 0xcc:
+            lpos = struct.unpack_from("<fff", header, 0xc0)
+            if _is_valid_vec3(lpos):
+                m.launch_pos = lpos
         
         # Read guidance details if valid pointer
         if _is_valid_ptr(guid):
