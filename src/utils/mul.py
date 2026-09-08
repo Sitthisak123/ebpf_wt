@@ -29,6 +29,7 @@ OFF_UNIT_BBMAX      = 0x0264
 _BBOX_FALLBACK_LOGGED = set()
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
+OFF_UNIT_ID         = 0x08      # Session Unit ID (u16) ตรงกับ target_id ของขีปนาวุธ
 OFF_UNIT_STATE      = 0         # สถานะรถถัง (เป็น/ตาย)
 OFF_UNIT_TEAM       = 0         # ทีม (มิตร/ศัตรู)
 OFF_UNIT_INFO       = 0xfc0        # 🎯 ฐานข้อมูล Unit Info
@@ -1056,8 +1057,8 @@ def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
         # 🎯 สมการ W2S มาตรฐานของ Dagor Engine (Row-Major)
         w = (pos_x * matrix[3]) + (pos_y * matrix[7]) + (pos_z * matrix[11]) + matrix[15]
         
-        # ถ้ายูนิตอยู่หลังกล้อง ให้ตัดทิ้ง
-        if w < 0.01 or not math.isfinite(w): 
+        # ถ้ายูนิตอยู่หลังกล้องหรือใกล้ระนาบกล้องเกินไป (Near-plane clipping < 0.10m) ให้ตัดทิ้ง
+        if w < 0.10 or not math.isfinite(w): 
             return None
         
         clip_x = (pos_x * matrix[0]) + (pos_y * matrix[4]) + (pos_z * matrix[8]) + matrix[12]
@@ -1515,6 +1516,11 @@ def get_local_team(scanner, base_addr):
         team = struct.unpack("<B", team_data)[0] if team_data else 0
         return control_ptr, team
     except: return 0, 0
+
+def get_unit_id(scanner, u_ptr):
+    if not u_ptr: return -1
+    raw = scanner.read_mem(u_ptr + OFF_UNIT_ID, 2)
+    return struct.unpack("<H", raw)[0] if raw and len(raw) == 2 else -1
 
 def get_unit_status(scanner, u_ptr, read_name=True):
     if u_ptr == 0: return None
