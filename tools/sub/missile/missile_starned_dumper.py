@@ -93,9 +93,14 @@ def check_ptr_is_rocket(sc, ptr):
                         np = struct.unpack("<Q", raw_np)[0]
                         if is_valid_ptr(np):
                             s = sc.read_mem(np, 64)
-                            if s and (b".blk" in s or b"missile" in s or b"rocket" in s or b"aim" in s or b"sam" in s):
-                                found_wep = s.split(b"\x00")[0].decode("utf-8", errors="ignore")
-                                break
+                            if s:
+                                raw_str = s.split(b"\x00")[0].decode("utf-8", errors="ignore").strip()
+                                # 🚫 ตรวจพบว่าเป็น Flare / Chaff ให้คัดทิ้งทันที
+                                if any(ign in raw_str.lower() for ign in ("flare", "chaff")):
+                                    return None
+                                if raw_str and (b".blk" in s or any(k in s.lower() for k in (b"missile", b"rocket", b"aim", b"sam"))):
+                                    found_wep = raw_str
+                                    break
         
         # ตรวจสอบ Component Weapon pointers (+0x420, +0x440)
         if not found_wep:
@@ -104,11 +109,14 @@ def check_ptr_is_rocket(sc, ptr):
                     comp_p = struct.unpack_from("<Q", header, off)[0]
                     if is_valid_ptr(comp_p):
                         s = sc.read_mem(comp_p + 0x08, 48)
-                        if s and any(k in s for k in (b"missile", b"rocket", b"sam", b"aim", b"agm", b"r_")):
-                            clean_s = s.split(b"\x00")[0].split(b"*")[0].decode("utf-8", errors="ignore").strip()
-                            if clean_s:
-                                found_wep = clean_s + ".blk"
-                                break
+                        if s:
+                            raw_str = s.split(b"\x00")[0].split(b"*")[0].decode("utf-8", errors="ignore").strip()
+                            if any(ign in raw_str.lower() for ign in ("flare", "chaff")):
+                                return None
+                            if any(k in s for k in (b"missile", b"rocket", b"sam", b"aim", b"agm", b"r_")):
+                                if raw_str:
+                                    found_wep = raw_str + ".blk"
+                                    break
         
         # ตรวจสอบ Raw Header strings ถ้ายังไม่เจอ
         if not found_wep:
@@ -137,13 +145,21 @@ def check_ptr_is_rocket(sc, ptr):
                 if phase == 6 or detonated != 0:
                     continue
             
-            # กรอง flares / chaff (Commented out per request to allow tracking flares/chaff)
-            # if found_wep and any(ign in found_wep.lower() for ign in ["flare", "chaff"]):
-            #     return None
+            # กรอง flares / chaff
+            if found_wep and any(ign in found_wep.lower() for ign in ["flare", "chaff"]):
+                return None
             
-            # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็นชื่อ sam_missile.blk
+            owner = struct.unpack_from("<Q", header, own_off)[0] if len(header) >= own_off + 8 else 0
+            state = header[st_off] if len(header) > st_off else 0
+            guid  = struct.unpack_from("<Q", header, guid_off)[0] if len(header) >= guid_off + 8 else 0
+            eid   = struct.unpack_from("<I", header, eid_off)[0] if len(header) >= eid_off + 4 else 0
+
+            # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็น sam_missile.blk เฉพาะเมื่อมี Guidance หรือความเร็วระดับจรวดจริง (> 250 m/s)
             if not found_wep:
-                found_wep = "sam_missile.blk"
+                if guid != 0 or speed > 250.0:
+                    found_wep = "sam_missile.blk"
+                else:
+                    return None
             
             owner = struct.unpack_from("<Q", header, own_off)[0] if len(header) >= own_off + 8 else 0
             state = header[st_off] if len(header) > st_off else 0
@@ -191,11 +207,11 @@ def brute_force_entries(sc, node_table, max_entries=350):
         
         count = struct.unpack_from("<I", data, 8)[0]
         capacity = struct.unpack_from("<I", data, 0x14)[0]
-        if count == 0 or capacity == 0 or count > capacity:
+        if count == 0 or capacity == 0 or count > capacity or capacity > 8192:
             continue
         
-        # อ่าน storage array ครอบคลุมคอลัมน์ component
-        read_n = min(max(capacity * 8, 200), 1024)
+        # อ่าน storage array ครอบคลุมคอลัมน์ component ทั้งหมดสำหรับความจุ 512, 1024, 2048+
+        read_n = min(max(capacity * 8, 200), 16384)
         bulk0 = sc.read_mem(storage, read_n * 8)
         if bulk0 and len(bulk0) >= 8:
             for idx in range(len(bulk0) // 8):
