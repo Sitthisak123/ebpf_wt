@@ -275,8 +275,44 @@ MISSILE_SMOOTH_LERP             = 0.45                   # Angular smoothing fac
 # 🛡️ AUTOMATIC COUNTERMEASURE (FLARE / CHAFF) SYSTEM CONFIG
 # ============================================================
 ENABLE_AUTO_COUNTERMEASURE      = True          # สวิตช์หลักเปิด/ปิดระบบปล่อยเป้าลวงอัตโนมัติ
-AUTO_CM_KEY                     = "right alt"   # ปุ่มสำหรับปล่อย Countermeasure (R.ALT)
+AUTO_CM_KEY                     = "right alt"   # ปุ่มสำหรับปล่อย Countermeasure (R.ALT หรือ Scancode 100)
+AUTO_CM_HOLD_MS                 = 70            # ระยะเวลาหน่วงกดปุ่มค้าง (ms) เพื่อให้ Dagor Engine ตรวจจับเฟรมอินพุตได้แน่นอน
 AUTO_CM_REQUIRE_EXACT_LOCK      = False         # True = ต้องมีสัญญาณ Guided==myUnit เท่านั้น, False = หรือมุมปะทะตรงเผงระยะประชิด
+
+# แมพ scancode บน Linux เพื่อป้องกันบั๊กของไลบรารี keyboard ที่สลับ Left/Right Alt
+LINUX_KEY_SCANCODES = {
+    "right alt": 100,      # KEY_RIGHTALT (สำคัญมาก: ป้องกันบั๊ก keyboard lib ที่ส่ง 56/Left Alt)
+    "right_alt": 100,
+    "ralt": 100,
+    "altgr": 100,
+    "left alt": 56,        # KEY_LEFTALT
+    "left_alt": 56,
+    "lalt": 56,
+    "alt": 56,
+    "right ctrl": 97,      # KEY_RIGHTCTRL
+    "right_ctrl": 97,
+    "rctrl": 97,
+    "left ctrl": 29,       # KEY_LEFTCTRL
+    "left_ctrl": 29,
+    "lctrl": 29,
+    "ctrl": 29,
+    "right shift": 54,     # KEY_RIGHTSHIFT
+    "right_shift": 54,
+    "rshift": 54,
+    "left shift": 42,      # KEY_LEFTSHIFT
+    "left_shift": 42,
+    "lshift": 42,
+    "shift": 42,
+    "space": 57,
+}
+
+def resolve_cm_scancode(key):
+    if isinstance(key, int):
+        return key
+    s = str(key).strip().lower()
+    if s.isdigit():
+        return int(s)
+    return LINUX_KEY_SCANCODES.get(s, key)
 
 # 🟡 STAGE 1: ระยะไกล / เตือนภัยล่วงหน้า (Early Warning - Long Range)
 AUTO_CM_STAGE1_MAX_RANGE        = 5000.0        # ระยะทางไกลสุดที่เริ่มทำงาน (เมตร)
@@ -2946,6 +2982,7 @@ class ESPOverlay(QOpenGLWidget):
         self.auto_cm_active_stage = 0     # 0 = none, 1 = stage 1, 2 = stage 2
         self.auto_cm_next_trigger_t = 0.0
         self.auto_cm_trigger_count = 0
+        self.auto_cm_is_pressing = False  # ป้องกันการกดซ้ำซ้อนขณะปุ่มกำลังถูกกดค้างอยู่
         self.calibration_offset = [0.0, 0.0]
         self.vertical_correction = 0.0
         self.camera_parallax = -4.5  # 🎯 NEW: ค่าแรงเหวี่ยงกล้องเริ่มต้น (T-80U-E1)
@@ -3200,21 +3237,31 @@ class ESPOverlay(QOpenGLWidget):
         self._play_alert_sound(sound_key, sound_path, curr_t)
 
     def _trigger_countermeasure(self):
-        """กดปุ่มสำหรับดีดเป้าลวง (Flares/Chaff) โดยหน่วงเวลาปล่อย 40ms เพื่อให้เอนจินเกมตรวจจับคีย์ได้แน่นอน"""
+        """กดปุ่มสำหรับดีดเป้าลวง (Flares/Chaff) โดยส่ง Scancode ตรงและหน่วงเวลาปล่อยตาม AUTO_CM_HOLD_MS เพื่อให้เกมตรวจจับได้ 100%"""
         if HAS_KEYBOARD:
+            if getattr(self, "auto_cm_is_pressing", False):
+                return  # ป้องกันการกดซ้ำซ้อนขณะปุ่มกำลังถูกกดค้างอยู่
+            self.auto_cm_is_pressing = True
+            key_target = resolve_cm_scancode(AUTO_CM_KEY)
+            hold_time = int(globals().get("AUTO_CM_HOLD_MS", 70))
             try:
-                keyboard.press(AUTO_CM_KEY)
-                QTimer.singleShot(40, self._release_countermeasure)
-            except Exception:
+                keyboard.press(key_target)
+                QTimer.singleShot(hold_time, self._release_countermeasure)
+                print(f"🛡️ [AUTO CM] Fired '{AUTO_CM_KEY}' (scancode: {key_target}, hold: {hold_time}ms)! (Stage {self.auto_cm_active_stage})")
+            except Exception as e:
+                self.auto_cm_is_pressing = False
                 try:
-                    keyboard.press_and_release(AUTO_CM_KEY)
-                except Exception:
-                    pass
+                    keyboard.press_and_release(key_target)
+                    print(f"🛡️ [AUTO CM] Press&Release '{AUTO_CM_KEY}' (scancode: {key_target})! (Stage {self.auto_cm_active_stage})")
+                except Exception as e2:
+                    print(f"❌ [AUTO CM ERROR] Failed to send key: {e2}")
 
     def _release_countermeasure(self):
+        self.auto_cm_is_pressing = False
         if HAS_KEYBOARD:
+            key_target = resolve_cm_scancode(AUTO_CM_KEY)
             try:
-                keyboard.release(AUTO_CM_KEY)
+                keyboard.release(key_target)
             except Exception:
                 pass
 
@@ -6450,10 +6497,6 @@ class ESPOverlay(QOpenGLWidget):
                         # Check if any missile is tracking ME
                         incoming = []
                         for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:
-                            # ตรวจสอบสถานะ Guidance
-                            is_guided_to_me = (my_unit_id != -1 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
-                            is_guided_to_other = (m.target_id != -1 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked))
-
                             # Check if missile is heading toward me
                             is_heading_to_me = False
                             time_to_impact = 999.0
@@ -6464,18 +6507,29 @@ class ESPOverlay(QOpenGLWidget):
                                 dot = vel[0]*dx + vel[1]*dy + vel[2]*dz
                                 if dot > 0 and speed > 20.0:  # Moving toward me
                                     cos_angle = dot / (speed * dist)
-                                    if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3):
+                                    if cos_angle > 0.7 or (dist < 1500 and cos_angle > 0.3) or (dist < 600):
                                         is_heading_to_me = True
                                     time_to_impact = dist / speed
 
+                            # ตรวจสอบสถานะ Guidance
+                            # 1) ล็อกเป้าหมายเครื่องเราโดยตรงผ่าน target_id (AAM เช่น AIM-120, R-77, AIM-7)
+                            is_guided_explicit = bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
+                            # 2) ขีปนาวุธ SPAA Bot SAM / SACLOS / Command-Guided (target_id <= 0 แต่ล็อก/ติดตาม และวิถีพุ่งตรงเข้าหาเครื่องเรา)
+                            is_sam_guided_to_me = bool(is_heading_to_me and (m.is_tracking or m.is_locked) and m.target_id <= 0)
+
+                            is_guided_to_me = is_guided_explicit or is_sam_guided_to_me
+
+                            # ขีปนาวุธล็อกเครื่องอื่น: ต้องเป็น target_id ที่มีตัวตนจริง (> 0) และไม่ใช่ ID ของเรา และทิศทางไม่ได้พุ่งตรงมาที่เรา
+                            is_guided_to_other = bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_heading_to_me)
+
                             # ประเมินว่าเป็นภัยคุกคามต่อตัวเราหรือไม่:
-                            # 1) ถ้า Guided == myUnit (ล็อกเครื่องเราโดยตรง) -> ถือเป็นภัยคุกคามทันที
-                            # 2) ถ้าไม่ล็อกเครื่องอื่น และหัวขีปนาวุธพุ่งตรงมาที่เรา -> พิจารณาตาม AUTO_CM_REQUIRE_EXACT_LOCK
+                            # 1) ถ้า Guided == myUnit (ล็อกเครื่องเราโดยตรง หรือ SAM ล็อกพุ่งเข้าหาเรา) -> ถือเป็นภัยคุกคามทันที
+                            # 2) ถ้าหัวขีปนาวุธพุ่งตรงมาที่เรา -> ถือเป็นภัยคุกคามทันที (ยกเว้นล็อกคนอื่นชัดเจนและอยู่นอกระยะอันตราย)
                             threat_to_me = False
                             if is_guided_to_me:
                                 threat_to_me = True
-                            elif is_heading_to_me and not is_guided_to_other:
-                                if not AUTO_CM_REQUIRE_EXACT_LOCK:
+                            elif is_heading_to_me:
+                                if not is_guided_to_other or dist <= AUTO_CM_STAGE1_MAX_RANGE or time_to_impact <= AUTO_CM_STAGE1_TIME_LEFT:
                                     threat_to_me = True
 
                             if threat_to_me:
@@ -6503,26 +6557,33 @@ class ESPOverlay(QOpenGLWidget):
 
                         if auto_cm_highest_stage > 0:
                             cd_interval = AUTO_CM_STAGE2_COUNTDOWN if auto_cm_highest_stage == 2 else AUTO_CM_STAGE1_COUNTDOWN
-                            # ยิงเป้าลวงเมื่อครบกำหนดเวลา หรือเมื่อเข้าสู่ Stage 2 ทันทีถ้าผ่านช่วงคูลดาวน์ Stage 2 แล้ว
+                            time_since_last = curr_t - self.auto_cm_last_trigger_t
+
+                            # 🛡️ STRICT RATE LIMIT: การันตีว่าไม่ว่าจะตรวจพบ 1 ลูกหรือหลายลูกพร้อมกัน
+                            # ความถี่ในการกดปล่อยเป้าลวงจะยังคงหน่วงเวลาเท่ากับ 1 ลูกเสมอ (ห้ามยิงเบิ้ล / No duplicate / No spam)
                             should_trigger = False
-                            if curr_t >= self.auto_cm_next_trigger_t:
+
+                            # 1) เช็ครอบยิงปกติ: ต้องถึงเวลา next_trigger_t และเวลาตั้งแต่กดครั้งล่าสุดต้องไม่น้อยกว่า cd_interval
+                            if curr_t >= self.auto_cm_next_trigger_t and time_since_last >= cd_interval:
                                 should_trigger = True
+                            # 2) กรณีเลื่อนขั้นเป็น Stage 2 กะทันหัน: อนุญาตให้ยิงทันทีถ้าพ้นคูลดาวน์ Stage 2 (0.25s) แล้ว
                             elif auto_cm_highest_stage == 2 and self.auto_cm_active_stage != 2:
-                                if (curr_t - self.auto_cm_last_trigger_t) >= AUTO_CM_STAGE2_COUNTDOWN:
+                                if time_since_last >= AUTO_CM_STAGE2_COUNTDOWN:
                                     should_trigger = True
 
-                            if should_trigger:
-                                self._trigger_countermeasure()
+                            # อัปเดต Stage ให้ถูกต้องก่อนเรียกฟังก์ชันยิง
+                            self.auto_cm_active_stage = auto_cm_highest_stage
+
+                            if should_trigger and not getattr(self, "auto_cm_is_pressing", False):
                                 self.auto_cm_last_trigger_t = curr_t
                                 self.auto_cm_next_trigger_t = curr_t + cd_interval
                                 self.auto_cm_trigger_count += 1
-
-                            self.auto_cm_active_stage = auto_cm_highest_stage
+                                self._trigger_countermeasure()
                         else:
                             if self.auto_cm_active_stage != 0:
                                 self.auto_cm_active_stage = 0
                                 self.auto_cm_trigger_count = 0
-                                self.auto_cm_next_trigger_t = 0.0
+                                self.auto_cm_next_trigger_t = max(self.auto_cm_next_trigger_t, curr_t)
 
                         # Draw missile markers (on-screen and offscreen edge indicators)
                         painter.setFont(QFont("Arial", 10, QFont.Bold))
@@ -6534,8 +6595,11 @@ class ESPOverlay(QOpenGLWidget):
                                 smooth_pos[0], smooth_pos[1], smooth_pos[2],
                                 self.screen_width, self.screen_height
                             )
-                            is_guided_me = (my_unit_id != -1 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
-                            is_guided_other = (m.target_id != -1 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked))
+                            is_guided_me = bool(
+                                (my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)) or
+                                any(im[0].ptr == m.ptr and im[5] for im in incoming)
+                            )
+                            is_guided_other = bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me)
                             is_incoming = any(im[0].ptr == m.ptr for im in incoming)
                             dist_km = dist / 1000.0
                             speed_label = f"{speed:.0f}m/s"
@@ -6793,13 +6857,13 @@ class ESPOverlay(QOpenGLWidget):
                             if self.auto_cm_active_stage != 0:
                                 self.auto_cm_active_stage = 0
                                 self.auto_cm_trigger_count = 0
-                                self.auto_cm_next_trigger_t = 0.0
+                                self.auto_cm_next_trigger_t = max(self.auto_cm_next_trigger_t, curr_t)
                     else:
                         self.missile_warning_active = False
                         if self.auto_cm_active_stage != 0:
                             self.auto_cm_active_stage = 0
                             self.auto_cm_trigger_count = 0
-                            self.auto_cm_next_trigger_t = 0.0
+                            self.auto_cm_next_trigger_t = max(self.auto_cm_next_trigger_t, curr_t)
                 except Exception as e:
                     dprint(f"Missile warning error: {e}", force=True)
 

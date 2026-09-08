@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
-"""
-🚀 Missile Dumper v2 (Pure Direct Offset 0 ECS Scanner)
-======================================================================
-สแกนหาขีปนาวุธ/ร็อคเก็ตสดทุกประเภทในเกม War Thunder (รองรับ 100+ ลูกพร้อมกัน)
-ด้วยความเร็วสูงสุด < 0.01s สแกนสดตรงที่ Offset 0 ของ storage array ไม่พลาดแม้แต่ลูกเดียว!
-"""
+# ======================================================================
+# 🚀 Missile Dumper v2 (Pure Direct Offset 0 Scanner)
+# ======================================================================
+# สแกนตรงจาก storage offset 0 (0..350 entries)
+# ตรวจจับทั้งขีปนาวุธมาตรฐาน (starned 0x23c) และ SPAA bot / SAM (alt 0x298)
+# ======================================================================
 
 import sys
 import os
@@ -18,49 +17,25 @@ if PROJECT_ROOT not in sys.path:
 
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address
 
-# ====================================================================
-# Target Offsets Configuration
-# ====================================================================
-OFFSETS_STARNED = (
-    "starned",
-    0x23c,   # pos
-    0x258,   # vel
-    0x40,    # owner
-    0x94,    # state
-    0x638,   # guidance
-    0x30,    # entity_id
-    0x6c8,   # props (name at props+0x50)
-)
-
-OFFSET_SETS = [OFFSETS_STARNED]
-
-# ECS Manager Offsets
 OFF_ECS_MANAGER    = 0x8225aa0
 OFF_ECS_NODE_TABLE = 0x178
 OFF_ECS_CLASS_TABLE= 0x5E8
 
+OFFSET_SETS = [
+    ("starned", 0x23c, 0x258, 0x40, 0x94, 0x638, 0x30, 0x6c8),
+    ("alt_298", 0x298, 0x2b4, 0x40, 0x94, 0x638, 0x30, 0x6c8),
+]
 
-# ====================================================================
-# Helper Functions
-# ====================================================================
+
 def rp(sc, a):
     d = sc.read_mem(a, 8)
     return struct.unpack("<Q", d)[0] if d and len(d) >= 8 else 0
-
-def r32(sc, a):
-    d = sc.read_mem(a, 4)
-    return struct.unpack("<I", d)[0] if d and len(d) >= 4 else 0
 
 def r8(sc, a):
     d = sc.read_mem(a, 1)
     return d[0] if d and len(d) >= 1 else 0
 
-def rv3(sc, a):
-    d = sc.read_mem(a, 12)
-    if not d or len(d) < 12: return None
-    return struct.unpack("<fff", d)
-
-def rstr(sc, a, n=96):
+def rstr(sc, a, n=80):
     d = sc.read_mem(a, n)
     if not d: return ""
     try:
@@ -75,76 +50,117 @@ def is_valid_ptr(v):
 def vlen(v):
     return math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
 
-def is_real_missile_pos(pos):
-    if not pos or not all(math.isfinite(x) for x in pos): return False
-    nonzero = sum(1 for x in pos if abs(x) > 5.0)
-    if nonzero < 1: return False
-    if any(abs(x) > 250000 for x in pos): return False
+def is_valid_vec3(v):
+    if not all(math.isfinite(x) for x in v):
+        return False
+    for x in v:
+        if x != 0.0 and abs(x) < 1e-3:
+            return False
     return True
 
-def is_real_missile_vel(vel):
-    if not vel or not all(math.isfinite(x) for x in vel): return False
-    speed = vlen(vel)
-    return 15.0 < speed < 4500.0
+def is_valid_missile_motion(pos, vel):
+    if not is_valid_vec3(pos) or not is_valid_vec3(vel):
+        return False, 0.0
+    if any(abs(x) > 250000.0 for x in pos):
+        return False, 0.0
+    if sum(1 for x in pos if abs(x) > 5.0) < 2:
+        return False, 0.0
+    if (pos[0]*pos[0] + pos[1]*pos[1] + pos[2]*pos[2]) < 2500.0:
+        return False, 0.0
+    spd = vlen(vel)
+    if not (25.0 < spd < 4500.0):
+        return False, 0.0
+    if sum(1 for x in vel if abs(x) > 0.05) < 2:
+        return False, 0.0
+    return True, spd
 
 
 def check_ptr_is_rocket(sc, ptr):
-    """ตรวจสอบว่า ptr นี้เป็น rocket จริงไหม (1 single block read + strict filtering)"""
+    """ตรวจสอบว่า ptr นี้เป็นจรวด/ขีปนาวุธจริงที่กำลังบินอยู่หรือไม่"""
     try:
-        header = sc.read_mem(ptr, 0x6f0)
-        if not header or len(header) < 0x6d0:
+        header = sc.read_mem(ptr, 0x750)
+        if not header or len(header) < 0x2c0:
             return None
         
-        for name, pos_off, vel_off, own_off, st_off, guid_off, eid_off, props_off in OFFSET_SETS:
+        # 1. ตรวจสอบชื่อ Blk ของอาวุธจาก Props pointers (+0x6c8 -> +0x50)
+        found_wep = ""
+        for off in [0x6c8, 0x690, 0x6a0, 0x620]:
+            if len(header) >= off + 8:
+                prp = struct.unpack_from("<Q", header, off)[0]
+                if is_valid_ptr(prp):
+                    raw_np = sc.read_mem(prp + 0x50, 8)
+                    if raw_np and len(raw_np) == 8:
+                        np = struct.unpack("<Q", raw_np)[0]
+                        if is_valid_ptr(np):
+                            s = sc.read_mem(np, 64)
+                            if s and (b".blk" in s or b"missile" in s or b"rocket" in s or b"aim" in s or b"sam" in s):
+                                found_wep = s.split(b"\x00")[0].decode("utf-8", errors="ignore")
+                                break
+        
+        # ตรวจสอบ Component Weapon pointers (+0x420, +0x440)
+        if not found_wep:
+            for off in (0x420, 0x440):
+                if len(header) >= off + 8:
+                    comp_p = struct.unpack_from("<Q", header, off)[0]
+                    if is_valid_ptr(comp_p):
+                        s = sc.read_mem(comp_p + 0x08, 48)
+                        if s and any(k in s for k in (b"missile", b"rocket", b"sam", b"aim", b"agm", b"r_")):
+                            clean_s = s.split(b"\x00")[0].split(b"*")[0].decode("utf-8", errors="ignore").strip()
+                            if clean_s:
+                                found_wep = clean_s + ".blk"
+                                break
+        
+        # ตรวจสอบ Raw Header strings ถ้ายังไม่เจอ
+        if not found_wep:
+            for off in [0x230, 0x240, 0x380]:
+                if len(header) >= off + 40:
+                    s = header[off:off+40]
+                    if b"aim_" in s or b"rocket" in s or b"missile" in s or b".blk" in s:
+                        found_wep = s.split(b"\x00")[0].decode("utf-8", errors="ignore")
+                        break
+        
+        # 2. ตรวจสอบพิกัดและความเร็วตาม Layout Sets
+        for set_name, pos_off, vel_off, own_off, st_off, guid_off, eid_off, props_off in OFFSET_SETS:
+            if len(header) < pos_off + 12 or len(header) < vel_off + 12:
+                continue
             pos = struct.unpack_from("<fff", header, pos_off)
-            if not is_real_missile_pos(pos):
-                continue
             vel = struct.unpack_from("<fff", header, vel_off)
-            if not is_real_missile_vel(vel):
+            
+            is_ok, speed = is_valid_missile_motion(pos, vel)
+            if not is_ok:
                 continue
             
-            owner = struct.unpack_from("<Q", header, own_off)[0]
-            state = header[st_off]
-            guid  = struct.unpack_from("<Q", header, guid_off)[0]
-            eid   = struct.unpack_from("<I", header, eid_off)[0]
+            # กรองซากจรวดที่ระเบิดแล้วบนพื้นสำหรับ starned
+            if set_name == "starned":
+                phase = struct.unpack_from("<I", header, 0x498)[0] if len(header) >= 0x498 + 4 else 0
+                detonated = struct.unpack_from("<Q", header, 0x420)[0] if len(header) >= 0x420 + 8 else 0
+                if phase == 6 or detonated != 0:
+                    continue
             
-            if state > 10:
-                continue
-            if owner == 0 or owner > 0xFFFFFFFF:
-                continue
-            if eid == 0 or eid > 10_000_000:
-                continue
+            # กรอง flares / chaff (Commented out per request to allow tracking flares/chaff)
+            # if found_wep and any(ign in found_wep.lower() for ign in ["flare", "chaff"]):
+            #     return None
             
-            # Filter dead/impacted rockets pooled on ground
-            phase = struct.unpack_from("<I", header, 0x498)[0]
-            detonated = struct.unpack_from("<Q", header, 0x420)[0]
-            if phase == 6 or detonated != 0:
-                continue
+            # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็นชื่อ sam_missile.blk
+            if not found_wep:
+                found_wep = "sam_missile.blk"
             
-            # Must have valid weapon properties pointer
-            props = struct.unpack_from("<Q", header, props_off)[0]
-            if not is_valid_ptr(props):
-                continue
-            
-            if guid != 0 and not is_valid_ptr(guid):
-                continue
-            
-            rkt_name = ""
-            name_ptr = rp(sc, props + 0x50)
-            if is_valid_ptr(name_ptr):
-                rkt_name = rstr(sc, name_ptr)
-            
-            if not rkt_name or rkt_name == "" or not rkt_name.endswith(".blk"):
-                continue
+            owner = struct.unpack_from("<Q", header, own_off)[0] if len(header) >= own_off + 8 else 0
+            state = header[st_off] if len(header) > st_off else 0
+            guid  = struct.unpack_from("<Q", header, guid_off)[0] if len(header) >= guid_off + 8 else 0
+            eid   = struct.unpack_from("<I", header, eid_off)[0] if len(header) >= eid_off + 4 else 0
             
             return {
-                "ptr": ptr, "set": name,
-                "pos": pos, "vel": vel, "speed": vlen(vel),
-                "owner": owner, "state": state,
-                "guid": guid, "eid": eid,
-                "pos_off": pos_off, "vel_off": vel_off,
-                "own_off": own_off, "guid_off": guid_off,
-                "props_off": props_off, "name": rkt_name,
+                "ptr": ptr,
+                "set": set_name,
+                "pos": pos,
+                "vel": vel,
+                "speed": speed,
+                "owner": owner,
+                "state": state,
+                "eid": eid,
+                "guid": guid,
+                "name": found_wep,
             }
     except Exception:
         pass
@@ -154,8 +170,7 @@ def check_ptr_is_rocket(sc, ptr):
 def brute_force_entries(sc, node_table, max_entries=350):
     """
     Pure Direct Offset 0 Window Scanner (0..350 entries)
-    สแกนตรงจาก storage offset 0 (อ่านสูงสุด 1000 pointers ต่อ entry = 8KB)
-    ดึงขีปนาวุธทุกประเภทที่กำลังบินอยู่ในอากาศ 100%
+    สแกนตรงจาก storage offset 0 (อ่านสูงสุด 300 pointers ต่อ entry)
     """
     table_bytes = sc.read_mem(node_table, max_entries * 0x20)
     if not table_bytes or len(table_bytes) < 0x20:
@@ -171,36 +186,27 @@ def brute_force_entries(sc, node_table, max_entries=350):
             continue
         
         storage = struct.unpack_from("<Q", data, 0)[0]
-        if not is_valid_ptr(storage):
+        if not is_valid_ptr(storage) or (storage & 0x7 != 0):
             continue
         
-        # 1. Read storage array directly at offset 0 (up to 1000 pointers = 8KB)
-        bulk0 = sc.read_mem(storage, 1000 * 8)
+        count = struct.unpack_from("<I", data, 8)[0]
+        capacity = struct.unpack_from("<I", data, 0x14)[0]
+        if count == 0 or capacity == 0 or count > capacity:
+            continue
+        
+        # อ่าน storage array ครอบคลุมคอลัมน์ component
+        read_n = min(max(capacity * 8, 200), 1024)
+        bulk0 = sc.read_mem(storage, read_n * 8)
         if bulk0 and len(bulk0) >= 8:
             for idx in range(len(bulk0) // 8):
                 ptr = struct.unpack_from("<Q", bulk0, idx * 8)[0]
-                if is_valid_ptr(ptr) and ptr not in seen_ptrs:
+                if is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
                     info = check_ptr_is_rocket(sc, ptr)
                     if info:
                         info["layout"] = "A_direct_0"
                         info["entry"] = i
                         seen_ptrs.add(ptr)
                         all_rockets.append(info)
-        
-        # 2. Try Layout B: Column Pointers (col0 = *(storage + 0))
-        col0 = rp(sc, storage)
-        if is_valid_ptr(col0) and col0 not in seen_ptrs:
-            col_bulk = sc.read_mem(col0, 1000 * 8)
-            if col_bulk and len(col_bulk) >= 8:
-                for idx in range(len(col_bulk) // 8):
-                    ptr = struct.unpack_from("<Q", col_bulk, idx * 8)[0]
-                    if is_valid_ptr(ptr) and ptr not in seen_ptrs:
-                        info = check_ptr_is_rocket(sc, ptr)
-                        if info:
-                            info["layout"] = "B_col_ptrs"
-                            info["entry"] = i
-                            seen_ptrs.add(ptr)
-                            all_rockets.append(info)
     
     return all_rockets
 
@@ -249,37 +255,36 @@ def main():
         print("\n❌ ไม่เจอ rocket/missile!")
         print("   1. ต้องอยู่ในแมตช์ที่มี missile กำลังบินอยู่!")
         print("   2. หรือกด CTRL+C แล้วยิง missile ใหม่")
-        return
-    
-    for idx, r in enumerate(unique):
-        owner_str = f"{hex(r['owner'])} ✅" if 0 < r['owner'] <= 0xFFFFFFFF else f"{hex(r['owner'])} ❌"
-        guid_str = f"{hex(r['guid'])}" if r['guid'] != 0 else "none (unguided)"
-        if r['guid'] != 0 and is_valid_ptr(r['guid']):
-            g_lock = r8(sc, r['guid'] + 0x50)
-            g_trk = r8(sc, r['guid'] + 0x51)
-            g_tgt = struct.unpack("<h", sc.read_mem(r['guid'] + 0x8c, 2))[0] if sc.read_mem(r['guid'] + 0x8c, 2) else -1
-            guid_str += f" locked={g_lock} tracking={g_trk} target_id={g_tgt}"
+    else:
+        for idx, r in enumerate(unique):
+            owner_str = f"{hex(r['owner'])} ✅" if 0 < r['owner'] <= 0xFFFFFFFF else f"{hex(r['owner'])} ❌"
+            guid_str = f"{hex(r['guid'])}" if r['guid'] != 0 else "none (unguided)"
+            if r['guid'] != 0 and is_valid_ptr(r['guid']):
+                g_lock = r8(sc, r['guid'] + 0x50)
+                g_trk = r8(sc, r['guid'] + 0x51)
+                g_tgt = struct.unpack("<h", sc.read_mem(r['guid'] + 0x8c, 2))[0] if sc.read_mem(r['guid'] + 0x8c, 2) else -1
+                guid_str += f" locked={g_lock} tracking={g_trk} target_id={g_tgt}"
+            
+            name_str = f'\n     Name:     "{r["name"]}"' if r["name"] else ""
+            
+            print(f"\n  🚀 #{idx} [{r['set']}] layout={r['layout']} entry={r['entry']}")
+            print(f"     Ptr:      {hex(r['ptr'])}")
+            print(f"     Position: ({r['pos'][0]:.1f}, {r['pos'][1]:.1f}, {r['pos'][2]:.1f})")
+            print(f"     Velocity: ({r['vel'][0]:.1f}, {r['vel'][1]:.1f}, {r['vel'][2]:.1f})  speed={r['speed']:.1f} m/s")
+            print(f"     Owner:    {owner_str}")
+            print(f"     State:    {r['state']}  EntityID: {r['eid']}{name_str}")
+            print(f"     Guidance: {guid_str}")
         
-        name_str = f'\n     Name:     "{r["name"]}"' if r["name"] else ""
+        print(f"\n\n📊 Summary by offset set:")
+        for set_name in set(r['set'] for r in unique):
+            count = sum(1 for r in unique if r['set'] == set_name)
+            avg_spd = sum(r['speed'] for r in unique if r['set'] == set_name) / count
+            print(f"  {set_name}: {count} rockets, avg speed={avg_spd:.0f} m/s")
         
-        print(f"\n  🚀 #{idx} [{r['set']}] layout={r['layout']} entry={r['entry']}")
-        print(f"     Ptr:      {hex(r['ptr'])}")
-        print(f"     Position: ({r['pos'][0]:.1f}, {r['pos'][1]:.1f}, {r['pos'][2]:.1f})")
-        print(f"     Velocity: ({r['vel'][0]:.1f}, {r['vel'][1]:.1f}, {r['vel'][2]:.1f})  speed={r['speed']:.1f} m/s")
-        print(f"     Owner:    {owner_str}")
-        print(f"     State:    {r['state']}  EntityID: {r['eid']}{name_str}")
-        print(f"     Guidance: {guid_str}")
-    
-    print(f"\n\n📊 Summary by offset set:")
-    for set_name in set(r['set'] for r in unique):
-        count = sum(1 for r in unique if r['set'] == set_name)
-        avg_spd = sum(r['speed'] for r in unique if r['set'] == set_name) / count
-        print(f"  {set_name}: {count} rockets, avg speed={avg_spd:.0f} m/s")
-    
-    print(f"\n📊 Summary by ECS layout:")
-    for layout in set(r['layout'] for r in unique):
-        count = sum(1 for r in unique if r['layout'] == layout)
-        print(f"  {layout}: {count} rockets")
+        print(f"\n📊 Summary by ECS layout:")
+        for layout in set(r['layout'] for r in unique):
+            count = sum(1 for r in unique if r['layout'] == layout)
+            print(f"  {layout}: {count} rockets")
     
     print(f"\n\n📡 Live monitor (Ctrl+C to stop)...")
     try:
@@ -290,10 +295,13 @@ def main():
                 parts = []
                 for r in fresh[:10]:
                     parts.append(f"({r['pos'][0]:.0f},{r['pos'][1]:.0f},{r['pos'][2]:.0f}) {r['speed']:.0f}m/s")
-                print(f"  🚀 Total Active: {len(fresh)} | " + " | ".join(parts[:5]))
+                print(f"\r  🚀 Total Active: {len(fresh)} | " + " | ".join(parts[:5]) + "    ", end="", flush=True)
+            else:
+                print(f"\r  ⏳ Watching live memory... [Active: 0]    ", end="", flush=True)
     except KeyboardInterrupt:
         print("\n\n👋 Stopped live monitor.")
 
 
 if __name__ == "__main__":
     main()
+

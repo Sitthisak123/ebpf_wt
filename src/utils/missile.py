@@ -28,7 +28,9 @@ OFF_RKT_OWNER      = 0x40
 OFF_RKT_STATE      = 0x94
 OFF_RKT_POS        = 0x23c
 OFF_RKT_VEL        = 0x258
-OFF_RKT_DETONATED  = 0x420   # Detonation/impact effect flag (0 = flying, non-zero = detonated)
+OFF_RKT_ALT_POS    = 0x298   # Layout 2 for SPAA bot / SAM missiles
+OFF_RKT_ALT_VEL    = 0x2b4
+OFF_RKT_DETONATED  = 0x420   # Detonation/impact effect flag (0 = flying, non-zero = detonated in starned)
 OFF_RKT_PHASE      = 0x498   # Projectile lifecycle phase (3 = in-flight, 6 = terminated/impacted)
 OFF_RKT_GUIDANCE   = 0x638
 OFF_RKT_ALIVE      = 0x6c0   # Entity active/alive flag (1 = active, 0 = inactive/dead)
@@ -82,6 +84,33 @@ def _is_valid_ptr(v):
 
 def _vlen(v):
     return math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
+
+def _is_valid_vec3(v):
+    """Validate 3D vector (must be finite and contain no subnormal floats)"""
+    if not all(math.isfinite(x) for x in v):
+        return False
+    for x in v:
+        if x != 0.0 and abs(x) < 1e-3:
+            return False
+    return True
+
+def _is_valid_missile_motion(pos, vel):
+    """Ensure coordinates and velocity represent a real 3D flying projectile"""
+    if not _is_valid_vec3(pos) or not _is_valid_vec3(vel):
+        return False, 0.0
+    if any(abs(x) > 250000.0 for x in pos):
+        return False, 0.0
+    if sum(1 for x in pos if abs(x) > 5.0) < 2:
+        return False, 0.0
+    if (pos[0]*pos[0] + pos[1]*pos[1] + pos[2]*pos[2]) < 2500.0:
+        return False, 0.0
+    
+    spd = _vlen(vel)
+    if not (25.0 < spd < 4500.0):
+        return False, 0.0
+    if sum(1 for x in vel if abs(x) > 0.05) < 2:
+        return False, 0.0
+    return True, spd
 
 
 # ====================================================================
@@ -226,57 +255,104 @@ class MissileScanner:
     
     def _check_rocket(self, scanner, ptr, entry_idx):
         """
-        Check if pointer is a valid rocket using 1 SINGLE block memory read (0x6f0 bytes).
-        Reduces syscall overhead by 87.5%, ensuring instant processing even with 200+ missiles!
+        Check if pointer is a valid rocket using 1 SINGLE block memory read (0x720 bytes).
+        Supports both standard player missiles (starned 0x23c) and SPAA bot / SAM missiles (alt 0x298).
         """
-        # Read entire rocket header block up to props pointer (+0x6f0 bytes) in 1 syscall!
-        header = scanner.read_mem(ptr, 0x6f0)
-        if not header or len(header) < 0x6d0:
+        header = scanner.read_mem(ptr, 0x720)
+        if not header or len(header) < 0x2c0:
             return None
         
-        # Read position (starned 0x23c)
-        pos = struct.unpack_from("<fff", header, OFF_RKT_POS)
-        if not all(math.isfinite(x) for x in pos):
-            return None
-        # Must be valid map coordinates (not 0.0 or garbage 10^-38)
-        nonzero_pos = sum(1 for x in pos if abs(x) > 5.0)
-        if nonzero_pos < 1 or any(abs(x) > 250000 for x in pos):
+        # 1. Detect layout and extract position & velocity
+        layout = None
+        pos = None
+        vel = None
+        speed = 0.0
+        
+        # Try Layout 1: starned (0x23c, 0x258)
+        pos_cand = struct.unpack_from("<fff", header, OFF_RKT_POS)
+        vel_cand = struct.unpack_from("<fff", header, OFF_RKT_VEL)
+        is_ok, spd = _is_valid_missile_motion(pos_cand, vel_cand)
+        if is_ok:
+            layout = "starned"
+            pos = pos_cand
+            vel = vel_cand
+            speed = spd
+        
+        # Try Layout 2: alt_298 (0x298, 0x2b4) for SPAA bot / SAM missiles
+        if layout is None and len(header) >= 0x2c0:
+            pos_cand = struct.unpack_from("<fff", header, OFF_RKT_ALT_POS)
+            vel_cand = struct.unpack_from("<fff", header, OFF_RKT_ALT_VEL)
+            is_ok, spd = _is_valid_missile_motion(pos_cand, vel_cand)
+            if is_ok:
+                layout = "alt_298"
+                pos = pos_cand
+                vel = vel_cand
+                speed = spd
+        
+        if layout is None:
             return None
         
-        # Read velocity (starned 0x258)
-        vel = struct.unpack_from("<fff", header, OFF_RKT_VEL)
-        if not all(math.isfinite(x) for x in vel):
-            return None
-        speed = _vlen(vel)
-        if not (15.0 < speed < 4500.0):
-            return None
+        # Filter out dead/impacted rockets pooled on ground for starned
+        if layout == "starned":
+            phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0]
+            detonated = struct.unpack_from("<Q", header, OFF_RKT_DETONATED)[0]
+            if phase == 6 or detonated != 0:
+                return None
         
-        # Secondary validation directly from header block
-        owner = struct.unpack_from("<Q", header, OFF_RKT_OWNER)[0]
-        state = header[OFF_RKT_STATE]
-        eid = struct.unpack_from("<I", header, OFF_RKT_ENTITY_ID)[0]
+        # Header metadata
+        owner = struct.unpack_from("<Q", header, OFF_RKT_OWNER)[0] if len(header) >= OFF_RKT_OWNER + 8 else 0
+        state = header[OFF_RKT_STATE] if len(header) > OFF_RKT_STATE else 0
+        eid = struct.unpack_from("<I", header, OFF_RKT_ENTITY_ID)[0] if len(header) >= OFF_RKT_ENTITY_ID + 4 else 0
+        guid = struct.unpack_from("<Q", header, OFF_RKT_GUIDANCE)[0] if len(header) >= OFF_RKT_GUIDANCE + 8 else 0
         
-        if state > 10:
-            return None
-        if owner == 0 or owner > 0xFFFFFFFF:
-            return None
-        if eid == 0 or eid > 10_000_000:
-            return None
+        # Resolve weapon definition name
+        name = ""
+        if ptr in self._name_cache:
+            name = self._name_cache[ptr]
+        else:
+            # Priority A: props pointer (+0x6c8 -> +0x50)
+            props = struct.unpack_from("<Q", header, OFF_RKT_PROPS)[0] if len(header) >= OFF_RKT_PROPS + 8 else 0
+            if _is_valid_ptr(props):
+                name_ptr = _rp(scanner, props + 0x50)
+                if _is_valid_ptr(name_ptr):
+                    s = _rstr(scanner, name_ptr)
+                    if s and (s.endswith(".blk") or any(k in s.lower() for k in ("missile", "rocket", "aim", "sam"))):
+                        name = s
+            
+            # Priority B: Component weapon pointers (+0x420, +0x440)
+            if not name:
+                for off in (0x420, 0x440):
+                    if len(header) >= off + 8:
+                        comp_p = struct.unpack_from("<Q", header, off)[0]
+                        if _is_valid_ptr(comp_p):
+                            s = _rstr(scanner, comp_p + 0x08, 48)
+                            if s and any(k in s for k in ("missile", "rocket", "sam", "aim", "agm", "r_")):
+                                clean_s = s.split("\x00")[0].split("*")[0].strip()
+                                if clean_s:
+                                    name = clean_s + ".blk"
+                                    break
+            
+            # Priority C: Raw Header strings
+            if not name:
+                for off in [0x230, 0x240, 0x380]:
+                    if len(header) >= off + 40:
+                        s = header[off:off+40]
+                        if b"aim_" in s or b"rocket" in s or b"missile" in s or b".blk" in s:
+                            name = s.split(b"\x00")[0].decode("utf-8", errors="ignore")
+                            break
+            
+            # Priority D: Fallback name for SAM / SPAA bot missiles without string
+            if not name:
+                name = "sam_missile.blk"
+            
+            if len(self._name_cache) > 500:
+                self._name_cache.clear()
+            self._name_cache[ptr] = name
         
-        # Filter out dead/impacted rockets pooled on ground (phase 6 = terminated, detonated != 0)
-        phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0]
-        detonated = struct.unpack_from("<Q", header, OFF_RKT_DETONATED)[0]
-        if phase == 6 or detonated != 0:
-            return None
-        
-        # Must have valid weapon properties pointer (props -> blk definition)
-        props = struct.unpack_from("<Q", header, OFF_RKT_PROPS)[0]
-        if not _is_valid_ptr(props):
-            return None
-        
-        guid = struct.unpack_from("<Q", header, OFF_RKT_GUIDANCE)[0]
-        if guid != 0 and not _is_valid_ptr(guid):
-            return None
+        # 🚫 FILTER OUT FLARES / CHAFF / DECOYS (Commented out per request to allow tracking flares/chaff)
+        # name_lower = name.lower()
+        # if any(ign in name_lower for ign in ["flare", "chaff"]):
+        #     return None
         
         # Build MissileInfo
         m = MissileInfo()
@@ -288,6 +364,7 @@ class MissileScanner:
         m.state = state
         m.entity_id = eid
         m.guidance_ptr = guid
+        m.name = name
         m.entry_idx = entry_idx
         
         # Read guidance details if valid pointer
@@ -295,27 +372,6 @@ class MissileScanner:
             m.is_locked = _r8(scanner, guid + OFF_GUID_LOCKED) == 1
             m.is_tracking = _r8(scanner, guid + OFF_GUID_TRACKING) == 1
             m.target_id = _ri16(scanner, guid + OFF_GUID_TARGET_ID)
-        
-        # Read name via props pointer (+0x6c8 -> +0x50) with cache
-        if ptr in self._name_cache:
-            m.name = self._name_cache[ptr]
-        else:
-            name_ptr = _rp(scanner, props + 0x50)
-            if _is_valid_ptr(name_ptr):
-                m.name = _rstr(scanner, name_ptr)
-            if m.name and m.name.endswith(".blk"):
-                if len(self._name_cache) > 500:
-                    self._name_cache.clear()
-                self._name_cache[ptr] = m.name
-        
-        # Must have valid non-empty weapon definition name (.blk file)
-        if not m.name or m.name == "" or not m.name.endswith(".blk"):
-            return None
-        
-        # 🚫 FILTER OUT FLARES / CHAFF / DECOYS
-        name_lower = m.name.lower()
-        if any(ign in name_lower for ign in ["flare", "chaff"]):
-            return None
         
         return m
 
