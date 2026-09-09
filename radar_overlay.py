@@ -3287,6 +3287,18 @@ class ESPOverlay(QOpenGLWidget):
             self.unit_id_to_ptr[target_id] = my_u
             return name, my_u
 
+        # Check data_pump cache if available
+        if hasattr(self, '_data_pump') and self._data_pump:
+            u_cache = getattr(self._data_pump, 'unit_id_cache', None)
+            if u_cache:
+                for u_ptr, item in u_cache.items():
+                    u_id = item[0]
+                    u_name = item[1]
+                    if u_id == target_id:
+                        self.unit_id_to_name[target_id] = u_name
+                        self.unit_id_to_ptr[target_id] = u_ptr
+                        return u_name, u_ptr
+
         # Check profile_cache
         if hasattr(self, 'profile_cache') and self.profile_cache:
             for u_ptr, c_prof in self.profile_cache.items():
@@ -3304,7 +3316,12 @@ class ESPOverlay(QOpenGLWidget):
                     return name, u_ptr
 
         # Fallback lookup in all_units
-        cgame_base = getattr(self, 'cgame_base', 0)
+        cgame_base = getattr(self, 'cgame_base', 0) or getattr(self, 'last_cgame_base', 0)
+        if not cgame_base and self.scanner:
+            try:
+                cgame_base = get_cgame_base(self.scanner, self.base_address)
+            except Exception:
+                pass
         if cgame_base and self.scanner:
             try:
                 all_u = get_all_units(self.scanner, cgame_base)
@@ -3753,6 +3770,7 @@ class ESPOverlay(QOpenGLWidget):
 
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             cgame_base = get_cgame_base(self.scanner, self.base_address)
+            self.cgame_base = cgame_base
             
             # 🐞 แทรก Debug: เช็ค CGame
             if cgame_base == 0: 

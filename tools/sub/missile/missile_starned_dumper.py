@@ -154,17 +154,39 @@ def check_ptr_is_rocket(sc, ptr):
             guid  = struct.unpack_from("<Q", header, guid_off)[0] if len(header) >= guid_off + 8 else 0
             eid   = struct.unpack_from("<I", header, eid_off)[0] if len(header) >= eid_off + 4 else 0
 
-            # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็น sam_missile.blk เฉพาะเมื่อมี Guidance หรือความเร็วระดับจรวดจริง (> 250 m/s)
+            # 🛡️ STRICT VALIDATION: Filter out fake/garbage entities and non-rocket objects
+            # 1. State: In-flight missiles only have state 0 (active), 1 (boost), or 2 (sustain).
+            # State 11 (dead) or State 95 (ASCII '_') must be rejected!
+            if state > 3:
+                continue
+
+            # 2. Entity ID: Active projectile IDs are normal positive integers (< 50,000,000).
+            # Rejects 0 and ASCII string garbage (e.g. 1802396020 = "tblk").
+            if eid == 0 or eid > 50_000_000:
+                continue
+
+            # 3. Owner: Every projectile in War Thunder has an owner unit pointer (u_ptr | 1).
+            # An unowned entity (owner == 0) or non-pointer garbage (e.g. 0x6e65657263735f65 = "e_screen") is invalid!
+            owner_unit = (owner & ~1) if owner else 0
+            if not (is_valid_ptr(owner_unit) and (owner_unit & 0x7 == 0)):
+                continue
+
+            # 4. Guidance: Validate pointer alignment
+            if guid != 0:
+                if not (is_valid_ptr(guid) and (guid & 0x7 == 0)):
+                    guid = 0
+                else:
+                    g_lock = r8(sc, guid + 0x50)
+                    g_trk = r8(sc, guid + 0x51)
+                    if g_lock not in (0, 1) or g_trk not in (0, 1):
+                        guid = 0
+
+            # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็น sam_missile.blk เฉพาะเมื่อมี Guidance และ Owner ที่ถูกต้อง
             if not found_wep:
-                if guid != 0 or speed > 250.0:
+                if is_valid_ptr(guid) and is_valid_ptr(owner_unit) and state in (0, 1, 2):
                     found_wep = "sam_missile.blk"
                 else:
-                    return None
-            
-            owner = struct.unpack_from("<Q", header, own_off)[0] if len(header) >= own_off + 8 else 0
-            state = header[st_off] if len(header) > st_off else 0
-            guid  = struct.unpack_from("<Q", header, guid_off)[0] if len(header) >= guid_off + 8 else 0
-            eid   = struct.unpack_from("<I", header, eid_off)[0] if len(header) >= eid_off + 4 else 0
+                    continue
             
             return {
                 "ptr": ptr,
@@ -302,7 +324,10 @@ def main():
             if r['guid'] != 0 and is_valid_ptr(r['guid']):
                 g_lock = r8(sc, r['guid'] + 0x50)
                 g_trk = r8(sc, r['guid'] + 0x51)
-                g_tgt = struct.unpack("<h", sc.read_mem(r['guid'] + 0x8c, 2))[0] if sc.read_mem(r['guid'] + 0x8c, 2) else -1
+                g_tgt_raw = sc.read_mem(r['guid'] + 0x8c, 2)
+                g_tgt = struct.unpack("<H", g_tgt_raw)[0] if g_tgt_raw and len(g_tgt_raw) == 2 else 0
+                if g_tgt == 0xFFFF:
+                    g_tgt = 0
                 tgt_info = f" (🎯 {unit_map[g_tgt][1]})" if g_tgt in unit_map else ""
                 guid_str += f" locked={g_lock} tracking={g_trk} target_id={g_tgt}{tgt_info}"
             

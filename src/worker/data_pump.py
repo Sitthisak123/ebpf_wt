@@ -213,6 +213,7 @@ class DataPumpWorker(QThread):
 
         # ----- Worker-owned caches -----
         self.profile_cache: Dict[int, dict] = {}
+        self.unit_id_cache: Dict[int, Tuple[int, str, float]] = {}  # u_ptr -> (unit_id, name, last_seen)
         self.active_targets: Dict[int, dict] = {}  # u_ptr -> {"snapshot": t_snap, "last_seen": now}
 
         self.last_my_unit: int = 0
@@ -345,6 +346,7 @@ class DataPumpWorker(QThread):
         # ให้ล้างแคชเป้าหมายทิ้งทันที และไม่ส่งเป้าหมายหลอกที่ค้างอยู่เด็ดขาด
         if (not my_unit) or (not my_pos) or (len(all_units_data) == 0):
             self.profile_cache.clear()
+            self.unit_id_cache.clear()
             self.active_targets.clear()
             self.last_my_unit = 0
             snap.all_unit_ptrs = set()
@@ -355,6 +357,7 @@ class DataPumpWorker(QThread):
         # Cache reset on my_unit change
         if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
             self.profile_cache.clear()
+            self.unit_id_cache.clear()
             self.active_targets.clear()
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
@@ -426,6 +429,21 @@ class DataPumpWorker(QThread):
             if u_ptr == my_unit:
                 continue
             current_seen_ptrs.add(u_ptr)
+
+            # Pre-cache unit ID and name for ALL units (both friendlies and enemies) for missile tracking
+            if u_ptr not in self.unit_id_cache:
+                try:
+                    uid = get_unit_id(self.scanner, u_ptr)
+                    if uid > 0:
+                        prof = get_unit_filter_profile(self.scanner, u_ptr)
+                        dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                        uname = dna.get("short_name") or prof.get("short_name") or prof.get("display_name") or f"Unit #{uid}"
+                        self.unit_id_cache[u_ptr] = (uid, uname, now)
+                except Exception:
+                    pass
+            else:
+                c_uid, c_uname, _ = self.unit_id_cache[u_ptr]
+                self.unit_id_cache[u_ptr] = (c_uid, c_uname, now)
 
             # Check cached profile to determine if name is already resolved
             cached_prof = self.profile_cache.get(u_ptr)
@@ -702,6 +720,12 @@ class DataPumpWorker(QThread):
                 if (now - last_seen) > 5.0:
                     del self.profile_cache[ptr]
 
+        # Clean unit_id cache (10-second grace period for despawned units)
+        for ptr, item in list(self.unit_id_cache.items()):
+            if ptr not in current_seen_ptrs:
+                if (now - item[2]) > 10.0:
+                    del self.unit_id_cache[ptr]
+
         # Scan for missiles periodically in background thread (0ms in paintGL)
         if (now - self.last_missile_scan_t) >= self.missile_scan_interval:
             self.last_missile_scan_t = now
@@ -712,12 +736,18 @@ class DataPumpWorker(QThread):
             except Exception:
                 pass
 
-        # Build unit_id mapping for Target Tracking
+        # Build unit_id mapping for Target Tracking (All units: YOU, friendlies, enemies)
         unit_name_by_id = {}
         unit_ptr_by_id = {}
         if snap.my_unit and snap.my_unit_id > 0:
             unit_name_by_id[snap.my_unit_id] = snap.my_name or "YOU"
             unit_ptr_by_id[snap.my_unit_id] = snap.my_unit
+
+        for u_ptr, (uid, uname, _) in self.unit_id_cache.items():
+            if uid > 0:
+                unit_name_by_id[uid] = uname
+                unit_ptr_by_id[uid] = u_ptr
+
         for t_snap in valid_targets:
             c_prof = self.profile_cache.get(t_snap.u_ptr)
             if c_prof:
@@ -726,8 +756,10 @@ class DataPumpWorker(QThread):
                     uid = get_unit_id(self.scanner, t_snap.u_ptr)
                     c_prof["unit_id"] = uid
                 if uid and uid > 0:
-                    unit_name_by_id[uid] = t_snap.short_name or t_snap.raw_name
+                    t_name = t_snap.short_name or t_snap.raw_name
+                    unit_name_by_id[uid] = t_name
                     unit_ptr_by_id[uid] = t_snap.u_ptr
+                    self.unit_id_cache[t_snap.u_ptr] = (uid, t_name, now)
         snap.unit_name_by_id = unit_name_by_id
         snap.unit_ptr_by_id = unit_ptr_by_id
 
