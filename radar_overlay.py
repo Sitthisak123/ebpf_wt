@@ -4055,6 +4055,7 @@ class ESPOverlay(QOpenGLWidget):
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
                 self.kalman_filters = {}
+                if hasattr(self, "missile_tracks"): self.missile_tracks.clear()
                 self.auto_cm_active_stage = 0
                 self.auto_cm_last_trigger_t = 0.0
                 self.auto_cm_next_trigger_t = 0.0
@@ -6816,9 +6817,11 @@ class ESPOverlay(QOpenGLWidget):
 
                             is_my = False
                             is_friendly = False
+                            is_verified_me = False
                             if is_owner_me:
                                 # ตรงกับ Pointer / ID เครื่องเรา 100%
                                 is_my = True
+                                is_verified_me = True
                             elif is_owner_friendly:
                                 # ขีปนาวุธเพื่อนร่วมทีม
                                 is_friendly = True
@@ -6827,15 +6830,16 @@ class ESPOverlay(QOpenGLWidget):
                                 is_my = False
                                 is_friendly = False
                             elif is_new_track:
-                                # Fallback เมื่อไม่มี owner หรือ owner เป็น 0 (ใช้ launch_pos และ relative motion)
-                                if not (my_is_air and is_sam_name) and closing_speed <= 0.0 and cur_dist < 30.0:
+                                # Fallback เมื่อไม่มี owner หรือ owner เป็น 0 (ใช้ launch_pos หรือระยะห่างจากลำตัวเครื่องบิน ณ ขณะยิง)
+                                # หมายเหตุ: ช่วง 0-0.5s แรกที่ขีปนาวุธแยกตัวจากรางยิง (Pylon) ใต้ปีก อาจมี closing_speed > 0 เล็กน้อย จึงไม่ตัดด้วย closing_speed
+                                if not (my_is_air and is_sam_name) and cur_dist < 40.0:
                                     lpos = getattr(m, 'launch_pos', (0.0, 0.0, 0.0))
                                     if lpos and lpos != (0.0, 0.0, 0.0) and my_pos:
                                         ldx = my_pos[0] - lpos[0]
                                         ldy = my_pos[1] - lpos[1]
                                         ldz = my_pos[2] - lpos[2]
                                         launch_dist = math.sqrt(ldx*ldx + ldy*ldy + ldz*ldz)
-                                        if launch_dist < 45.0:
+                                        if launch_dist < 50.0:
                                             is_my = True
                                     else:
                                         is_my = True
@@ -6853,12 +6857,27 @@ class ESPOverlay(QOpenGLWidget):
                                 if is_owner_me:
                                     tr['is_my_missile'] = True
                                     tr['is_friendly_missile'] = False
+                                    tr['is_owner_me_verified'] = True
                                 elif is_owner_friendly:
                                     tr['is_friendly_missile'] = True
                                     tr['is_my_missile'] = False
-                                # Safety Fail-safe: ถ้าพุ่งตรงเข้าหาเรา หรือเป็นจรวดที่คนอื่นยิง -> ยกเลิก is_my ทันที!
-                                if tr.get('is_my_missile') and (is_owner_other or closing_speed > 25.0 or (my_is_air and is_sam_name)):
+                                    tr['is_owner_me_verified'] = False
+                                elif is_owner_enemy:
                                     tr['is_my_missile'] = False
+                                    tr['is_friendly_missile'] = False
+                                    tr['is_owner_me_verified'] = False
+
+                                # Safety Fail-safe:
+                                # 1) ถ้าเราพิสูจน์แล้วว่าเจ้าของคือเครื่องเรา (is_owner_me_verified) ห้ามยกเลิก is_my_missile เด็ดขาด
+                                # 2) ยกเลิกได้เฉพาะเมื่อตรวจพบว่าเป็นยูนิตคนอื่นยิง (is_owner_other)
+                                # 3) หรือถ้ายังไม่ได้รับการยืนยันพอยน์เตอร์ (unverified fallback) แต่ลูกจรวดอยู่ไกลเกิน 300m และพุ่งเข้าหาเรา
+                                if tr.get('is_my_missile'):
+                                    if is_owner_other:
+                                        tr['is_my_missile'] = False
+                                        tr['is_owner_me_verified'] = False
+                                    elif not tr.get('is_owner_me_verified'):
+                                        if (closing_speed > 25.0 and cur_dist > 300.0) or (my_is_air and is_sam_name):
+                                            tr['is_my_missile'] = False
                             else:
                                 self.missile_tracks[m.ptr] = {
                                     'base_pos': m.pos,
@@ -6871,6 +6890,7 @@ class ESPOverlay(QOpenGLWidget):
                                     'missile': m,
                                     'entity_id': m.entity_id,
                                     'is_my_missile': is_my,
+                                    'is_owner_me_verified': is_verified_me,
                                     'is_friendly_missile': is_friendly,
                                     'owner_unit': owner_unit,
                                     'shooter_name': owner_name,
@@ -6921,9 +6941,14 @@ class ESPOverlay(QOpenGLWidget):
                                         is_heading_to_me = True
                                     time_to_impact = dist / max(closing_speed, speed)
 
-                            # 🚫 กรองข้ามขีปนาวุธที่เราหรือเพื่อนร่วมทีมยิง (เว้นแต่จะเกิดอุบัติเหตุพุ่งชนระยะประชิด <400m)
-                            if (tr.get('is_my_missile') or tr.get('is_friendly_missile')):
-                                if not (is_heading_to_me and closing_speed > 50.0 and dist < 400.0):
+                            # 🚫 กรองข้ามขีปนาวุธที่เราเป็นคนยิง (100% ปลอดภัยต่อตัวเราเอง ไม่ใช่ภัยคุกคาม)
+                            if tr.get('is_my_missile') or tr.get('is_owner_me_verified'):
+                                continue
+
+                            # 🚫 กรองข้ามขีปนาวุธที่เพื่อนร่วมทีมยิง (เว้นแต่ Seeker ของเพื่อนจะล็อกหัวเครื่องเราโดยตรง)
+                            if tr.get('is_friendly_missile'):
+                                is_friendly_locked_me = bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
+                                if not is_friendly_locked_me:
                                     continue
 
                             # ตรวจสอบสถานะ Guidance
@@ -7014,7 +7039,7 @@ class ESPOverlay(QOpenGLWidget):
                                 self.screen_width, self.screen_height
                             )
                             is_incoming = any(im[0].ptr == m.ptr for im in incoming)
-                            is_my = bool(tr.get('is_my_missile') and not is_incoming)
+                            is_my = bool(tr.get('is_my_missile') or tr.get('is_owner_me_verified'))
                             is_friendly = False if is_my else bool(tr.get('is_friendly_missile') and not is_incoming)
                             is_exact_locked_me = False if (is_my or is_friendly) else bool(
                                 my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)
