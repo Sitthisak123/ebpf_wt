@@ -147,6 +147,8 @@ class FrameSnapshot:
 
     # Active missiles pre-scanned in background thread (0ms overhead in paintGL!)
     missiles: List[Any] = field(default_factory=list)
+    missile_scan_seq: int = 0
+    missile_scan_t: float = 0.0
 
     # Active target selection
     active_target_ptr: int = 0
@@ -233,6 +235,7 @@ class DataPumpWorker(QThread):
         self.latest_missiles: List[Any] = []
         self.last_missile_scan_t: float = 0.0
         self.missile_scan_interval: float = 0.08
+        self.missile_scan_seq: int = 0
 
         # Thread-safe snapshot buffer
         self._latest_snapshot = FrameSnapshot()
@@ -753,6 +756,7 @@ class DataPumpWorker(QThread):
         # Scan for missiles periodically in background thread (0ms in paintGL)
         if (now - self.last_missile_scan_t) >= self.missile_scan_interval:
             self.last_missile_scan_t = now
+            self.missile_scan_seq += 1
             try:
                 m_res = self.missile_scanner.scan(self.scanner, self.base_address)
                 if m_res is not None:
@@ -817,6 +821,8 @@ class DataPumpWorker(QThread):
         snap.unit_is_air_by_ptr = unit_is_air_by_ptr
 
         snap.missiles = list(self.latest_missiles)
+        snap.missile_scan_seq = self.missile_scan_seq
+        snap.missile_scan_t = self.last_missile_scan_t
         snap.valid_targets = valid_targets
         snap.is_valid = True
         return snap
