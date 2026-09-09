@@ -16,10 +16,11 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
+import src.utils.mul as mul
 
-OFF_ECS_MANAGER    = 0x8225aa0
-OFF_ECS_NODE_TABLE = 0x178
-OFF_ECS_CLASS_TABLE= 0x5E8
+OFF_ECS_MANAGER    = getattr(mul, 'OFF_ECS_MANAGER', 0x8226ba0)
+OFF_ECS_NODE_TABLE = getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178)
+OFF_ECS_CLASS_TABLE= getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8)
 
 OFFSET_SETS = [
     ("starned", 0x23c, 0x258, 0x40, 0x94, 0x638, 0x30, 0x6c8),
@@ -239,15 +240,17 @@ def main():
     print(f"[+] PID: {pid}, Base: {hex(base)}")
     
     sc = MemoryScanner(pid)
+    init_dynamic_offsets(sc, base)
     
     # Read ECS Manager
-    ecs_mgr = rp(sc, base + OFF_ECS_MANAGER)
+    ecs_mgr_off = getattr(mul, 'OFF_ECS_MANAGER', 0x8226ba0)
+    ecs_mgr = rp(sc, base + ecs_mgr_off)
     if not is_valid_ptr(ecs_mgr):
-        print(f"❌ อ่าน ECS Manager ล้มเหลวที่ {hex(base + OFF_ECS_MANAGER)}")
+        print(f"❌ อ่าน ECS Manager ล้มเหลวที่ {hex(base + ecs_mgr_off)}")
         return
     
-    node_t = rp(sc, ecs_mgr + OFF_ECS_NODE_TABLE)
-    class_t = rp(sc, ecs_mgr + OFF_ECS_CLASS_TABLE)
+    node_t = rp(sc, ecs_mgr + getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178))
+    class_t = rp(sc, ecs_mgr + getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8))
     
     print(f"✅ ECS Manager: {hex(ecs_mgr)}")
     print(f"   node_table:  {hex(node_t)}")
@@ -256,8 +259,6 @@ def main():
     # Build unit_map to resolve target_id and owner
     unit_map = {}
     try:
-        import src.utils.mul as mul
-        init_dynamic_offsets(sc, base)
         cgame_base = mul.get_cgame_base(sc, base)
         my_unit, _ = mul.get_local_team(sc, base)
         all_u = mul.get_all_units(sc, cgame_base)

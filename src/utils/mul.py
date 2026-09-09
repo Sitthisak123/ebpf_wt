@@ -60,8 +60,9 @@ OFF_MY_AIR_VEL      = 0x0068      # My air velocity: DOUBLE vec3 at move_ptr + 0
 OFF_MY_AIR_MOVEMENT = 0x0D28      # My air movement pointer from tick-rate scan (0x0D28 / 0x0D30)
 
 # 🚀 Missile/Rocket ECS Offsets (starned - confirmed 2026-09)
-OFF_ECS_MANAGER     = 0x8225aa0   # base + this → ECS manager ptr
+OFF_ECS_MANAGER     = 0x8226ba0   # base + this → ECS manager ptr (Updated post game update)
 OFF_ECS_NODE_TABLE  = 0x178       # manager + this → node_table ptr
+OFF_ECS_CLASS_TABLE = 0x5E8       # manager + this → class_table ptr
 OFF_RKT_POS         = 0x23c       # rocket + this → Vec3 position
 OFF_RKT_VEL         = 0x258       # rocket + this → Vec3 velocity
 OFF_RKT_OWNER       = 0x40        # rocket + this → owner unit id (u32)

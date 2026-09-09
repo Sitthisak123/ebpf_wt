@@ -908,7 +908,8 @@ def init_dynamic_offsets(scanner, base_address):
     test_mgr = mul._read_ptr(scanner, base_address + mul.OFF_ECS_MANAGER)
     if mul.is_valid_ptr(test_mgr):
         test_node = mul._read_ptr(scanner, test_mgr + mul.OFF_ECS_NODE_TABLE)
-        if mul.is_valid_ptr(test_node):
+        test_class = mul._read_ptr(scanner, test_mgr + mul.OFF_ECS_CLASS_TABLE)
+        if mul.is_valid_ptr(test_node) and mul.is_valid_ptr(test_class):
             node_bytes = scanner.read_mem(test_node, 128)
             if node_bytes and any(b != 0 for b in node_bytes):
                 ecs_ok = True
@@ -917,25 +918,34 @@ def init_dynamic_offsets(scanner, base_address):
     # 2. If game updated and offset shifted, scan base region dynamically
     if not ecs_ok:
         print("  [!] ⚠️ Offset เดิมไม่ตรงกับแพตช์ปัจจุบัน กำลังสแกนหา ECS Manager ใหม่...")
-        scan_start = base_address + 0x8000000
-        scan_end   = base_address + 0x9500000
+        scan_start = base_address + 0x7000000
+        scan_end   = base_address + 0xD000000
         step = 8
         found_off = 0
         
         # Batch read memory to scan dynamically
-        chunk_size = 0x100000  # 1MB per chunk
+        chunk_size = 0x200000  # 2MB per chunk
         for addr in range(scan_start, scan_end, chunk_size):
             chunk = scanner.read_mem(addr, chunk_size)
             if not chunk: continue
             for i in range(0, len(chunk) - 8, 8):
                 ptr_val = struct.unpack_from("<Q", chunk, i)[0]
-                if mul.is_valid_ptr(ptr_val):
+                if mul.is_valid_ptr(ptr_val) and (ptr_val & 7 == 0):
                     test_node = mul._read_ptr(scanner, ptr_val + mul.OFF_ECS_NODE_TABLE)
-                    if mul.is_valid_ptr(test_node):
-                        nb = scanner.read_mem(test_node, 64)
-                        if nb and any(b != 0 for b in nb):
-                            found_off = (addr + i) - base_address
-                            break
+                    test_class = mul._read_ptr(scanner, ptr_val + mul.OFF_ECS_CLASS_TABLE)
+                    if mul.is_valid_ptr(test_node) and mul.is_valid_ptr(test_class) and (test_node & 7 == 0) and (test_class & 7 == 0) and test_node != test_class:
+                        nb = scanner.read_mem(test_node, 128)
+                        if nb and len(nb) >= 64:
+                            valid_nodes = 0
+                            for entry_idx in range(len(nb) // 32):
+                                st = struct.unpack_from("<Q", nb, entry_idx * 32)[0]
+                                cnt = struct.unpack_from("<I", nb, entry_idx * 32 + 8)[0]
+                                cap = struct.unpack_from("<I", nb, entry_idx * 32 + 0x14)[0]
+                                if mul.is_valid_ptr(st) and (st & 7 == 0) and 0 < cnt <= cap <= 8192:
+                                    valid_nodes += 1
+                            if valid_nodes >= 2:
+                                found_off = (addr + i) - base_address
+                                break
             if found_off: break
         
         if found_off:
