@@ -110,22 +110,28 @@ AMMO_FLAG_APFSDS      = 1 << 8  # Sub-caliber fin-stabilized dart
 AMMO_FLAG_APDS        = 1 << 9  # Sub-caliber discarding sabot
 AMMO_FLAG_HEATFS      = 1 << 10 # High-explosive anti-tank (shaped charge)
 AMMO_FLAG_APHE        = 1 << 11 # Armor-piercing high-explosive / kinetic solid shot
-AMMO_FLAG_HE_HESH     = 1 << 12 # High-explosive / squash head
+AMMO_FLAG_HE          = 1 << 12 # High-explosive fragmentation
+AMMO_FLAG_HE_HESH     = 1 << 12 # Backward-compatibility alias
 AMMO_FLAG_ATGM        = 1 << 13 # Anti-tank guided missile
 AMMO_FLAG_AUTOCANNON  = 1 << 14 # Rapid-fire autocannon shell
+AMMO_FLAG_HESH        = 1 << 15 # High-explosive squash head (HESH / HEP)
 
 
-def classify_weapon_caliber(speed, caliber, mass=0.0, cx=0.0, vehicle_name="", is_air=False):
+def classify_weapon_caliber(speed, caliber, mass=0.0, cx=0.0, vehicle_name="", is_air=False, length=0.0):
     """
     Classifies weapon caliber and ammunition type with Flags and String labels.
-    Handles sub-caliber sabot darts (APFSDS/APDS), chemical shells (HEAT-FS),
-    explosive shells (HE/HESH), kinetic rounds, autocannons, and aircraft cannons.
+    Handles sub-caliber sabot darts (APFSDS vs APDS), chemical shells (HEAT-FS),
+    explosive shells (HE vs HESH vs APHE), kinetic rounds, autocannons, and aircraft cannons.
+    Uses physical projectile properties: caliber, length-to-diameter aspect ratio (L/D),
+    and volumetric mass density.
     """
     speed = _as_float(speed, 0.0)
     caliber = _as_float(caliber, 0.0)
     mass = _as_float(mass, 0.0)
     cx = _as_float(cx, 0.0)
+    length = _as_float(length, 0.0)
     vname = (vehicle_name or "").lower()
+    vname_clean = vname.replace(" ", "_").replace("-", "_")
 
     raw_cal_mm = caliber * 1000.0
 
@@ -156,71 +162,113 @@ def classify_weapon_caliber(speed, caliber, mass=0.0, cx=0.0, vehicle_name="", i
 
     # 🛡️ Tank Vehicle Bore Lookup (Nominal Gun Caliber)
     known_bore = 0.0
-    if any(k in vname for k in ("t_64", "t_72", "t_80", "t_90", "type_96", "type_99", "wz", "zsr", "ztz")):
+    if any(k in vname_clean for k in ("t_64", "t_72", "t_80", "t_90", "type_96", "type_99", "wz", "zsr", "ztz")):
         known_bore = 125.0
-    elif any(k in vname for k in ("type_90", "type_10", "leopard_2", "m1a1", "m1a2", "leclerc", "ariete", "challenger_2", "challenger_3", "strv_121", "strv_122")):
+    elif any(k in vname_clean for k in ("type_90", "type_10", "leopard_2", "m1a1", "m1a2", "leclerc", "ariete", "challenger_2", "challenger_3", "strv_121", "strv_122")):
         known_bore = 120.0
-    elif any(k in vname for k in ("t_62",)):
+    elif any(k in vname_clean for k in ("t_62",)):
         known_bore = 115.0
-    elif any(k in vname for k in ("type_16", "type_74", "m60", "centurion_mk_10", "leopard_1", "strv_103", "m1_abrams", "ipm1", "vickers", "tam", "radkampfwagen")):
+    elif any(k in vname_clean for k in ("type_16", "type_74", "m60", "centurion_mk_10", "leopard_1", "strv_103", "m1_abrams", "ipm1", "vickers", "tam", "radkampfwagen")):
         known_bore = 105.0
-    elif any(k in vname for k in ("t_54", "t_55", "su_100", "bmp_3")):
+    elif any(k in vname_clean for k in ("t_54", "t_55", "su_100", "bmp_3")):
         known_bore = 100.0
-    elif any(k in vname for k in ("m46", "m47", "m48", "type_61", "amx_13_90")):
+    elif any(k in vname_clean for k in ("m46", "m47", "m48", "type_61", "amx_13_90")):
         known_bore = 90.0
-    elif any(k in vname for k in ("tiger", "ferdinand", "jagpanther", "nashorn")):
+    elif any(k in vname_clean for k in ("tiger", "ferdinand", "jagpanther", "nashorn")):
         known_bore = 88.0
-    elif any(k in vname for k in ("t_34_85", "su_85")):
+    elif any(k in vname_clean for k in ("t_34_85", "su_85")):
         known_bore = 85.0
-    elif any(k in vname for k in ("is_2", "is_3", "is_4", "t_10", "2s1")):
+    elif any(k in vname_clean for k in ("is_2", "is_3", "is_4", "t_10", "2s1")):
         known_bore = 122.0
-    elif any(k in vname for k in ("2s3", "isu_152", "kv_2", "object_268", "mbt_70", "kpf_70")):
+    elif any(k in vname_clean for k in ("2s3", "isu_152", "kv_2", "object_268", "mbt_70", "kpf_70")):
         known_bore = 152.0
-    elif any(k in vname for k in ("vidar", "m109", "bkan", "type_75", "g6", "palmaria", "au_f1")):
+    elif any(k in vname_clean for k in ("vidar", "m109", "bkan", "type_75", "g6", "palmaria", "au_f1")):
         known_bore = 155.0
-    elif any(k in vname for k in ("fv4005", "fv215b")):
+    elif any(k in vname_clean for k in ("fv4005", "fv215b")):
         known_bore = 183.0
-    elif any(k in vname for k in ("2s38", "zsu_57", "t_34_57", "begleitpanzer")):
+    elif any(k in vname_clean for k in ("2s38", "zsu_57", "t_34_57", "begleitpanzer")):
         known_bore = 57.0
-    elif any(k in vname for k in ("strf_9040", "cv9040", "m42", "amx_13_dca")):
+    elif any(k in vname_clean for k in ("strf_9040", "cv9040", "m42", "amx_13_dca")):
         known_bore = 40.0
-    elif any(k in vname for k in ("gepard", "type_87", "marksman", "pgz_09")):
+    elif any(k in vname_clean for k in ("type_89", "gepard", "marksman", "pgz_09", "cv9035")):
         known_bore = 35.0
-    elif any(k in vname for k in ("bmp_2", "bmd_4", "tunguska", "pantsir", "freccia", "dardo", "vbc", "btr_80", "btr_82")):
+    elif any(k in vname_clean for k in ("bmp_2", "bmd_4", "btr_80", "btr_82", "tunguska", "pantsir", "cv9030")):
         known_bore = 30.0
-    elif any(k in vname for k in ("m3_bradley", "m2_bradley", "lav_25")):
+    elif any(k in vname_clean for k in ("m3_bradley", "m2_bradley", "lav_25", "type_87_rcv", "rcv", "vbc", "dardo")):
         known_bore = 25.0
+    elif any(k in vname_clean for k in ("type_87",)):
+        # Default for Japanese Type 87 SPAAG (35mm) if not rcv
+        known_bore = 35.0
 
-    # 🔬 Ammunition Type Identification
-    is_subcaliber = (speed >= 1100.0 and caliber <= 0.045 and mass <= 9.0)
+    # 🔬 Physical Projectile Geometry & Density
+    effective_len = length if length > 0.0 else (cx if cx > 0.05 else 0.30)
+    aspect_ratio = (effective_len / caliber) if caliber > 0.0 else 0.0
+    vol_density = (mass / (caliber ** 3)) if caliber > 0.0 else 0.0
+
+    # 🔬 Subcaliber Sabot Identification (APFSDS vs APDS)
+    # A projectile is sub-caliber if:
+    # 1. It is not a full-bore round for the gun (caliber < known_bore * 0.82)
+    # 2. High velocity (speed >= 1050 m/s) and sub-caliber dimensions (caliber <= 60mm)
+    # 3. High density penetrator material (vol_density >= 35,000 kg/m^3)
+    is_full_bore = (known_bore > 0.0 and raw_cal_mm >= (known_bore * 0.85))
+    is_subcaliber = False
+    if not is_full_bore and speed >= 1050.0 and caliber <= 0.060:
+        if known_bore > 0.0:
+            is_subcaliber = (raw_cal_mm < known_bore * 0.80) and (vol_density >= 35000.0 or mass <= 9.0)
+        else:
+            is_subcaliber = (vol_density >= 38000.0) or (speed >= 1350.0 and caliber <= 0.040)
 
     if 50.0 < speed < 400.0:
         ammo_type = "ATGM"
         ammo_flag = AMMO_FLAG_ATGM
     elif is_subcaliber:
-        if speed >= 1300.0 or caliber <= 0.025:
+        dart_ratio = (raw_cal_mm / known_bore) if known_bore > 0.0 else 0.0
+        # APFSDS: Long-rod penetrator (dart_ratio <= 0.40, vol_density >= 85,000 kg/m^3, or aspect_ratio >= 25.0)
+        # APDS: Short core sabot (dart_ratio >= 0.45, 38,000 <= vol_density < 85,000 kg/m^3)
+        if (
+            vol_density >= 85000.0 or
+            (0.0 < dart_ratio <= 0.40) or
+            aspect_ratio >= 25.0 or
+            (speed >= 1450.0 and raw_cal_mm <= 34.0 and mass <= 5.0)
+        ):
             ammo_type = "APFSDS"
             ammo_flag = AMMO_FLAG_APFSDS | CAL_FLAG_SUB_CALIBER
         else:
             ammo_type = "APDS"
             ammo_flag = AMMO_FLAG_APDS | CAL_FLAG_SUB_CALIBER
     elif caliber >= 0.065:
-        if speed >= 850.0 and cx >= 0.18:
+        # Full-caliber tank shells: HEAT-FS, HESH, APHE, HE
+        is_hesh_vehicle = any(k in vname_clean for k in ("centurion", "chieftain", "challenger", "conqueror", "vickers", "fv", "m60", "magach", "leopard", "strv", "type_74", "type_16"))
+
+        # 1. HEAT-FS: High velocity shaped charge (aerodynamic ogive L/D >= 3.8)
+        if speed >= 850.0 and (aspect_ratio >= 3.8 or "heat" in vname_clean or (speed >= 1000.0 and mass <= 14.0 and is_hesh_vehicle)):
             ammo_type = "HEAT-FS"
             ammo_flag = AMMO_FLAG_HEATFS
-        elif speed < 750.0 or mass >= 16.0:
-            ammo_type = "HE/HESH"
-            ammo_flag = AMMO_FLAG_HE_HESH
-        else:
+        # 2. HESH (Squash Head): Thin casing filled with plastic explosive (Volumetric density < 11,200 kg/m^3)
+        elif (vol_density < 11200.0 and speed <= 800.0 and (is_hesh_vehicle or mass <= 14.0)) or ("fv4005" in vname_clean or "fv215b" in vname_clean):
+            ammo_type = "HESH"
+            ammo_flag = AMMO_FLAG_HESH
+        # 3. APHE / Solid AP: Dense solid forged steel body (Volumetric density >= 13,200 kg/m^3)
+        elif vol_density >= 13200.0 and speed >= 720.0 and mass > 0:
             ammo_type = "APHE"
             ammo_flag = AMMO_FLAG_APHE
+        # 4. HE: Standard fragmentation shell
+        else:
+            ammo_type = "HE"
+            ammo_flag = AMMO_FLAG_HE
     elif 0.015 <= caliber <= 0.057:
-        if speed >= 1150.0:
+        if vol_density >= 80000.0 or speed >= 1450.0:
             ammo_type = "APFSDS"
             ammo_flag = AMMO_FLAG_APFSDS | CAL_FLAG_AUTOCANNON
+        elif vol_density >= 35000.0 or speed >= 1250.0:
+            ammo_type = "APDS"
+            ammo_flag = AMMO_FLAG_APDS | CAL_FLAG_AUTOCANNON
+        elif vol_density >= 11000.0:
+            ammo_type = "APHE"
+            ammo_flag = AMMO_FLAG_APHE | CAL_FLAG_AUTOCANNON
         else:
-            ammo_type = "AUTO-AP"
-            ammo_flag = AMMO_FLAG_AUTOCANNON | CAL_FLAG_AUTOCANNON
+            ammo_type = "HE"
+            ammo_flag = AMMO_FLAG_HE | CAL_FLAG_AUTOCANNON
     else:
         ammo_type = "KINETIC"
         ammo_flag = AMMO_FLAG_UNKNOWN
