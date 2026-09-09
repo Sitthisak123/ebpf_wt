@@ -3,4 +3,4 @@
 
 @Fix
 - add air ghost filter [if air_unit_vel > 0 and pos == prev_pos]
-- target lock cuase ground Hitpoint simulation
+- target lock cuase ground Hitpoint simulation: make this feature specific for Air Unit and can be lock ground unit only
