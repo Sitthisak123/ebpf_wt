@@ -275,12 +275,34 @@ MISSILE_SMOOTH_LERP             = 0.45                   # Angular smoothing fac
 # 🛡️ AUTOMATIC COUNTERMEASURE (FLARE / CHAFF) SYSTEM CONFIG
 # ============================================================
 ENABLE_AUTO_COUNTERMEASURE      = True          # สวิตช์หลักเปิด/ปิดระบบปล่อยเป้าลวงอัตโนมัติ
-AUTO_CM_KEY                     = "right alt"   # ปุ่มสำหรับปล่อย Countermeasure (R.ALT หรือ Scancode 100)
+AUTO_CM_KEY                     = "num+"        # ปุ่มสำหรับปล่อย Countermeasure (Numpad + หรือ Scancode 78 / KEY_KPPLUS)
 AUTO_CM_HOLD_MS                 = 70            # ระยะเวลาหน่วงกดปุ่มค้าง (ms) เพื่อให้ Dagor Engine ตรวจจับเฟรมอินพุตได้แน่นอน
 AUTO_CM_REQUIRE_EXACT_LOCK      = False         # True = ต้องมีสัญญาณ Guided==myUnit เท่านั้น, False = หรือมุมปะทะตรงเผงระยะประชิด
 
-# แมพ scancode บน Linux เพื่อป้องกันบั๊กของไลบรารี keyboard ที่สลับ Left/Right Alt
+# แมพ scancode บน Linux เพื่อป้องกันบั๊กของไลบรารี keyboard ที่สลับ Left/Right Alt หรือไม่รู้จัก Numpad
 LINUX_KEY_SCANCODES = {
+    # Numpad Keys
+    "num+": 78,            # KEY_KPPLUS (Numpad +)
+    "num +": 78,
+    "num_plus": 78,
+    "numpad+": 78,
+    "numpad +": 78,
+    "numpad_plus": 78,
+    "kp_plus": 78,
+    "kp+": 78,
+    "+": 78,
+    "num-": 74,            # KEY_KPMINUS (Numpad -)
+    "num -": 74,
+    "num_minus": 74,
+    "numpad-": 74,
+    "numpad -": 74,
+    "numpad_minus": 74,
+    "kp_minus": 74,
+    "kp-": 74,
+    "num_enter": 96,       # KEY_KPENTER (Numpad Enter)
+    "numpad_enter": 96,
+    "kp_enter": 96,
+    # Modifier & Special Keys
     "right alt": 100,      # KEY_RIGHTALT (สำคัญมาก: ป้องกันบั๊ก keyboard lib ที่ส่ง 56/Left Alt)
     "right_alt": 100,
     "ralt": 100,
@@ -465,7 +487,7 @@ BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
-SHOW_BOT_UNITS = False               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
+SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
@@ -1265,6 +1287,9 @@ def _vertical_baseline_entry_matches_signature(entry_key, entry, ballistic_profi
 
 
 def _choose_vertical_baseline_entry(my_unit_key, ballistic_profile):
+    if isinstance(ballistic_profile, dict) and my_unit_key and not ballistic_profile.get("vehicle_name"):
+        ballistic_profile = dict(ballistic_profile)
+        ballistic_profile["vehicle_name"] = my_unit_key
     ammo_bucket = _vertical_baseline_ammo_bucket(ballistic_profile)
     sig_key = _vertical_baseline_signature_key(ballistic_profile)
 
@@ -3836,6 +3861,7 @@ class ESPOverlay(QOpenGLWidget):
                 current_bullet_cd,
                 vehicle_name=current_vehicle_name,
                 is_air=current_is_air,
+                length=current_bullet_cd,
             )
             self.current_gun_info = gun_info
             painter.setPen(QColor(100, 220, 255))
