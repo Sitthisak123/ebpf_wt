@@ -163,7 +163,7 @@ class MissileScanner:
     
     def _init_ecs(self, scanner, base):
         """Initialize ECS manager pointers dynamically from mul.OFF_ECS_MANAGER"""
-        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8225aa0)
+        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8226ba0)
         ecs_node_off = getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)
         
         mgr = _rp(scanner, base + ecs_mgr_off)
@@ -193,7 +193,7 @@ class MissileScanner:
         self._last_scan_time = now
         
         # Always fetch LIVE ECS manager and node_table pointers
-        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8225aa0)
+        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8226ba0)
         ecs_node_off = getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)
         
         mgr = _rp(scanner, base + ecs_mgr_off)
