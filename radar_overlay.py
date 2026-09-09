@@ -4388,8 +4388,20 @@ class ESPOverlay(QOpenGLWidget):
                     select_z = pred_z - (my_vz * select_t)
                     select_screen = world_to_screen(view_matrix, select_x, select_y, select_z, self.screen_width, self.screen_height)
                 else:
-                    # Air selection: keep old stable behavior, use unit center only.
+                    # Air selection: check both unit center AND estimated leadmark position
                     select_screen = world_to_screen(view_matrix, select_tx, select_ty, select_tz, self.screen_width, self.screen_height)
+                    if current_bullet_speed > 0.0 and my_pos:
+                        air_vel = pre_vel if pre_vel else (0.0, 0.0, 0.0)
+                        air_t = dist_to_me / current_bullet_speed
+                        air_lx = select_tx + (air_vel[0] - my_vx) * air_t
+                        air_ly = select_ty + (air_vel[1] - my_vy) * air_t + (0.5 * BULLET_GRAVITY * (air_t ** 2))
+                        air_lz = select_tz + (air_vel[2] - my_vz) * air_t
+                        air_lead_scr = world_to_screen(view_matrix, air_lx, air_ly, air_lz, self.screen_width, self.screen_height)
+                        if air_lead_scr and air_lead_scr[2] > 0.10:
+                            lead_in_view = (-80 <= air_lead_scr[0] <= self.screen_width + 80 and -80 <= air_lead_scr[1] <= self.screen_height + 80)
+                            unit_in_view = (select_screen and select_screen[2] > 0.10 and -80 <= select_screen[0] <= self.screen_width + 80 and -80 <= select_screen[1] <= self.screen_height + 80)
+                            if lead_in_view and (not unit_in_view or math.hypot(air_lead_scr[0] - self.center_x, air_lead_scr[1] - self.center_y) < math.hypot(select_screen[0] - self.center_x, select_screen[1] - self.center_y)):
+                                select_screen = air_lead_scr
 
                 res_pos = select_screen
                 if res_pos and res_pos[2] > 0.10:
@@ -4407,13 +4419,14 @@ class ESPOverlay(QOpenGLWidget):
                 visible_targets.sort(key=lambda item: item[0])
                 auto_target_ptr = visible_targets[0][1]
 
-                # 🔒 TAB-Lock: ถ้าล็อคอยู่ ตรวจว่า locked target ยังอยู่ใน visible list ไหม
+                # 🔒 TAB-Lock: ถ้าล็อคอยู่ ตรวจว่า locked target ยังมีชีวิตอยู่ไหม
                 if self.target_locked_ptr != 0:
+                    locked_still_alive = any(u[0] == self.target_locked_ptr for u in all_units_data)
                     locked_still_visible = any(vt[1] == self.target_locked_ptr for vt in visible_targets)
-                    if locked_still_visible:
+                    if locked_still_visible or locked_still_alive:
                         active_target_ptr = self.target_locked_ptr
                     else:
-                        # target หายจากหน้าจอ → ปลดล็อค
+                        # target หายจากเกม/ตาย → ปลดล็อค
                         self.target_locked_ptr = 0
                         active_target_ptr = auto_target_ptr
                 else:
@@ -4431,7 +4444,15 @@ class ESPOverlay(QOpenGLWidget):
                     ground_leadmark_allow_ptrs = set(ordered_ground[:GROUND_LEADMARK_TOP_N])
             else:
                 self.target_cycle_index = 0
-                self.target_locked_ptr = 0  # ไม่มี target เลย → ปลดล็อค
+                if self.target_locked_ptr != 0:
+                    locked_still_alive = any(u[0] == self.target_locked_ptr for u in all_units_data)
+                    if locked_still_alive:
+                        active_target_ptr = self.target_locked_ptr
+                        self._handle_target_lock_toggle(active_target_ptr)
+                    else:
+                        self.target_locked_ptr = 0
+                else:
+                    self.target_locked_ptr = 0
 
             # ========================================================
             # 🧠 AI EVALUATION STEP (ประเมินผล 6 สมมติฐาน)
@@ -4977,20 +4998,17 @@ class ESPOverlay(QOpenGLWidget):
                     ):
                         self._maybe_alert_for_air_target(u_ptr, unit_family, curr_t, is_recon_drone)
 
-                    if not has_valid_box:
-                        if overlay_is_air and DRAW_OFFSCREEN_AIR_INDICATOR:
-                            # Air/Recon ที่อยู่นอกจอให้ indicator handle ต่อไป
-                            # และไม่เข้าทางวาด on-screen overlay ปกติ
-                            continue
+                    skip_onscreen_unit_render = (
+                        (not has_valid_box) or
+                        (OFFSCREEN_AIR_INDICATOR_ONLY and overlay_is_air and not draw_inline_air_overlay)
+                    )
+                    # รถถังภาคพื้นดินที่อยู่นอกจอให้ข้ามไปได้เลย แต่เครื่องบิน (Air target) ให้ทำต่อเพื่อคำนวณ Leadmark!
+                    if (not has_valid_box) and (not overlay_is_air):
                         continue
 
-                    # 🚀 OFFSCREEN_AIR_INDICATOR_ONLY: ถ้า Indicator ขอบจอกำลังแสดงผล และไม่ใช่เป้าหมายที่ถูกล็อค
-                    # ให้ข้ามการประมวลผล On-screen ทั้งหมด (กรอบ, ตัวหนังสือ, บอลลิสติกส์) เพื่อประหยัด CPU
-                    if OFFSCREEN_AIR_INDICATOR_ONLY and overlay_is_air and not draw_inline_air_overlay and u_ptr != active_target_ptr:
-                        continue
-                    
                     should_draw_local_axes = (
-                        DEBUG_DRAW_LOCAL_AXES
+                        (not skip_onscreen_unit_render)
+                        and DEBUG_DRAW_LOCAL_AXES
                         and box_data
                         and u_ptr == active_target_ptr
                         and ((not DEBUG_DRAW_LOCAL_AXES_GROUND_ONLY) or (not is_air_target))
@@ -5030,156 +5048,157 @@ class ESPOverlay(QOpenGLWidget):
                                         axis_labels.get(axis_name, axis_name),
                                     )
 
-                    # 🔫 วาดเส้นเล็งของปืนศัตรู
-                    if barrel_data:
-                        res_p1 = world_to_screen(view_matrix, barrel_data[0][0], barrel_data[0][1], barrel_data[0][2], self.screen_width, self.screen_height)
-                        res_p2 = world_to_screen(view_matrix, barrel_data[1][0], barrel_data[1][1], barrel_data[1][2], self.screen_width, self.screen_height)
-                        barrel_pts = _screen_int_tuple(res_p1[0], res_p1[1], res_p2[0], res_p2[1]) if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0 else None
-                        if barrel_pts:
-                            painter.setPen(QPen(QColor(*COLOR_BARREL_LINE), 2)) 
-                            painter.drawLine(*barrel_pts)
-                            barrel_base_2d = (barrel_pts[0], barrel_pts[1])
+                    if not skip_onscreen_unit_render:
+                        # 🔫 วาดเส้นเล็งของปืนศัตรู
+                        if barrel_data:
+                            res_p1 = world_to_screen(view_matrix, barrel_data[0][0], barrel_data[0][1], barrel_data[0][2], self.screen_width, self.screen_height)
+                            res_p2 = world_to_screen(view_matrix, barrel_data[1][0], barrel_data[1][1], barrel_data[1][2], self.screen_width, self.screen_height)
+                            barrel_pts = _screen_int_tuple(res_p1[0], res_p1[1], res_p2[0], res_p2[1]) if res_p1 and res_p2 and res_p1[2] > 0 and res_p2[2] > 0 else None
+                            if barrel_pts:
+                                painter.setPen(QPen(QColor(*COLOR_BARREL_LINE), 2)) 
+                                painter.drawLine(*barrel_pts)
+                                barrel_base_2d = (barrel_pts[0], barrel_pts[1])
 
-                    has_reload_bar = (not overlay_is_air and (0 <= reload_val < 500))
-                    dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
-                    hide_name = (dist > 550 and dist_to_crosshair >= 350) if (is_recon_drone or not overlay_is_air) else False
-                    if is_recon_drone:
-                        display_text = air_overlay_text
-                    elif physics_is_air:
-                        display_text = air_overlay_text
-                    else:
-                        display_text = f"-{int(dist)}m-" if hide_name else f"{clean_name.upper()} [{int(dist)}m]"
-                        
-                    fm = painter.fontMetrics()
-                    text_w = fm.boundingRect(display_text).width()
-                    text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
-                    icon_y = text_y - CLASS_ICON_LINE_GAP
-                    debug_label_y = icon_y - CLASS_ICON_DEBUG_TEXT_GAP
-                    overlay_debug_y = debug_label_y - UNIT_FAMILY_OVERLAY_DEBUG_GAP
-
-                    # 🔊 (ย้ายขึ้นไปก่อน has_valid_box continue แล้ว)
-
-                    # ========================================================
-                    # 🚨 THREAT WARNING SYSTEM (แจ้งเตือนภัยคุกคาม)
-                    # ========================================================
-                    if (not physics_is_air) and my_pos and barrel_data and dist > 10.0:
-                        if is_ground_threat(barrel_data[0], barrel_data[1], my_pos): warning_level = 2
-                        elif is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=4.5): warning_level = 1
-
-                    if warning_level > 0:
-                        line_dest_x = barrel_base_2d[0] if barrel_base_2d else avg_x
-                        line_dest_y = barrel_base_2d[1] if barrel_base_2d else avg_y
-                        
-                        if warning_level == 2:
-                            dot_text = "⚠️ THREAT!"
-                            dot_x = int(avg_x - fm.boundingRect(dot_text).width() / 2) 
-                            dot_y = text_y - 14 
-                            _draw_outlined_text(
-                                painter,
-                                dot_x,
-                                dot_y,
-                                dot_text,
-                                QColor(*COLOR_THREAD_TEXT2),
-                                QColor(*COLOR_THREAD_TEXT),
-                                max(1, OUTLINE_OVERLAY_TEXT_PX),
-                            )
-                            thread_pts = _screen_int_tuple(self.center_x, self.screen_height, line_dest_x, line_dest_y)
-                            if thread_pts:
-                                painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING), 5, Qt.DashLine))
-                                painter.drawLine(*thread_pts)
-                                painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING2), 2, Qt.DashLine))
-                                painter.drawLine(*thread_pts)
+                        has_reload_bar = (not overlay_is_air and (0 <= reload_val < 500))
+                        dist_to_crosshair = math.hypot(avg_x - self.center_x, avg_y - self.center_y)
+                        hide_name = (dist > 550 and dist_to_crosshair >= 350) if (is_recon_drone or not overlay_is_air) else False
+                        if is_recon_drone:
+                            display_text = air_overlay_text
+                        elif physics_is_air:
+                            display_text = air_overlay_text
+                        else:
+                            display_text = f"-{int(dist)}m-" if hide_name else f"{clean_name.upper()} [{int(dist)}m]"
                             
-                        elif warning_level == 1:
-                            thread_pts = _screen_int_tuple(self.center_x, self.screen_height, line_dest_x, line_dest_y)
-                            if thread_pts:
-                                painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT), 5))
-                                painter.drawLine(*thread_pts)
-                                painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT2), 2))
-                                painter.drawLine(*thread_pts)
+                        fm = painter.fontMetrics()
+                        text_w = fm.boundingRect(display_text).width()
+                        text_y = int(min_y - 14) if has_reload_bar else int(min_y - 8)
+                        icon_y = text_y - CLASS_ICON_LINE_GAP
+                        debug_label_y = icon_y - CLASS_ICON_DEBUG_TEXT_GAP
+                        overlay_debug_y = debug_label_y - UNIT_FAMILY_OVERLAY_DEBUG_GAP
 
-                    painter.setPen(QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND))
-                    if DRAW_UNIT_FAMILY_OVERLAY_DEBUG:
-                        debug_parts = [
-                            f"ptr={hex(u_ptr)}",
-                            f"short={_sanitize_debug_text(short_name)}",
-                            f"fam={_sanitize_debug_text(family_name)}",
-                            f"lbl={_unit_family_debug_label(unit_family)}",
-                        ]
-                        overlay_debug_text = " | ".join(debug_parts)
-                        overlay_debug_w = fm.boundingRect(overlay_debug_text).width()
-                        _draw_outlined_text(
-                            painter,
-                            int(avg_x - (overlay_debug_w * 0.5)),
-                            int(overlay_debug_y),
-                            overlay_debug_text,
-                            QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
-                            QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
-                            max(1, OUTLINE_OVERLAY_TEXT_PX),
-                        )
-                    if DRAW_CLASS_ICON_DEBUG_TEXT:
-                        debug_label = _unit_family_debug_label(unit_family)
-                        debug_w = fm.boundingRect(debug_label).width()
-                        _draw_outlined_text(
-                            painter,
-                            int(avg_x - (debug_w * 0.5)),
-                            int(debug_label_y),
-                            debug_label,
-                            QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
-                            QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
-                            max(1, OUTLINE_OVERLAY_TEXT_PX),
-                        )
-                    if DRAW_CLASS_ICON and (draw_inline_air_overlay or not overlay_is_air):
-                        _draw_unit_class_icon(
-                            painter,
-                            int(avg_x),
-                            int(icon_y - 10),
-                            unit_family,
-                            CLASS_ICON_SIZE,
-                            is_recon_drone=is_recon_drone,
-                        )
-                    if draw_inline_air_overlay or not overlay_is_air:
-                        _draw_outlined_text(
-                            painter,
-                            int(avg_x - text_w/2),
-                            text_y,
-                            display_text,
-                            QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
-                            QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
-                            max(1, OUTLINE_OVERLAY_TEXT_PX),
-                        )
-                        if is_invul_active:
-                            invul_badge = f"🛡️ [INVULNERABLE {invul_timer:.1f}s]" if invul_timer > 0.05 else "🛡️ [INVULNERABLE]"
-                            inv_w = fm.boundingRect(invul_badge).width()
-                            inv_y = text_y - (14 if not has_reload_bar else 18)
+                        # 🔊 (ย้ายขึ้นไปก่อน has_valid_box continue แล้ว)
+
+                        # ========================================================
+                        # 🚨 THREAT WARNING SYSTEM (แจ้งเตือนภัยคุกคาม)
+                        # ========================================================
+                        if (not physics_is_air) and my_pos and barrel_data and dist > 10.0:
+                            if is_ground_threat(barrel_data[0], barrel_data[1], my_pos): warning_level = 2
+                            elif is_aiming_at(barrel_data[0], barrel_data[1], my_pos, threshold_degrees=4.5): warning_level = 1
+
+                        if warning_level > 0:
+                            line_dest_x = barrel_base_2d[0] if barrel_base_2d else avg_x
+                            line_dest_y = barrel_base_2d[1] if barrel_base_2d else avg_y
+                            
+                            if warning_level == 2:
+                                dot_text = "⚠️ THREAT!"
+                                dot_x = int(avg_x - fm.boundingRect(dot_text).width() / 2) 
+                                dot_y = text_y - 14 
+                                _draw_outlined_text(
+                                    painter,
+                                    dot_x,
+                                    dot_y,
+                                    dot_text,
+                                    QColor(*COLOR_THREAD_TEXT2),
+                                    QColor(*COLOR_THREAD_TEXT),
+                                    max(1, OUTLINE_OVERLAY_TEXT_PX),
+                                )
+                                thread_pts = _screen_int_tuple(self.center_x, self.screen_height, line_dest_x, line_dest_y)
+                                if thread_pts:
+                                    painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING), 5, Qt.DashLine))
+                                    painter.drawLine(*thread_pts)
+                                    painter.setPen(QPen(QColor(*COLOR_THREAD_WARNING2), 2, Qt.DashLine))
+                                    painter.drawLine(*thread_pts)
+                                
+                            elif warning_level == 1:
+                                thread_pts = _screen_int_tuple(self.center_x, self.screen_height, line_dest_x, line_dest_y)
+                                if thread_pts:
+                                    painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT), 5))
+                                    painter.drawLine(*thread_pts)
+                                    painter.setPen(QPen(QColor(*COLOR_THREAD_ALERT2), 2))
+                                    painter.drawLine(*thread_pts)
+
+                        painter.setPen(QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND))
+                        if DRAW_UNIT_FAMILY_OVERLAY_DEBUG:
+                            debug_parts = [
+                                f"ptr={hex(u_ptr)}",
+                                f"short={_sanitize_debug_text(short_name)}",
+                                f"fam={_sanitize_debug_text(family_name)}",
+                                f"lbl={_unit_family_debug_label(unit_family)}",
+                            ]
+                            overlay_debug_text = " | ".join(debug_parts)
+                            overlay_debug_w = fm.boundingRect(overlay_debug_text).width()
                             _draw_outlined_text(
                                 painter,
-                                int(avg_x - inv_w / 2),
-                                inv_y,
-                                invul_badge,
-                                QColor(*COLOR_TEXT_INVULNERABLE),
-                                QColor(0, 0, 0, 200),
+                                int(avg_x - (overlay_debug_w * 0.5)),
+                                int(overlay_debug_y),
+                                overlay_debug_text,
+                                QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
+                                QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
                                 max(1, OUTLINE_OVERLAY_TEXT_PX),
                             )
+                        if DRAW_CLASS_ICON_DEBUG_TEXT:
+                            debug_label = _unit_family_debug_label(unit_family)
+                            debug_w = fm.boundingRect(debug_label).width()
+                            _draw_outlined_text(
+                                painter,
+                                int(avg_x - (debug_w * 0.5)),
+                                int(debug_label_y),
+                                debug_label,
+                                QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
+                                QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
+                                max(1, OUTLINE_OVERLAY_TEXT_PX),
+                            )
+                        if DRAW_CLASS_ICON and (draw_inline_air_overlay or not overlay_is_air):
+                            _draw_unit_class_icon(
+                                painter,
+                                int(avg_x),
+                                int(icon_y - 10),
+                                unit_family,
+                                CLASS_ICON_SIZE,
+                                is_recon_drone=is_recon_drone,
+                            )
+                        if draw_inline_air_overlay or not overlay_is_air:
+                            _draw_outlined_text(
+                                painter,
+                                int(avg_x - text_w/2),
+                                text_y,
+                                display_text,
+                                QColor(*COLOR_TEXT_AIR) if overlay_is_air else QColor(*COLOR_TEXT_GROUND),
+                                QColor(*OUTLINE_OVERLAY_TEXT_COLOR),
+                                max(1, OUTLINE_OVERLAY_TEXT_PX),
+                            )
+                            if is_invul_active:
+                                invul_badge = f"🛡️ [INVULNERABLE {invul_timer:.1f}s]" if invul_timer > 0.05 else "🛡️ [INVULNERABLE]"
+                                inv_w = fm.boundingRect(invul_badge).width()
+                                inv_y = text_y - (14 if not has_reload_bar else 18)
+                                _draw_outlined_text(
+                                    painter,
+                                    int(avg_x - inv_w / 2),
+                                    inv_y,
+                                    invul_badge,
+                                    QColor(*COLOR_TEXT_INVULNERABLE),
+                                    QColor(0, 0, 0, 200),
+                                    max(1, OUTLINE_OVERLAY_TEXT_PX),
+                                )
 
-                    if has_reload_bar:
-                        max_val = self.max_reload_cache.setdefault(u_ptr, reload_val)
-                        if reload_val > max_val: self.max_reload_cache[u_ptr] = max_val = reload_val
-                        progress = 1.0 if (reload_val == 0 or max_val == 0) else 1.0 - (float(reload_val) / float(max_val))
-                        bar_w, bar_h, bar_x, bar_y = 40, 4, int(avg_x - 20), int(min_y - 8)
-                        painter.setPen(Qt.NoPen)
-                        painter.setBrush(QColor(*COLOR_RELOAD_BG))
-                        painter.drawRect(bar_x, bar_y, bar_w, bar_h)
-                        painter.setBrush(QColor(*COLOR_RELOAD_READY) if progress >= 0.99 else QColor(*COLOR_RELOAD_LOADING)) 
-                        painter.drawRect(bar_x, bar_y, int(bar_w * progress), bar_h)
-                        
+                        if has_reload_bar:
+                            max_val = self.max_reload_cache.setdefault(u_ptr, reload_val)
+                            if reload_val > max_val: self.max_reload_cache[u_ptr] = max_val = reload_val
+                            progress = 1.0 if (reload_val == 0 or max_val == 0) else 1.0 - (float(reload_val) / float(max_val))
+                            bar_w, bar_h, bar_x, bar_y = 40, 4, int(avg_x - 20), int(min_y - 8)
+                            painter.setPen(Qt.NoPen)
+                            painter.setBrush(QColor(*COLOR_RELOAD_BG))
+                            painter.drawRect(bar_x, bar_y, bar_w, bar_h)
+                            painter.setBrush(QColor(*COLOR_RELOAD_READY) if progress >= 0.99 else QColor(*COLOR_RELOAD_LOADING)) 
+                            painter.drawRect(bar_x, bar_y, int(bar_w * progress), bar_h)
+                            
                     # ========================================================
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
                     vel = pre_vel if (pre_vel and not physics_is_air) else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
 
                     # ✈️ Air Speed display below bbox
-                    if overlay_is_air and vel and target_box_rect and (draw_inline_air_overlay):
+                    if (not skip_onscreen_unit_render) and overlay_is_air and vel and target_box_rect and (draw_inline_air_overlay):
                         vx, vy, vz = vel
                         speed_ms = math.sqrt(vx * vx + vy * vy + vz * vz)
                         if speed_ms > 0.5:  # threshold to avoid jitter near zero
@@ -5542,8 +5561,11 @@ class ESPOverlay(QOpenGLWidget):
                     if leadmark_in_range and all(math.isfinite(c) for c in [final_x, final_y, final_z]):
                         pred_screen = world_to_screen(view_matrix, final_x, final_y, final_z, self.screen_width, self.screen_height)
                         
+                        px, py = None, None
+                        is_clamped = False
+                        
                         if pred_screen and pred_screen[2] > 0:
-                            px, py = pred_screen[0], pred_screen[1]
+                            cand_px, cand_py = pred_screen[0], pred_screen[1]
                             if (not physics_is_air) and target_box_rect:
                                 auto_vertical_baseline = _get_auto_vertical_baseline(
                                     my_name_key,
@@ -5552,39 +5574,71 @@ class ESPOverlay(QOpenGLWidget):
                                 )
                                 box_h = max(target_box_rect[3] - target_box_rect[1], 1.0)
                                 leadmark_vertical_correction = self.vertical_correction + auto_vertical_baseline
-                                py += (leadmark_vertical_correction / 100.0) * box_h
+                                cand_py += (leadmark_vertical_correction / 100.0) * box_h
                             
-                            # 🎯 เช็ค NaN ก่อนแปลงเป็น int
-                            if math.isfinite(px) and math.isfinite(py):
-                                # ใช้ center ของ 2D target box เป็น origin ของเส้น leadmark
-                                if target_box_rect:
-                                    draw_sx = (target_box_rect[0] + target_box_rect[2]) * 0.5
-                                    draw_sy = (target_box_rect[1] + target_box_rect[3]) * 0.5
+                            is_on_screen = (0 <= cand_px <= self.screen_width and 0 <= cand_py <= self.screen_height)
+                            if is_on_screen:
+                                px, py = cand_px, cand_py
+                            elif display_is_air and u_ptr == active_target_ptr:
+                                # เป้าหมายอากาศยานที่ล็อคอยู่ แม้ Leadmark หลุดขอบจอ ให้ clamp ไว้ที่ขอบจอ
+                                edge_px, edge_py, _ = _clamp_to_screen_edge(
+                                    cand_px, cand_py, self.screen_width, self.screen_height,
+                                    margin=OFFSCREEN_AIR_INDICATOR_MARGIN,
+                                )
+                                px, py = edge_px, edge_py
+                                is_clamped = True
+                        elif display_is_air and u_ptr == active_target_ptr:
+                            # Leadmark อยู่หลังกล้อง แต่เป็นเป้าหมายที่ล็อคอยู่ ให้คำนวณทิศทางขอบจอ
+                            lead_angle = _compute_screen_direction_angle(
+                                view_matrix, (final_x, final_y, final_z), self.screen_width, self.screen_height
+                            )
+                            edge_px, edge_py = _get_screen_edge_pos(
+                                self.center_x, self.center_y, lead_angle,
+                                self.screen_width, self.screen_height,
+                                margin=OFFSCREEN_AIR_INDICATOR_MARGIN,
+                            )
+                            px, py = edge_px, edge_py
+                            is_clamped = True
+
+                        if px is not None and py is not None and math.isfinite(px) and math.isfinite(py):
+                            # ใช้ center ของ 2D target box เป็น origin ของเส้น leadmark
+                            if target_box_rect:
+                                draw_sx = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                draw_sy = (target_box_rect[1] + target_box_rect[3]) * 0.5
+                            else:
+                                draw_sx, draw_sy = avg_x, avg_y
+                            
+                            # ถ้าเป็นเครื่องบิน ให้ดึงพิกัดที่แม่นยำกว่ามาวาดเส้น
+                            if display_is_air:
+                                pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
+                                if pos_scr and pos_scr[2] > 0 and (0 <= pos_scr[0] <= self.screen_width and 0 <= pos_scr[1] <= self.screen_height):
+                                    draw_sx, draw_sy = pos_scr[0], pos_scr[1]
+                                elif u_ptr in self.offscreen_indicator_state:
+                                    # เครื่องบินอยู่นอกจอ ให้ลากเส้นประจากตำแหน่ง Icon ขอบจอของเครื่องบิน
+                                    draw_sx = float(self.offscreen_indicator_state[u_ptr]["x"])
+                                    draw_sy = float(self.offscreen_indicator_state[u_ptr]["y"])
+                                elif pos_scr and pos_scr[2] > 0:
+                                    draw_sx, draw_sy = pos_scr[0], pos_scr[1]
                                 else:
-                                    draw_sx, draw_sy = avg_x, avg_y
-                                
-                                # ถ้าเป็นเครื่องบิน ให้ดึงพิกัดที่แม่นยำกว่ามาวาดเส้น
-                                if display_is_air:
-                                    pos_scr = world_to_screen(view_matrix, pos[0], pos[1], pos[2], self.screen_width, self.screen_height)
-                                    if pos_scr and pos_scr[2] > 0:
-                                        draw_sx, draw_sy = pos_scr[0], pos_scr[1]
-                                elif target_box_rect:
-                                    center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
-                                    # หาจุด 3D บนจอ แล้ววัดระยะห่าง (Lead Pixel) เพื่อเอามาบวกกับ Center 2D
-                                    anchor_scr = world_to_screen(view_matrix, t_x, t_y, t_z, self.screen_width, self.screen_height)
-                                    if anchor_scr and anchor_scr[2] > 0:
-                                        pixel_lead_x = px - anchor_scr[0]
-                                        px = center_x + pixel_lead_x
-                                
-                                # ✅ เพิ่มเข้าคิววาดเมื่อทุกอย่างเป็นตัวเลขปกติ
-                                if math.isfinite(draw_sx) and math.isfinite(draw_sy):
-                                    lead_marks_to_draw.append({
-                                        'sx': draw_sx, 'sy': draw_sy, 
-                                        'px': px, 'py': py,
-                                        'is_air': display_is_air, 
-                                        'is_turning': is_turning,
-                                        'style': 'main',
-                                    })
+                                    draw_sx, draw_sy = px, py
+                            elif target_box_rect:
+                                center_x = (target_box_rect[0] + target_box_rect[2]) * 0.5
+                                # หาจุด 3D บนจอ แล้ววัดระยะห่าง (Lead Pixel) เพื่อเอามาบวกกับ Center 2D
+                                anchor_scr = world_to_screen(view_matrix, t_x, t_y, t_z, self.screen_width, self.screen_height)
+                                if anchor_scr and anchor_scr[2] > 0:
+                                    pixel_lead_x = px - anchor_scr[0]
+                                    px = center_x + pixel_lead_x
+                            
+                            # ✅ เพิ่มเข้าคิววาดเมื่อทุกอย่างเป็นตัวเลขปกติ
+                            if math.isfinite(draw_sx) and math.isfinite(draw_sy):
+                                lead_marks_to_draw.append({
+                                    'sx': draw_sx, 'sy': draw_sy, 
+                                    'px': px, 'py': py,
+                                    'is_air': display_is_air, 
+                                    'is_turning': is_turning,
+                                    'style': 'main',
+                                    'is_clamped': is_clamped,
+                                })
 
                     ground_reference_screen = None
                     if (not physics_is_air) and leadmark_in_range and ground_reference_final and all(math.isfinite(c) for c in ground_reference_final):
@@ -6168,8 +6222,9 @@ class ESPOverlay(QOpenGLWidget):
                 center_pts = _screen_int_tuple(lm['px'], lm['py'])
                 if not line_pts or not center_pts:
                     continue
-                painter.setPen(QPen(QColor(255, 100, 100, 150), 2, Qt.DashLine))
-                painter.drawLine(*line_pts)
+                if math.hypot(line_pts[2] - line_pts[0], line_pts[3] - line_pts[1]) > 6:
+                    painter.setPen(QPen(QColor(255, 100, 100, 150), 2, Qt.DashLine))
+                    painter.drawLine(*line_pts)
                 
                 pred_color = QColor(*COLOR_PREDICTION)
                 if lm['is_air'] and lm['is_turning']:
@@ -6177,6 +6232,23 @@ class ESPOverlay(QOpenGLWidget):
                     pred_color.setAlpha(blink_alpha)
                 
                 _draw_leadmark_glyph(painter, center_pts[0], center_pts[1], pred_color, outer_radius=8, core_radius=3, pen_width=3)
+
+                if lm.get('is_clamped'):
+                    lead_badge = "🎯LEAD"
+                    lead_fm = painter.fontMetrics()
+                    lead_w = lead_fm.boundingRect(lead_badge).width()
+                    badge_y = center_pts[1] - 12
+                    if badge_y < 16:
+                        badge_y = center_pts[1] + 20
+                    _draw_outlined_text(
+                        painter,
+                        int(center_pts[0] - lead_w / 2),
+                        int(badge_y),
+                        lead_badge,
+                        QColor(*COLOR_PREDICTION),
+                        QColor(0, 0, 0, 220),
+                        max(1, OUTLINE_OVERLAY_TEXT_PX),
+                    )
 
             compare_visibility_mode = self._get_compare_visibility_mode()
             show_base_compare = compare_visibility_mode in ("all", "base")
