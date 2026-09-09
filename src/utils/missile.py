@@ -249,7 +249,7 @@ class MissileScanner:
                             found_missiles.append(m)
                 except Exception:
                     continue
-        
+
         return [m for m in found_missiles if m.name != ""]
     
     def _check_rocket(self, scanner, ptr, entry_idx):
@@ -279,6 +279,33 @@ class MissileScanner:
         state = header[OFF_RKT_STATE] if len(header) > OFF_RKT_STATE else 0
         eid = struct.unpack_from("<I", header, OFF_RKT_ENTITY_ID)[0] if len(header) >= OFF_RKT_ENTITY_ID + 4 else 0
         guid = struct.unpack_from("<Q", header, OFF_RKT_GUIDANCE)[0] if len(header) >= OFF_RKT_GUIDANCE + 8 else 0
+        
+        # 🛡️ STRICT VALIDATION: Filter out fake/garbage entities and non-rocket objects
+        # 1. State: In-flight missiles only have state 0 (active), 1 (boost), or 2 (sustain).
+        # State 11 (dead) or State 95 (ASCII '_') must be rejected!
+        if state > 3:
+            return None
+
+        # 2. Entity ID: Active projectile IDs are normal positive integers (< 50,000,000).
+        # Rejects 0 and ASCII string garbage (e.g. 1802396020 = "tblk").
+        if eid == 0 or eid > 50_000_000:
+            return None
+
+        # 3. Owner: Every projectile in War Thunder has an owner unit pointer (u_ptr | 1).
+        # An unowned entity (owner == 0) or non-pointer garbage (e.g. 0x6e65657263735f65 = "e_screen") is invalid!
+        owner_unit = (owner & ~1) if owner else 0
+        if not (_is_valid_ptr(owner_unit) and (owner_unit & 0x7 == 0)):
+            return None
+
+        # 4. Guidance: Validate pointer alignment and structure
+        if guid != 0:
+            if not (_is_valid_ptr(guid) and (guid & 0x7 == 0)):
+                guid = 0
+            else:
+                lock_val = _r8(scanner, guid + OFF_GUID_LOCKED)
+                trk_val = _r8(scanner, guid + OFF_GUID_TRACKING)
+                if lock_val not in (0, 1) or trk_val not in (0, 1):
+                    guid = 0
         
         # Resolve weapon definition name
         # Caching by props (the static weapon definition pointer in Dagor Engine) guarantees that
@@ -332,10 +359,9 @@ class MissileScanner:
                         break
         
         # Priority D: Fallback name for SAM / SPAA bot missiles without string
-        # ต้องมีระบบนำวิถี (guid != 0) หรือความเร็วระดับจรวดจริง (> 250 m/s) เท่านั้น
-        # ป้องกันไม่ให้เป้าลวง/เศษซาก (ความเร็วต่ำ 20-100 m/s) ถูกเข้าใจผิดว่าเป็นขีปนาวุธ
+        # Can ONLY fallback if it has a VERIFIED guidance pointer AND a VERIFIED owner AND an active flight state!
         if not name:
-            if guid != 0 or speed > 250.0:
+            if _is_valid_ptr(guid) and _is_valid_ptr(owner_unit) and state in (0, 1, 2):
                 name = "sam_missile.blk"
             else:
                 return None
