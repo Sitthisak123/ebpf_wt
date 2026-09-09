@@ -27,51 +27,59 @@ def extract_cannon_size(doc):
 
 
 def resolve_ammo_family(doc):
+    """
+    [UPGRADED 2026] จำแนกตระกูลกระสุนสำหรับ Vertical Baseline และ Ballistics Lookup
+    ขับเคลื่อนด้วย classify_weapon_caliber (Physics-Based: Volumetric Density, Dart Ratio)
+    รักษา Backward Compatibility 100% สำหรับฟิลด์ bucket, family, reason, signature
+    """
     doc = doc or {}
     speed = _as_float(doc.get("speed", 0.0), 0.0)
     caliber = _as_float(doc.get("caliber", 0.0), 0.0)
     mass = _as_float(doc.get("mass", 0.0), 0.0)
+    cx = _as_float(doc.get("cx", 0.0), 0.0)
+    length = _as_float(doc.get("length", 0.0), 0.0) or cx
     bullet_type_idx = _as_int(doc.get("bullet_type_idx", -1), -1)
     cannon_size = extract_cannon_size(doc)
+    vname = doc.get("vehicle_name", "") or doc.get("my_unit_key", "") or doc.get("short_name", "") or doc.get("name_key", "")
+    is_air = bool(doc.get("is_air", False))
 
-    bucket = "other"
-    family = "other"
-    reason = "fallback"
-
-    subcaliber_by_size = (
-        speed > 1000.0 and
-        caliber > 0.0 and
-        cannon_size > 0.0 and
-        caliber < (cannon_size * 0.95)
+    # 🔬 วิเคราะห์ด้วย Classifier ระบบใหม่
+    classified = classify_weapon_caliber(
+        speed=speed,
+        caliber=caliber,
+        mass=mass,
+        cx=cx,
+        vehicle_name=vname,
+        is_air=is_air,
+        length=length,
     )
-    subcaliber_by_shape = (
-        speed > 1000.0 and
-        caliber > 0.0 and
-        caliber <= 0.05
-    )
-    subcaliber_like = subcaliber_by_size or subcaliber_by_shape
 
-    if caliber >= 0.09:
+    ammo_type = classified.get("ammo_type", "UNKNOWN")
+    effective_bore_mm = classified.get("effective_bore_mm", 0.0)
+    if cannon_size == 0.0 and effective_bore_mm > 0.0:
+        cannon_size = effective_bore_mm / 1000.0
+
+    # 🎯 แมปเป็น Bucket สำหรับ Vertical Baseline Table
+    if ammo_type == "APFSDS":
+        bucket = "apfsds_like"
+        family = "apfsds_like"
+        reason = "apfsds_long_rod_dart"
+    elif ammo_type == "APDS":
+        bucket = "apds_like"
+        family = "apds_like"
+        reason = "apds_sabot_core"
+    elif ammo_type in ("HE", "HESH", "HEAT-FS", "APHE"):
         bucket = "he_fullcal_like"
-        family = "he_fullcal_like"
-        reason = "full_caliber_large_shell"
-    elif subcaliber_like:
-        if (
-            speed >= 1350.0 or
-            caliber <= 0.022 or
-            (0.0 < mass <= 1.5 and caliber <= 0.03)
-        ):
-            bucket = "apfsds_like"
-            family = "apfsds_like"
-            reason = "high_speed_small_subcal"
-        else:
-            bucket = "apds_like"
-            family = "apds_like"
-            reason = "subcal_kinetic"
-    elif speed >= 850.0 and caliber <= 0.06 and 0.0 < mass <= 3.0:
+        family = ammo_type.lower()
+        reason = f"fullcal_{ammo_type.lower()}"
+    elif ammo_type in ("MG", "CANNON"):
         bucket = "other"
-        family = "kinetic_light_like"
-        reason = "light_kinetic_but_not_subcal"
+        family = "air_gun"
+        reason = "aircraft_gun"
+    else:
+        bucket = "other"
+        family = "kinetic_light_like" if (speed >= 850.0 and caliber <= 0.06) else "other"
+        reason = "fallback"
 
     signature = (
         f"bt={bullet_type_idx}|"
@@ -89,6 +97,10 @@ def resolve_ammo_family(doc):
         "bullet_type_idx": bullet_type_idx,
         "cannon_size": cannon_size,
         "signature": signature,
+        "classified": classified,
+        "ammo_type": ammo_type,
+        "ammo_flag": classified.get("ammo_flag", 0),
+        "effective_bore_mm": effective_bore_mm,
     }
 
 
