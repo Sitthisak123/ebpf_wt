@@ -4862,7 +4862,7 @@ class ESPOverlay(QOpenGLWidget):
                         physics_is_air = False
 
                     display_is_air = physics_is_air
-                    if display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
+                    if (not my_is_air) and display_is_air and my_pos and abs(pos[1] - my_pos[1]) < 50:
                         display_is_air = False
                     overlay_is_air = physics_is_air or is_recon_drone
                     air_overlay_text = (
@@ -5305,10 +5305,11 @@ class ESPOverlay(QOpenGLWidget):
                     # 📐 ดึงแกน 'ด้านบน' ของรถถังเรา (Local UP Vector) ออกมาจาก Matrix
                     up_x, up_y, up_z = my_rot[3], my_rot[4], my_rot[5]
                     
-                    # 📍 จุดกำเนิดกระสุนที่แท้จริง: เลื่อนขึ้น 1.5m ตามองศารถถัง (ไม่ฝืนตั้งตรงแบบเดิมแล้ว)
-                    origin_x = my_pos[0] + (1.5 * up_x)
-                    origin_y = my_pos[1] + (1.5 * up_y)
-                    origin_z = my_pos[2] + (1.5 * up_z)
+                    # 📍 จุดกำเนิดกระสุนที่แท้จริง: ถ้าเป็นเครื่องบินปืนอยู่แนวแกนลำตัว (0.0m), ถ้าเป็นรถถังเลื่อนขึ้น 1.5m ตามองศาป้อม
+                    gun_up_offset = 0.0 if my_is_air else 1.5
+                    origin_x = my_pos[0] + (gun_up_offset * up_x)
+                    origin_y = my_pos[1] + (gun_up_offset * up_y)
+                    origin_z = my_pos[2] + (gun_up_offset * up_z)
 
                     # 🔄 Fast Iterative TOF Solver (วนลูป 2 รอบ พร้อม Early Exit เมื่อระยะลู่เข้า)
                     prev_range = -999.0
@@ -5328,13 +5329,17 @@ class ESPOverlay(QOpenGLWidget):
                         dz_imp = pred_z - (origin_z + my_vz * best_t)
                         horizontal_imp = math.hypot(dx_imp, dz_imp)
                         slant_imp = math.sqrt((dx_imp * dx_imp) + (dy_imp * dy_imp) + (dz_imp * dz_imp))
-                        air_tof_range = horizontal_imp
-                        if slant_imp > 1e-6:
-                            elev_ratio = min(abs(dy_imp) / slant_imp, 1.0)
-                            # blend จาก horizontal -> slant เมื่อมุมเงยสูงขึ้น
-                            # เริ่มมีผลหลังราว 50 deg และเต็มที่ใกล้ 75-80 deg
-                            blend_t = max(0.0, min((elev_ratio - 0.77) / 0.20, 1.0))
-                            air_tof_range = horizontal_imp + ((slant_imp - horizontal_imp) * blend_t)
+                        if physics_is_air:
+                            # ✈️ สำหรับเป้าหมายทางอากาศ กระสุนเดินทางตามระยะขจัดจริงใน 3 มิติ (Slant Range)
+                            air_tof_range = slant_imp
+                        else:
+                            air_tof_range = horizontal_imp
+                            if slant_imp > 1e-6:
+                                elev_ratio = min(abs(dy_imp) / slant_imp, 1.0)
+                                # blend จาก horizontal -> slant เมื่อมุมเงยสูงขึ้น
+                                # เริ่มมีผลหลังราว 50 deg และเต็มที่ใกล้ 75-80 deg
+                                blend_t = max(0.0, min((elev_ratio - 0.77) / 0.20, 1.0))
+                                air_tof_range = horizontal_imp + ((slant_imp - horizontal_imp) * blend_t)
                         
                         if abs(air_tof_range - prev_range) < 0.5:
                             final_x, final_y, final_z = pred_x, pred_y, pred_z
