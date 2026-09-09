@@ -2953,6 +2953,9 @@ class ESPOverlay(QOpenGLWidget):
         self.f10_pressed_last = False
         self.max_reload_cache = {}
         self.profile_cache = {} # 🛡️ New Profile Cache
+        self.unit_name_by_ptr = {}
+        self.unit_team_by_ptr = {}
+        self.unit_is_air_by_ptr = {}
         self.last_my_unit = 0 
         self.last_my_team = 0
         self.vel_window = {} 
@@ -3143,6 +3146,14 @@ class ESPOverlay(QOpenGLWidget):
     def _on_worker_frame(self, snapshot):
         """Slot: receives FrameSnapshot from DataPumpWorker on each cycle."""
         self._latest_snapshot = snapshot
+        if snapshot and snapshot.is_valid:
+            if hasattr(snapshot, 'unit_name_by_id') and snapshot.unit_name_by_id:
+                self.unit_id_to_name.update(snapshot.unit_name_by_id)
+                self.unit_id_to_ptr.update(snapshot.unit_ptr_by_id)
+            if hasattr(snapshot, 'unit_name_by_ptr') and snapshot.unit_name_by_ptr:
+                self.unit_name_by_ptr.update(snapshot.unit_name_by_ptr)
+                self.unit_team_by_ptr.update(snapshot.unit_team_by_ptr)
+                self.unit_is_air_by_ptr.update(snapshot.unit_is_air_by_ptr)
 
 
     def _play_alert_sound(self, sound_key, sound_path, curr_t):
@@ -3317,8 +3328,8 @@ class ESPOverlay(QOpenGLWidget):
             u_cache = getattr(self._data_pump, 'unit_id_cache', None)
             if u_cache:
                 for u_ptr, item in u_cache.items():
-                    u_id = item[0]
-                    u_name = item[1]
+                    u_id = item.get('uid') if isinstance(item, dict) else item[0]
+                    u_name = item.get('name') if isinstance(item, dict) else item[1]
                     if u_id == target_id:
                         self.unit_id_to_name[target_id] = u_name
                         self.unit_id_to_ptr[target_id] = u_ptr
@@ -3363,6 +3374,101 @@ class ESPOverlay(QOpenGLWidget):
                 pass
 
         return None, None
+
+    def get_unit_id_fast(self, u_ptr: int) -> int:
+        if not u_ptr or not (0x10000 < u_ptr < 0x7FFFFFFFFFFF):
+            return -1
+        if hasattr(self, '_data_pump') and self._data_pump:
+            u_cache = getattr(self._data_pump, 'unit_id_cache', None)
+            if u_cache and u_ptr in u_cache:
+                entry = u_cache[u_ptr]
+                uid = entry.get('uid', -1) if isinstance(entry, dict) else entry[0]
+                if uid > 0:
+                    return uid
+        if self.scanner:
+            try:
+                return get_unit_id(self.scanner, u_ptr)
+            except Exception:
+                pass
+        return -1
+
+    def resolve_unit_by_ptr(self, u_ptr: int) -> Tuple[str, int, bool]:
+        """
+        🎯 UNIT POINTER RESOLVER:
+        ค้นหาชื่อ, ทีม, และชนิด (is_air) ของยูนิตจาก Pointer (u_ptr)
+        การันตีว่าชื่อไม่หลุด ไม่ค้าง และอัปเดตทันทีแม้เครื่องบิน/รถถังเพิ่งเกิดใหม่
+        """
+        if not u_ptr or not (0x10000 < u_ptr < 0x7FFFFFFFFFFF):
+            return ("", 0, False)
+
+        # 1. Check if it is my own unit
+        my_u = getattr(self, 'my_unit', 0)
+        if u_ptr == my_u:
+            return (
+                getattr(self, 'my_name', '') or "YOU",
+                getattr(self, 'last_my_team', 0),
+                getattr(self, 'my_is_air', False)
+            )
+
+        # 2. Check snapshot cache maps (0ms)
+        name = self.unit_name_by_ptr.get(u_ptr)
+        team = self.unit_team_by_ptr.get(u_ptr, 0)
+        is_air = self.unit_is_air_by_ptr.get(u_ptr, False)
+        if name and name.lower() not in ("none", "unknown", "c", ""):
+            return (name, team, is_air)
+
+        # 3. Check data_pump unit_id_cache
+        if hasattr(self, '_data_pump') and self._data_pump:
+            u_cache = getattr(self._data_pump, 'unit_id_cache', None)
+            if u_cache and u_ptr in u_cache:
+                entry = u_cache[u_ptr]
+                if isinstance(entry, dict):
+                    c_name = entry.get('name', '')
+                    c_team = entry.get('team', 0)
+                    c_air = entry.get('is_air', False)
+                    if c_name and c_name.lower() not in ("none", "unknown", "c", ""):
+                        self.unit_name_by_ptr[u_ptr] = c_name
+                        self.unit_team_by_ptr[u_ptr] = c_team
+                        self.unit_is_air_by_ptr[u_ptr] = c_air
+                        return (c_name, c_team, c_air)
+                elif isinstance(entry, (tuple, list)) and len(entry) >= 2:
+                    c_name = entry[1]
+                    if c_name:
+                        self.unit_name_by_ptr[u_ptr] = c_name
+                        return (c_name, 0, False)
+
+        # 4. Check profile_cache
+        if hasattr(self, 'profile_cache') and u_ptr in self.profile_cache:
+            c_prof = self.profile_cache[u_ptr]
+            dna = c_prof.get('dna') or {}
+            prof = c_prof.get('profile') or {}
+            st = c_prof.get('status')
+            c_team = st[0] if st else 0
+            c_name = dna.get('short_name') or prof.get('short_name') or (st[2] if st else '') or prof.get('display_name')
+            c_air = c_prof.get('is_air_resolved', False)
+            if c_name and c_name.lower() not in ("none", "unknown", "c", ""):
+                self.unit_name_by_ptr[u_ptr] = c_name
+                self.unit_team_by_ptr[u_ptr] = c_team
+                self.unit_is_air_by_ptr[u_ptr] = c_air
+                return (c_name, c_team, c_air)
+
+        # 5. Direct game memory read fallback (<0.1ms read)
+        if self.scanner:
+            try:
+                st = get_unit_status(self.scanner, u_ptr, read_name=True)
+                prof = get_unit_filter_profile(self.scanner, u_ptr)
+                dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                u_name = dna.get('short_name') or prof.get('short_name') or (st[2] if st else '') or prof.get('display_name') or "Unit"
+                u_team = st[0] if st else 0
+                u_air = (prof.get('kind') == 'air')
+                self.unit_name_by_ptr[u_ptr] = u_name
+                self.unit_team_by_ptr[u_ptr] = u_team
+                self.unit_is_air_by_ptr[u_ptr] = u_air
+                return (u_name, u_team, u_air)
+            except Exception:
+                pass
+
+        return ("", 0, False)
 
     def _is_fixed_recon_ghost(self, u_ptr, pos, curr_t):
         if not u_ptr or not pos:
@@ -3884,6 +3990,10 @@ class ESPOverlay(QOpenGLWidget):
                 if hasattr(snapshot, 'unit_name_by_id') and snapshot.unit_name_by_id:
                     self.unit_id_to_name.update(snapshot.unit_name_by_id)
                     self.unit_id_to_ptr.update(snapshot.unit_ptr_by_id)
+                if hasattr(snapshot, 'unit_name_by_ptr') and snapshot.unit_name_by_ptr:
+                    self.unit_name_by_ptr.update(snapshot.unit_name_by_ptr)
+                    self.unit_team_by_ptr.update(snapshot.unit_team_by_ptr)
+                    self.unit_is_air_by_ptr.update(snapshot.unit_is_air_by_ptr)
             else:
                 all_units_data = get_all_units(self.scanner, cgame_base)
                 all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
@@ -3918,6 +4028,10 @@ class ESPOverlay(QOpenGLWidget):
             if my_unit and my_unit_id > 0:
                 self.unit_id_to_name[my_unit_id] = my_name or "YOU"
                 self.unit_id_to_ptr[my_unit_id] = my_unit
+            if my_unit:
+                self.unit_name_by_ptr[my_unit] = my_name or "YOU"
+                self.unit_team_by_ptr[my_unit] = effective_my_team
+                self.unit_is_air_by_ptr[my_unit] = my_is_air
 
             my_is_recon = _is_recon_drone_like(f"{my_name} {my_name_key}")
             my_can_auto_cm = bool(my_is_air and not my_is_recon)
@@ -3927,6 +4041,9 @@ class ESPOverlay(QOpenGLWidget):
                 reset_runtime_caches(clear_view=True)
                 self.unit_id_to_name.clear()
                 self.unit_id_to_ptr.clear()
+                self.unit_name_by_ptr.clear()
+                self.unit_team_by_ptr.clear()
+                self.unit_is_air_by_ptr.clear()
                 if hasattr(self.scanner, "bone_cache"): self.scanner.bone_cache = {}
                 self.max_reload_cache = {}
                 self.vel_window = {}
@@ -6676,21 +6793,39 @@ class ESPOverlay(QOpenGLWidget):
 
                             is_sam_name = ("sam" in m.name.lower()) if m.name else False
 
-                            # 🎯 DIRECT TAGGED UNIT POINTER CHECK (m.owner & ~1 == unit_ptr)
+                            # 🎯 DIRECT TAGGED UNIT POINTER CHECK & RESOLUTION (m.owner & ~1 == unit_ptr)
                             # ใน Dagor Engine ฟิลด์ Owner ของขีปนาวุธคือ Unit Pointer ที่ถูก Tag บิต 0 (u_ptr | 1)
                             owner_unit = (m.owner & ~1) if m.owner else 0
-                            is_owner_me = bool(my_unit and owner_unit == my_unit)
-                            is_owner_other = bool(my_unit and owner_unit and owner_unit != my_unit)
+                            owner_name, owner_team, owner_is_air = self.resolve_unit_by_ptr(owner_unit) if owner_unit else ("", 0, False)
+
+                            is_owner_me = bool(
+                                (my_unit and owner_unit == my_unit) or
+                                (my_unit_id > 0 and owner_unit and self.get_unit_id_fast(owner_unit) == my_unit_id)
+                            )
+                            is_owner_friendly = bool(
+                                not is_owner_me and effective_my_team != 0 and owner_team != 0 and owner_team == effective_my_team
+                            )
+                            is_owner_enemy = bool(
+                                owner_team != 0 and effective_my_team != 0 and owner_team != effective_my_team
+                            )
+                            is_owner_other = bool(
+                                not is_owner_me and not is_owner_friendly and (owner_unit != 0 or owner_team != 0)
+                            )
 
                             is_new_track = (m.ptr not in self.missile_tracks) or (self.missile_tracks[m.ptr].get('entity_id') != m.entity_id)
 
                             is_my = False
+                            is_friendly = False
                             if is_owner_me:
-                                # ตรงกับ Pointer เครื่องเรา 100%
+                                # ตรงกับ Pointer / ID เครื่องเรา 100%
                                 is_my = True
-                            elif is_owner_other:
-                                # ตรงกับ Pointer ยูนิตอื่น (เช่น บอท SAM ADATS 0x4f361690) -> ไม่มีวันเป็นของเราเด็ดขาด!
+                            elif is_owner_friendly:
+                                # ขีปนาวุธเพื่อนร่วมทีม
+                                is_friendly = True
+                            elif is_owner_enemy:
+                                # ขีปนาวุธศัตรู
                                 is_my = False
+                                is_friendly = False
                             elif is_new_track:
                                 # Fallback เมื่อไม่มี owner หรือ owner เป็น 0 (ใช้ launch_pos และ relative motion)
                                 if not (my_is_air and is_sam_name) and closing_speed <= 0.0 and cur_dist < 30.0:
@@ -6713,8 +6848,16 @@ class ESPOverlay(QOpenGLWidget):
                                 tr['last_seen'] = curr_t
                                 tr['missile'] = m
                                 tr['owner_unit'] = owner_unit
+                                if owner_name:
+                                    tr['shooter_name'] = owner_name
+                                if is_owner_me:
+                                    tr['is_my_missile'] = True
+                                    tr['is_friendly_missile'] = False
+                                elif is_owner_friendly:
+                                    tr['is_friendly_missile'] = True
+                                    tr['is_my_missile'] = False
                                 # Safety Fail-safe: ถ้าพุ่งตรงเข้าหาเรา หรือเป็นจรวดที่คนอื่นยิง -> ยกเลิก is_my ทันที!
-                                if tr.get('is_my_missile') and (is_owner_other or closing_speed > 20.0 or (my_is_air and is_sam_name)):
+                                if tr.get('is_my_missile') and (is_owner_other or closing_speed > 25.0 or (my_is_air and is_sam_name)):
                                     tr['is_my_missile'] = False
                             else:
                                 self.missile_tracks[m.ptr] = {
@@ -6728,7 +6871,9 @@ class ESPOverlay(QOpenGLWidget):
                                     'missile': m,
                                     'entity_id': m.entity_id,
                                     'is_my_missile': is_my,
+                                    'is_friendly_missile': is_friendly,
                                     'owner_unit': owner_unit,
+                                    'shooter_name': owner_name,
                                 }
 
                     # Purge stale missile tracks (grace period exceeded)
@@ -6776,9 +6921,10 @@ class ESPOverlay(QOpenGLWidget):
                                         is_heading_to_me = True
                                     time_to_impact = dist / max(closing_speed, speed)
 
-                            # 🚫 กรองข้ามเฉพาะขีปนาวุธที่เรายิงออกไปเองจริงๆ (ต้องไม่พุ่งเข้าหาเราเด็ดขาด)
-                            if tr.get('is_my_missile') and not is_heading_to_me and closing_speed <= 15.0:
-                                continue
+                            # 🚫 กรองข้ามขีปนาวุธที่เราหรือเพื่อนร่วมทีมยิง (เว้นแต่จะเกิดอุบัติเหตุพุ่งชนระยะประชิด <400m)
+                            if (tr.get('is_my_missile') or tr.get('is_friendly_missile')):
+                                if not (is_heading_to_me and closing_speed > 50.0 and dist < 400.0):
+                                    continue
 
                             # ตรวจสอบสถานะ Guidance
                             # 1) ล็อกเป้าหมายเครื่องเราโดยตรง 100% ผ่าน target_id (IR AAM เช่น AAM-3, AIM-9L หรือ Radar เช่น AIM-120, R-77)
@@ -6869,14 +7015,15 @@ class ESPOverlay(QOpenGLWidget):
                             )
                             is_incoming = any(im[0].ptr == m.ptr for im in incoming)
                             is_my = bool(tr.get('is_my_missile') and not is_incoming)
-                            is_exact_locked_me = False if is_my else bool(
+                            is_friendly = False if is_my else bool(tr.get('is_friendly_missile') and not is_incoming)
+                            is_exact_locked_me = False if (is_my or is_friendly) else bool(
                                 my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)
                             )
-                            is_guided_me = False if is_my else (
+                            is_guided_me = False if (is_my or is_friendly) else (
                                 is_exact_locked_me or
                                 any(im[0].ptr == m.ptr and im[5] for im in incoming)
                             )
-                            is_guided_other = False if is_my else bool(
+                            is_guided_other = False if (is_my or is_friendly) else bool(
                                 m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me
                             )
 
@@ -6892,8 +7039,11 @@ class ESPOverlay(QOpenGLWidget):
                                 short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
 
                             owner_u = tr.get('owner_unit', 0)
-                            shooter_dna = (self.profile_cache.get(owner_u) or {}).get('dna') if owner_u else None
-                            shooter_name = shooter_dna.get('short_name') if shooter_dna else None
+                            shooter_name = tr.get('shooter_name')
+                            if not shooter_name and owner_u:
+                                shooter_name, _, _ = self.resolve_unit_by_ptr(owner_u)
+                                if shooter_name:
+                                    tr['shooter_name'] = shooter_name
                             by_str = f" [by {shooter_name}]" if shooter_name else ""
 
                             # ป้ายชื่อและสัญลักษณ์ตามระดับภัยคุกคาม
@@ -6904,6 +7054,13 @@ class ESPOverlay(QOpenGLWidget):
                                 else:
                                     label = f"🟢 [MY] {short_name} ({dist_label} {speed_label})"
                                     t_str = f"🟢 [MY] {dist_label}"
+                            elif is_friendly:
+                                if tracked_tgt_name:
+                                    label = f"🔵 [TEAM] {short_name}{by_str} ➔ [{tracked_tgt_name}] ({dist_label} {speed_label})"
+                                    t_str = f"🔵 [TEAM] ➔ {tracked_tgt_name} {dist_label}"
+                                else:
+                                    label = f"🔵 [TEAM] {short_name}{by_str} ({dist_label} {speed_label})"
+                                    t_str = f"🔵 [TEAM] {dist_label}"
                             elif is_exact_locked_me:
                                 label = f"🚨 [100% LOCKED ON YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
                                 t_str = f"🚨 [100% LOCKED YOU] {dist_label}"
@@ -6918,8 +7075,8 @@ class ESPOverlay(QOpenGLWidget):
                                 label = f"{short_name}{by_str} ({dist_label} {speed_label})"
                                 t_str = f"{short_name} {dist_label}"
                             else:
-                                label = dist_label
-                                t_str = dist_label
+                                label = f"{short_name}{by_str} ({dist_label})"
+                                t_str = f"{short_name} {dist_label}"
 
                             if w2s and (0 <= w2s[0] <= self.screen_width and 0 <= w2s[1] <= self.screen_height):
                                 tr['was_offscreen'] = False
@@ -6928,6 +7085,9 @@ class ESPOverlay(QOpenGLWidget):
                                 # Diamond marker
                                 if is_my:
                                     marker_color = QColor(40, 220, 120, 240)
+                                    size = 8
+                                elif is_friendly:
+                                    marker_color = QColor(50, 190, 255, 230)
                                     size = 8
                                 elif is_exact_locked_me:
                                     marker_color = QColor(255, 10, 10, 255)
@@ -6958,6 +7118,8 @@ class ESPOverlay(QOpenGLWidget):
 
                                 if is_my:
                                     text_color = QColor(80, 240, 140, 255)
+                                elif is_friendly:
+                                    text_color = QColor(100, 210, 255, 255)
                                 elif is_exact_locked_me:
                                     text_color = QColor(255, 30, 30, 255)
                                 elif is_guided_me:
@@ -6998,6 +7160,9 @@ class ESPOverlay(QOpenGLWidget):
                                 if is_my:
                                     arr_col = QColor(40, 220, 120, 240)
                                     arrow_size = 9
+                                elif is_friendly:
+                                    arr_col = QColor(50, 190, 255, 230)
+                                    arrow_size = 9
                                 elif is_exact_locked_me:
                                     arr_col = QColor(255, 10, 10, 255)
                                     arrow_size = 16
@@ -7032,6 +7197,8 @@ class ESPOverlay(QOpenGLWidget):
                                 # Position text nicely inside screen area
                                 if is_my:
                                     text_color = QColor(80, 240, 140, 255)
+                                elif is_friendly:
+                                    text_color = QColor(100, 210, 255, 255)
                                 elif is_exact_locked_me:
                                     text_color = QColor(255, 30, 30, 255)
                                 elif is_guided_me:

@@ -155,6 +155,9 @@ class FrameSnapshot:
     all_unit_ptrs: set = field(default_factory=set)
     unit_name_by_id: Dict[int, str] = field(default_factory=dict)
     unit_ptr_by_id: Dict[int, int] = field(default_factory=dict)
+    unit_name_by_ptr: Dict[int, str] = field(default_factory=dict)
+    unit_team_by_ptr: Dict[int, int] = field(default_factory=dict)
+    unit_is_air_by_ptr: Dict[int, bool] = field(default_factory=dict)
 
     # Worker performance
     worker_fps: float = 0.0
@@ -430,21 +433,6 @@ class DataPumpWorker(QThread):
                 continue
             current_seen_ptrs.add(u_ptr)
 
-            # Pre-cache unit ID and name for ALL units (both friendlies and enemies) for missile tracking
-            if u_ptr not in self.unit_id_cache:
-                try:
-                    uid = get_unit_id(self.scanner, u_ptr)
-                    if uid > 0:
-                        prof = get_unit_filter_profile(self.scanner, u_ptr)
-                        dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
-                        uname = dna.get("short_name") or prof.get("short_name") or prof.get("display_name") or f"Unit #{uid}"
-                        self.unit_id_cache[u_ptr] = (uid, uname, now)
-                except Exception:
-                    pass
-            else:
-                c_uid, c_uname, _ = self.unit_id_cache[u_ptr]
-                self.unit_id_cache[u_ptr] = (c_uid, c_uname, now)
-
             # Check cached profile to determine if name is already resolved
             cached_prof = self.profile_cache.get(u_ptr)
             cached_name = cached_prof.get("resolved_name") if cached_prof else None
@@ -472,6 +460,41 @@ class DataPumpWorker(QThread):
                 info_ptr_now = struct.unpack("<Q", info_ptr_raw)[0] if (info_ptr_raw and len(info_ptr_raw) == 8) else 0
                 status_raw = get_unit_status(self.scanner, u_ptr, read_name=False)
                 u_team, u_state, _, _ = status_raw if status_raw else (0, 0, "", 0)
+
+            # Pre-cache unit metadata (name, team, info_ptr) for ALL units (both friendlies and enemies) for missile tracking
+            cached_id_entry = self.unit_id_cache.get(u_ptr)
+            needs_name_refresh = False
+            if not cached_id_entry:
+                needs_name_refresh = True
+            elif isinstance(cached_id_entry, dict):
+                # Detect recycled pointer or respawned entity
+                if cached_id_entry.get("info_ptr") != info_ptr_now or (now - cached_id_entry.get("last_check", 0.0)) > 4.0:
+                    needs_name_refresh = True
+            else:
+                needs_name_refresh = True
+
+            if needs_name_refresh:
+                try:
+                    uid = get_unit_id(self.scanner, u_ptr)
+                    if uid > 0:
+                        prof = get_unit_filter_profile(self.scanner, u_ptr)
+                        dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
+                        uname = dna.get("short_name") or prof.get("short_name") or prof.get("display_name") or f"Unit #{uid}"
+                        is_u_air = (prof.get("kind") == "air") or bool(is_air)
+                        self.unit_id_cache[u_ptr] = {
+                            "uid": uid,
+                            "name": uname,
+                            "team": u_team,
+                            "info_ptr": info_ptr_now,
+                            "is_air": is_u_air,
+                            "last_seen": now,
+                            "last_check": now,
+                        }
+                except Exception:
+                    pass
+            elif isinstance(cached_id_entry, dict):
+                cached_id_entry["last_seen"] = now
+                cached_id_entry["team"] = u_team
 
             # 💀 Dead wreckage filter (state >= 2 means burnt-out wreck; state == 1 is burning/critical)
             if u_state >= 2:
@@ -723,7 +746,8 @@ class DataPumpWorker(QThread):
         # Clean unit_id cache (10-second grace period for despawned units)
         for ptr, item in list(self.unit_id_cache.items()):
             if ptr not in current_seen_ptrs:
-                if (now - item[2]) > 10.0:
+                last_seen_val = item.get("last_seen", 0.0) if isinstance(item, dict) else item[2]
+                if (now - last_seen_val) > 10.0:
                     del self.unit_id_cache[ptr]
 
         # Scan for missiles periodically in background thread (0ms in paintGL)
@@ -736,19 +760,46 @@ class DataPumpWorker(QThread):
             except Exception:
                 pass
 
-        # Build unit_id mapping for Target Tracking (All units: YOU, friendlies, enemies)
+        # Build unit_id mapping and unit_ptr mapping (All units: YOU, friendlies, enemies)
         unit_name_by_id = {}
         unit_ptr_by_id = {}
-        if snap.my_unit and snap.my_unit_id > 0:
-            unit_name_by_id[snap.my_unit_id] = snap.my_name or "YOU"
-            unit_ptr_by_id[snap.my_unit_id] = snap.my_unit
+        unit_name_by_ptr = {}
+        unit_team_by_ptr = {}
+        unit_is_air_by_ptr = {}
 
-        for u_ptr, (uid, uname, _) in self.unit_id_cache.items():
+        if snap.my_unit:
+            unit_name_by_ptr[snap.my_unit] = snap.my_name or "YOU"
+            unit_team_by_ptr[snap.my_unit] = snap.my_team
+            unit_is_air_by_ptr[snap.my_unit] = snap.my_is_air
+            if snap.my_unit_id > 0:
+                unit_name_by_id[snap.my_unit_id] = snap.my_name or "YOU"
+                unit_ptr_by_id[snap.my_unit_id] = snap.my_unit
+
+        for u_ptr, entry in self.unit_id_cache.items():
+            if isinstance(entry, dict):
+                uid = entry.get("uid", -1)
+                uname = entry.get("name", "")
+                uteam = entry.get("team", 0)
+                uair = entry.get("is_air", False)
+            else:
+                uid, uname, _ = entry
+                uteam = 0
+                uair = False
+
+            if uname:
+                unit_name_by_ptr[u_ptr] = uname
+                unit_team_by_ptr[u_ptr] = uteam
+                unit_is_air_by_ptr[u_ptr] = uair
             if uid > 0:
                 unit_name_by_id[uid] = uname
                 unit_ptr_by_id[uid] = u_ptr
 
         for t_snap in valid_targets:
+            t_name = t_snap.short_name or t_snap.raw_name
+            if t_name:
+                unit_name_by_ptr[t_snap.u_ptr] = t_name
+                unit_team_by_ptr[t_snap.u_ptr] = getattr(t_snap, 'team', 0)
+                unit_is_air_by_ptr[t_snap.u_ptr] = t_snap.is_air
             c_prof = self.profile_cache.get(t_snap.u_ptr)
             if c_prof:
                 uid = c_prof.get("unit_id")
@@ -756,12 +807,14 @@ class DataPumpWorker(QThread):
                     uid = get_unit_id(self.scanner, t_snap.u_ptr)
                     c_prof["unit_id"] = uid
                 if uid and uid > 0:
-                    t_name = t_snap.short_name or t_snap.raw_name
                     unit_name_by_id[uid] = t_name
                     unit_ptr_by_id[uid] = t_snap.u_ptr
-                    self.unit_id_cache[t_snap.u_ptr] = (uid, t_name, now)
+
         snap.unit_name_by_id = unit_name_by_id
         snap.unit_ptr_by_id = unit_ptr_by_id
+        snap.unit_name_by_ptr = unit_name_by_ptr
+        snap.unit_team_by_ptr = unit_team_by_ptr
+        snap.unit_is_air_by_ptr = unit_is_air_by_ptr
 
         snap.missiles = list(self.latest_missiles)
         snap.valid_targets = valid_targets
