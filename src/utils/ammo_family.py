@@ -196,6 +196,8 @@ def classify_weapon_caliber(speed, caliber, mass=0.0, cx=0.0, vehicle_name="", i
         known_bore = 30.0
     elif any(k in vname_clean for k in ("m3_bradley", "m2_bradley", "lav_25", "type_87_rcv", "rcv", "vbc", "dardo")):
         known_bore = 25.0
+    elif any(k in vname_clean for k in ("sub_i_ii", "sub_i", "marder", "wiesel", "r3_t20", "rh202", "wirbelwind", "20mm")):
+        known_bore = 20.0
     elif any(k in vname_clean for k in ("type_87",)):
         # Default for Japanese Type 87 SPAAG (35mm) if not rcv
         known_bore = 35.0
@@ -223,12 +225,14 @@ def classify_weapon_caliber(speed, caliber, mass=0.0, cx=0.0, vehicle_name="", i
         ammo_flag = AMMO_FLAG_ATGM
     elif is_subcaliber:
         dart_ratio = (raw_cal_mm / known_bore) if known_bore > 0.0 else 0.0
-        # APFSDS: Long-rod penetrator (dart_ratio <= 0.40, vol_density >= 85,000 kg/m^3, or aspect_ratio >= 25.0)
-        # APDS: Short core sabot (dart_ratio >= 0.45, 38,000 <= vol_density < 85,000 kg/m^3)
-        if (
+        # APDS: Short core sabot (dart_ratio >= 0.45 or 38,000 <= vol_density < 80,000 kg/m^3)
+        # APFSDS: Long-rod penetrator (dart_ratio <= 0.40, vol_density >= 85,000 kg/m^3, or speed >= 1450 m/s)
+        if dart_ratio > 0.45 and vol_density < 80000.0:
+            ammo_type = "APDS"
+            ammo_flag = AMMO_FLAG_APDS | CAL_FLAG_SUB_CALIBER
+        elif (
             vol_density >= 85000.0 or
             (0.0 < dart_ratio <= 0.40) or
-            aspect_ratio >= 25.0 or
             (speed >= 1450.0 and raw_cal_mm <= 34.0 and mass <= 5.0)
         ):
             ammo_type = "APFSDS"
