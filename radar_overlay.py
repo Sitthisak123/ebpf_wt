@@ -270,6 +270,8 @@ OFFSCREEN_MISSILE_INDICATOR_MARGIN = 95.0               # Screen edge margin (av
 MISSILE_TRACK_TIMEOUT_S         = 0.30                   # Persistence grace period to prevent blinking (300ms)
 MISSILE_EXTRAPOLATION_MAX_S     = 0.35                   # Dead reckoning extrapolation max duration
 MISSILE_SMOOTH_LERP             = 0.45                   # Angular smoothing factor for edge indicator
+MISSILE_POS_EMA_ALPHA           = 0.35                   # EMA smoothing factor for missile position correction (0.35 = buttery smooth)
+MISSILE_VEL_EMA_ALPHA           = 0.45                   # EMA smoothing factor for missile velocity vector
 
 # ============================================================
 # 🛡️ AUTOMATIC COUNTERMEASURE (FLARE / CHAFF) SYSTEM CONFIG
@@ -487,7 +489,7 @@ BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
-SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
+SHOW_BOT_UNITS = False               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
@@ -2021,11 +2023,19 @@ def _draw_outlined_text(painter, x, y, text, color, outline_color=None, outline_
     outline_color = outline_color or QColor(*OUTLINE_OVERLAY_TEXT_COLOR)
     if OUTLINE_OVERLAY_TEXT and outline_px > 0:
         painter.setPen(outline_color)
-        for ox in range(-outline_px, outline_px + 1):
-            for oy in range(-outline_px, outline_px + 1):
-                if ox == 0 and oy == 0:
-                    continue
-                painter.drawText(int(x + ox), int(y + oy), text)
+        ix, iy = int(x), int(y)
+        if outline_px == 1:
+            # 🚀 4-way cross: ลดภาระ drawText ลง 50% (4 calls แทนที่จะเป็น 8 calls) คมชัดและเร็วกว่าเดิมมาก
+            painter.drawText(ix - 1, iy, text)
+            painter.drawText(ix + 1, iy, text)
+            painter.drawText(ix, iy - 1, text)
+            painter.drawText(ix, iy + 1, text)
+        else:
+            for ox in range(-outline_px, outline_px + 1):
+                for oy in range(-outline_px, outline_px + 1):
+                    if ox == 0 and oy == 0:
+                        continue
+                    painter.drawText(ix + ox, iy + oy, text)
     painter.setPen(color)
     painter.drawText(int(x), int(y), text)
 
@@ -3002,10 +3012,13 @@ class ESPOverlay(QOpenGLWidget):
         self.missile_cache = []           # List of MissileInfo
         self.missile_tracks = {}          # ptr -> track state for Dead Reckoning & Anti-Blink
         self.missile_last_scan = 0.0
+        self.missile_last_scan_seq = -1   # Sequence ID of background missile scan
         self.missile_warning_active = False
         self.missile_warning_start = 0.0
         self.unit_id_to_name = {}         # target_id (u16 at u_ptr + 0x08) -> unit display name
         self.unit_id_to_ptr = {}          # target_id -> u_ptr
+        self.unit_id_neg_cache = {}       # target_id -> failure timestamp (Negative Cache)
+        self.unit_ptr_neg_cache = {}      # u_ptr -> failure timestamp (Negative Cache)
         self.my_unit_id = -1
         self.my_name = ""
 
@@ -3307,13 +3320,19 @@ class ESPOverlay(QOpenGLWidget):
         """
         🎯 TARGET TRACKING RESOLVER:
         ค้นหาชื่อยูนิตและ Unit Pointer จาก target_id (uint16 ที่ unit_ptr + 0x08)
-        ทำให้ Overlay ทราบได้ทันทีว่าขีปนาวุธกำลังพุ่งเข้าหาใคร
+        ทำให้ Overlay ทราบได้ทันทีว่าขีปนาวุธกำลังพุ่งเข้าหาใคร (Zero UI Freeze)
         """
         if not target_id or target_id <= 0:
             return None, None
         if target_id in self.unit_id_to_name:
             return self.unit_id_to_name[target_id], self.unit_id_to_ptr.get(target_id)
         
+        # 🛑 Negative Cache check: ป้องกันการวนหา target_id ที่ไม่มีอยู่จริงซ้ำๆ ใน GUI Thread
+        curr_t = time.time()
+        last_failed = self.unit_id_neg_cache.get(target_id, 0.0)
+        if curr_t - last_failed < 2.0:
+            return None, None
+
         # Check my_unit
         my_u = getattr(self, 'my_unit', 0)
         my_uid = getattr(self, 'my_unit_id', -1)
@@ -3351,28 +3370,10 @@ class ESPOverlay(QOpenGLWidget):
                     self.unit_id_to_ptr[target_id] = u_ptr
                     return name, u_ptr
 
-        # Fallback lookup in all_units
-        cgame_base = getattr(self, 'cgame_base', 0) or getattr(self, 'last_cgame_base', 0)
-        if not cgame_base and self.scanner:
-            try:
-                cgame_base = get_cgame_base(self.scanner, self.base_address)
-            except Exception:
-                pass
-        if cgame_base and self.scanner:
-            try:
-                all_u = get_all_units(self.scanner, cgame_base)
-                for u_ptr, _ in all_u:
-                    u_id = get_unit_id(self.scanner, u_ptr)
-                    if u_id == target_id:
-                        prof = get_unit_filter_profile(self.scanner, u_ptr)
-                        dna = get_unit_detailed_dna(self.scanner, u_ptr) or {}
-                        name = prof.get('short_name') or dna.get('short_name') or prof.get('display_name') or f"Target #{target_id}"
-                        self.unit_id_to_name[target_id] = name
-                        self.unit_id_to_ptr[target_id] = u_ptr
-                        return name, u_ptr
-            except Exception:
-                pass
-
+        # ไม่รัน get_all_units แบบ Full Memory Scan ใน GUI thread เพื่อรักษา 60 FPS
+        if len(self.unit_id_neg_cache) > 200:
+            self.unit_id_neg_cache.clear()
+        self.unit_id_neg_cache[target_id] = curr_t
         return None, None
 
     def get_unit_id_fast(self, u_ptr: int) -> int:
@@ -3416,6 +3417,11 @@ class ESPOverlay(QOpenGLWidget):
         is_air = self.unit_is_air_by_ptr.get(u_ptr, False)
         if name and name.lower() not in ("none", "unknown", "c", ""):
             return (name, team, is_air)
+
+        # 🛑 Negative cache check: ไม่วนอ่าน Memory ถี่ๆ สำหรับ pointer ที่เคยอ่านล้มเหลว
+        curr_t = time.time()
+        if curr_t - self.unit_ptr_neg_cache.get(u_ptr, 0.0) < 2.0:
+            return ("", 0, False)
 
         # 3. Check data_pump unit_id_cache
         if hasattr(self, '_data_pump') and self._data_pump:
@@ -3468,6 +3474,9 @@ class ESPOverlay(QOpenGLWidget):
             except Exception:
                 pass
 
+        if len(self.unit_ptr_neg_cache) > 200:
+            self.unit_ptr_neg_cache.clear()
+        self.unit_ptr_neg_cache[u_ptr] = curr_t
         return ("", 0, False)
 
     def _is_fixed_recon_ghost(self, u_ptr, pos, curr_t):
@@ -4474,9 +4483,8 @@ class ESPOverlay(QOpenGLWidget):
                     dz = pos[2] - my_pos[2]
                     dist_to_me = math.sqrt(dx * dx + dy * dy + dz * dz)
 
-                if not is_air_target:
-                    pre_vel = self._stabilize_velocity(u_ptr, False, pos, curr_t)
-                    pre_vel_map[u_ptr] = pre_vel
+                pre_vel = self._stabilize_velocity(u_ptr, is_air_target, pos, curr_t)
+                pre_vel_map[u_ptr] = pre_vel
 
                 select_screen = None
                 select_box_rect = None
@@ -5050,10 +5058,11 @@ class ESPOverlay(QOpenGLWidget):
 
                     warning_level = 0
                     if physics_is_air and my_pos and dist > 10.0:
+                        warning_vel = pre_vel if pre_vel else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
                         warning_level = _get_air_warning_level(
                             my_pos,
                             pos,
-                            self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t),
+                            warning_vel,
                         )
 
                     indicator_alpha = 0.0
@@ -5339,7 +5348,7 @@ class ESPOverlay(QOpenGLWidget):
                     # ========================================================
                     # 🚀 KINEMATICS: ANTI-JITTER TARGET TRACKING
                     # ========================================================
-                    vel = pre_vel if (pre_vel and not physics_is_air) else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
+                    vel = pre_vel if pre_vel else self._stabilize_velocity(u_ptr, physics_is_air, pos, curr_t)
 
                     # ✈️ Air Speed display below bbox
                     if (not skip_onscreen_unit_render) and overlay_is_air and vel and target_box_rect and (draw_inline_air_overlay):
@@ -5363,6 +5372,12 @@ class ESPOverlay(QOpenGLWidget):
                     
                     if not vel or current_bullet_speed <= 0 or not my_pos or dist <= 10.0: continue
                         
+                    # 🚀 DISTANCE GATING: สำหรับเป้าหมายทางอากาศที่อยู่นอกระยะยิงปืน (เกิน 2500m) และไม่ได้เป็นเป้าหมายที่ถูกล็อค
+                    # ให้ข้ามการคำนวณ 9x9 Kalman Filter และ Numerical Ballistics Simulation เพื่อรักษา 60 FPS นิ่งๆ
+                    air_lead_max_range = leadmark_range_limit if leadmark_range_limit > 0.0 else 2500.0
+                    if physics_is_air and (u_ptr != active_target_ptr) and (dist > air_lead_max_range):
+                        continue
+
                     vx, vy, vz = vel
                     ax, ay, az = 0.0, 0.0, 0.0
                     
@@ -6766,11 +6781,17 @@ class ESPOverlay(QOpenGLWidget):
             if my_pos and view_matrix:
                 try:
                     # Scan for missiles (retrieved from background worker snapshot, 0ms in paintGL!)
+                    is_new_missile_scan = False
                     if snapshot and snapshot.is_valid and hasattr(snapshot, 'missiles'):
                         result = snapshot.missiles
+                        snap_seq = getattr(snapshot, 'missile_scan_seq', -1)
+                        if snap_seq != self.missile_last_scan_seq:
+                            is_new_missile_scan = True
+                            self.missile_last_scan_seq = snap_seq
                     elif curr_t - self.missile_last_scan >= MISSILE_SCAN_INTERVAL_S:
                         self.missile_last_scan = curr_t
                         result = self.missile_scanner.scan(self.scanner, self.base_address)
+                        is_new_missile_scan = True
                     else:
                         result = None
 
@@ -6846,9 +6867,48 @@ class ESPOverlay(QOpenGLWidget):
 
                             if m.ptr in self.missile_tracks and not is_new_track:
                                 tr = self.missile_tracks[m.ptr]
-                                tr['base_pos'] = m.pos
-                                tr['vel'] = m.vel
-                                tr['speed'] = m.speed
+                                
+                                # 🚀 DETECT NEW MEASUREMENT & APPLY EMA FILTERING
+                                # เมื่อได้รับข้อมูลสแกนรอบใหม่จาก Memory (หรือพิกัดดิบขยับ)
+                                if is_new_missile_scan or (m.pos != tr.get('raw_pos')):
+                                    meas_pos = m.pos
+                                    meas_vel = m.vel
+                                    tr['raw_pos'] = meas_pos
+                                    tr['raw_vel'] = meas_vel
+                                    tr['base_pos'] = meas_pos
+                                    tr['last_meas_t'] = curr_t
+                                    
+                                    # 1. Velocity EMA: กรองทิศทางและความเร็วให้นิ่ง ไม่กระตุก
+                                    sv = tr.get('smooth_vel', meas_vel)
+                                    tr['smooth_vel'] = (
+                                        sv[0] * (1.0 - MISSILE_VEL_EMA_ALPHA) + meas_vel[0] * MISSILE_VEL_EMA_ALPHA,
+                                        sv[1] * (1.0 - MISSILE_VEL_EMA_ALPHA) + meas_vel[1] * MISSILE_VEL_EMA_ALPHA,
+                                        sv[2] * (1.0 - MISSILE_VEL_EMA_ALPHA) + meas_vel[2] * MISSILE_VEL_EMA_ALPHA,
+                                    )
+                                    tr['vel'] = tr['smooth_vel']
+                                    tr['smooth_speed'] = math.sqrt(
+                                        tr['smooth_vel'][0]**2 + tr['smooth_vel'][1]**2 + tr['smooth_vel'][2]**2
+                                    )
+                                    tr['speed'] = tr['smooth_speed']
+                                    
+                                    # 2. Position EMA: ดึงตำแหน่งที่กำลัง Extrapolate เข้าหาพิกัดจริงอย่างนุ่มนวล
+                                    sp = tr.get('smooth_pos', meas_pos)
+                                    err_x = meas_pos[0] - sp[0]
+                                    err_y = meas_pos[1] - sp[1]
+                                    err_z = meas_pos[2] - sp[2]
+                                    err_dist = math.sqrt(err_x*err_x + err_y*err_y + err_z*err_z)
+                                    
+                                    if err_dist > 300.0:
+                                        # ถ้าคลาดเคลื่อนเกิน 300m (เช่นเกิดใหม่/รีไซเคิล Entity) ให้ Snap ตรง
+                                        tr['smooth_pos'] = meas_pos
+                                    else:
+                                        # EMA Position Blending
+                                        tr['smooth_pos'] = (
+                                            sp[0] + err_x * MISSILE_POS_EMA_ALPHA,
+                                            sp[1] + err_y * MISSILE_POS_EMA_ALPHA,
+                                            sp[2] + err_z * MISSILE_POS_EMA_ALPHA,
+                                        )
+
                                 tr['last_seen'] = curr_t
                                 tr['missile'] = m
                                 tr['owner_unit'] = owner_unit
@@ -6880,11 +6940,17 @@ class ESPOverlay(QOpenGLWidget):
                                             tr['is_my_missile'] = False
                             else:
                                 self.missile_tracks[m.ptr] = {
+                                    'raw_pos': m.pos,
+                                    'raw_vel': m.vel,
                                     'base_pos': m.pos,
                                     'vel': m.vel,
                                     'speed': m.speed,
-                                    'last_seen': curr_t,
                                     'smooth_pos': m.pos,
+                                    'smooth_vel': m.vel,
+                                    'smooth_speed': m.speed,
+                                    'last_meas_t': curr_t,
+                                    'last_render_t': curr_t,
+                                    'last_seen': curr_t,
                                     'smooth_angle': None,
                                     'was_offscreen': False,
                                     'missile': m,
@@ -6901,15 +6967,23 @@ class ESPOverlay(QOpenGLWidget):
                     for ptr in stale_ptrs:
                         del self.missile_tracks[ptr]
 
-                    # Extrapolate active missile positions at 60 FPS via Dead Reckoning
+                    # 🚀 Extrapolate active missile positions at 60 FPS via Continuous Dead Reckoning
                     active_missile_entries = []
                     for ptr, tr in list(self.missile_tracks.items()):
-                        # dt capped at MISSILE_EXTRAPOLATION_MAX_S
-                        dt = max(0.0, min(curr_t - tr['last_seen'], MISSILE_EXTRAPOLATION_MAX_S))
-                        bp = tr['base_pos']
-                        v = tr['vel']
-                        smooth_pos = (bp[0] + v[0] * dt, bp[1] + v[1] * dt, bp[2] + v[2] * dt)
-                        tr['smooth_pos'] = smooth_pos
+                        # Frame dt for continuous per-frame extrapolation (capped between 1ms and 50ms)
+                        last_r = tr.get('last_render_t', curr_t)
+                        frame_dt = max(0.001, min(curr_t - last_r, 0.050))
+                        tr['last_render_t'] = curr_t
+
+                        sv = tr.get('smooth_vel', tr.get('vel', (0.0, 0.0, 0.0)))
+                        sp = tr.get('smooth_pos', tr.get('base_pos', (0.0, 0.0, 0.0)))
+                        extrap_pos = (
+                            sp[0] + sv[0] * frame_dt,
+                            sp[1] + sv[1] * frame_dt,
+                            sp[2] + sv[2] * frame_dt,
+                        )
+                        tr['smooth_pos'] = extrap_pos
+                        smooth_pos = extrap_pos
                         m = tr['missile']
 
                         dx = smooth_pos[0] - my_pos[0]
@@ -6917,7 +6991,14 @@ class ESPOverlay(QOpenGLWidget):
                         dz = smooth_pos[2] - my_pos[2]
                         dist = math.sqrt(dx*dx + dy*dy + dz*dz)
                         if dist < 100000:
-                            active_missile_entries.append((m, smooth_pos, v, tr['speed'], dist, tr))
+                            active_missile_entries.append((
+                                m,
+                                smooth_pos,
+                                sv,
+                                tr.get('smooth_speed', tr.get('speed', 0.0)),
+                                dist,
+                                tr,
+                            ))
 
                     if active_missile_entries:
                         # Check if any missile is tracking ME
@@ -7032,28 +7113,38 @@ class ESPOverlay(QOpenGLWidget):
                         painter.setFont(QFont("Arial", 10, QFont.Bold))
                         cx, cy = self.screen_width / 2.0, self.screen_height / 2.0
 
+                        # 🚀 Precompute fast O(1) lookup sets for missile states
+                        incoming_ptrs = {im[0].ptr for im in incoming}
+                        incoming_guided_ptrs = {im[0].ptr for im in incoming if im[5]}
+
                         for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:
                             w2s = world_to_screen(
                                 view_matrix,
                                 smooth_pos[0], smooth_pos[1], smooth_pos[2],
                                 self.screen_width, self.screen_height
                             )
-                            is_incoming = any(im[0].ptr == m.ptr for im in incoming)
+                            is_incoming = m.ptr in incoming_ptrs
                             is_my = bool(tr.get('is_my_missile') or tr.get('is_owner_me_verified'))
                             is_friendly = False if is_my else bool(tr.get('is_friendly_missile') and not is_incoming)
                             is_exact_locked_me = False if (is_my or is_friendly) else bool(
                                 my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)
                             )
                             is_guided_me = False if (is_my or is_friendly) else (
-                                is_exact_locked_me or
-                                any(im[0].ptr == m.ptr and im[5] for im in incoming)
+                                is_exact_locked_me or (m.ptr in incoming_guided_ptrs)
                             )
                             is_guided_other = False if (is_my or is_friendly) else bool(
                                 m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me
                             )
 
-                            # 🎯 TARGET TRACKING: ค้นหาชื่อยูนิตเป้าหมายจาก target_id
-                            tracked_tgt_name, _ = self.resolve_unit_by_id(m.target_id) if m.target_id > 0 else (None, None)
+                            # 🎯 TARGET TRACKING: ค้นหาชื่อยูนิตเป้าหมายจาก target_id (แคชในแทร็กเพื่อป้องกัน Lookup ซ้ำซ้อน)
+                            if m.target_id > 0:
+                                if 'tracked_tgt_name' not in tr or tr.get('last_tgt_id') != m.target_id:
+                                    tgt_name, _ = self.resolve_unit_by_id(m.target_id)
+                                    tr['tracked_tgt_name'] = tgt_name
+                                    tr['last_tgt_id'] = m.target_id
+                                tracked_tgt_name = tr.get('tracked_tgt_name')
+                            else:
+                                tracked_tgt_name = None
 
                             dist_km = dist / 1000.0
                             speed_label = f"{speed:.0f}m/s"
@@ -7064,11 +7155,13 @@ class ESPOverlay(QOpenGLWidget):
                                 short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
 
                             owner_u = tr.get('owner_unit', 0)
-                            shooter_name = tr.get('shooter_name')
-                            if not shooter_name and owner_u:
-                                shooter_name, _, _ = self.resolve_unit_by_ptr(owner_u)
-                                if shooter_name:
-                                    tr['shooter_name'] = shooter_name
+                            if 'shooter_name' not in tr:
+                                if owner_u:
+                                    s_name, _, _ = self.resolve_unit_by_ptr(owner_u)
+                                    tr['shooter_name'] = s_name or ""
+                                else:
+                                    tr['shooter_name'] = ""
+                            shooter_name = tr.get('shooter_name', '')
                             by_str = f" [by {shooter_name}]" if shooter_name else ""
 
                             # ป้ายชื่อและสัญลักษณ์ตามระดับภัยคุกคาม
