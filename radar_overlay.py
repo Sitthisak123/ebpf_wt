@@ -36,7 +36,7 @@ from src.utils.scanner import *
 from src.utils.mul import *
 from src.utils.debug import *
 from src.utils.kalman import KinematicKalmanFilter
-from src.utils.ammo_family import resolve_ammo_family
+from src.utils.ammo_family import resolve_ammo_family, classify_weapon_caliber
 from src.utils.missile import MissileScanner, get_all_missiles
 from src.worker.data_pump import DataPumpWorker, FrameSnapshot, TargetSnapshot
 
@@ -3826,8 +3826,20 @@ class ESPOverlay(QOpenGLWidget):
             worker_fps_str = f" (Pump: {int(snapshot.worker_fps)})" if (snapshot and snapshot.is_valid and snapshot.worker_fps > 0) else ""
             painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
             painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}{worker_fps_str}")
-            painter.setPen(QColor(*COLOR_INFO_TEXT))
-            painter.drawText(20, 115, f"🧠 AI Tracking : 6 Threads Active (Decay={self.dynamic_decay:.3f})")
+            # 🎯 Caliber & Ammunition Classification (Replaces AI Tracking on HUD)
+            current_vehicle_name = getattr(snapshot, 'my_name', '') if snapshot else ''
+            current_is_air = bool(getattr(snapshot, 'my_is_air', False)) if snapshot else False
+            gun_info = classify_weapon_caliber(
+                current_bullet_speed,
+                current_bullet_caliber,
+                current_bullet_mass,
+                current_bullet_cd,
+                vehicle_name=current_vehicle_name,
+                is_air=current_is_air,
+            )
+            self.current_gun_info = gun_info
+            painter.setPen(QColor(100, 220, 255))
+            painter.drawText(20, 115, gun_info["hud_str"])
             active_m_count = len(self.missile_tracks) if hasattr(self, 'missile_tracks') and self.missile_tracks else (len(self.missile_cache) if hasattr(self, 'missile_cache') and self.missile_cache else 0)
             if active_m_count > 0:
                 painter.setPen(QColor(255, 140, 40))
@@ -5486,6 +5498,9 @@ class ESPOverlay(QOpenGLWidget):
                         out += f"📉 [BALLISTICS]\n"
                         vel_lo, vel_hi = ballistic_profile["vel_range"]
                         out += f"🔫 Bullet     : Spd:{current_bullet_speed:.0f} m/s | CD:{current_bullet_cd:.2f} | Mass:{current_bullet_mass:.2f} | Cal:{current_bullet_caliber:.3f}\n"
+                        gun_disp = getattr(self, 'current_gun_info', {}).get('hud_str', '')
+                        if gun_disp:
+                            out += f"🎯 Weapon     : {gun_disp[3:]}\n"
                         out += f"📉 Drop       : Bullet: +{gravity_offset:>5.2f} m | Zero: {math.degrees(zero_pitch):>5.2f} deg | VRange:{vel_lo:.0f}-{vel_hi:.0f}\n"
                         out += f"🧪 Model      : {ballistic_profile.get('model_enum', 0)} | drag_k:{ballistic_model.get('drag_k', 0.0):.6e}\n"
                         out += "================================================================\n"
