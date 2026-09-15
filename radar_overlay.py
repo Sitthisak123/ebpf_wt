@@ -273,13 +273,17 @@ MISSILE_SMOOTH_LERP             = 0.45                   # Angular smoothing fac
 MISSILE_POS_EMA_ALPHA           = 0.35                   # EMA smoothing factor for missile position correction (0.35 = buttery smooth)
 MISSILE_VEL_EMA_ALPHA           = 0.45                   # EMA smoothing factor for missile velocity vector
 
+# 🚨 MISSILE DETECTION & ALERT CONFIG
+MISSILE_ALERT_ONLY_GUIDED       = True          # แจ้งเตือนภัยคุกคาม (HUD Warning / Flashing Border / Auto CM) เฉพาะขีปนาวุธนำวิถี (has guided) เท่านั้น
+MISSILE_ESP_ONLY_GUIDED         = False         # กรองการแสดงผลบนจอ: True = แสดงเฉพาะขีปนาวุธนำวิถี (ซ่อนจรวด unguided ทั่วไป)
+
 # ============================================================
 # 🛡️ AUTOMATIC COUNTERMEASURE (FLARE / CHAFF) SYSTEM CONFIG
 # ============================================================
 ENABLE_AUTO_COUNTERMEASURE      = True          # สวิตช์หลักเปิด/ปิดระบบปล่อยเป้าลวงอัตโนมัติ
 AUTO_CM_KEY                     = "num+"        # ปุ่มสำหรับปล่อย Countermeasure (Numpad + หรือ Scancode 78 / KEY_KPPLUS)
 AUTO_CM_HOLD_MS                 = 70            # ระยะเวลาหน่วงกดปุ่มค้าง (ms) เพื่อให้ Dagor Engine ตรวจจับเฟรมอินพุตได้แน่นอน
-AUTO_CM_REQUIRE_EXACT_LOCK      = False         # True = ต้องมีสัญญาณ Guided==myUnit เท่านั้น, False = หรือมุมปะทะตรงเผงระยะประชิด
+AUTO_CM_REQUIRE_EXACT_LOCK      = True          # True = ต้องมีสัญญาณ Guided==myUnit เท่านั้น, False = หรือมุมปะทะตรงเผงระยะประชิด
 
 # แมพ scancode บน Linux เพื่อป้องกันบั๊กของไลบรารี keyboard ที่สลับ Left/Right Alt หรือไม่รู้จัก Numpad
 LINUX_KEY_SCANCODES = {
@@ -6994,6 +6998,15 @@ class ESPOverlay(QOpenGLWidget):
                         dz = smooth_pos[2] - my_pos[2]
                         dist = math.sqrt(dx*dx + dy*dy + dz*dz)
                         if dist < 100000:
+                            if MISSILE_ESP_ONLY_GUIDED:
+                                # ข้ามจรวด unguided ที่ไม่มีระบบนำวิถีเลย
+                                has_guid = bool(
+                                    (m.guidance_ptr and _is_valid_ptr(m.guidance_ptr)) or
+                                    m.is_tracking or m.is_locked or (m.target_id > 0)
+                                )
+                                if not has_guid:
+                                    continue
+
                             active_missile_entries.append((
                                 m,
                                 smooth_pos,
@@ -7046,16 +7059,18 @@ class ESPOverlay(QOpenGLWidget):
                             # ขีปนาวุธล็อกเครื่องอื่น: ต้องเป็น target_id ที่มีตัวตนจริง (> 0) และไม่ใช่ ID ของเรา และทิศทางไม่ได้พุ่งตรงมาที่เรา
                             is_guided_to_other = bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_heading_to_me)
 
-                            # ประเมินว่าเป็นภัยคุกคามต่อตัวเราหรือไม่:
+                            # 🎯 ประเมินว่าเป็นภัยคุกคามต่อตัวเราหรือไม่ (Alert Trigger):
                             # 1) ถ้า 100% Exact Locked On You -> ถือเป็นภัยคุกคามสูงสุดทันที (Seeker ID Match)
-                            # 2) ถ้า SAM ล็อกพุ่งเข้าหาเรา -> ถือเป็นภัยคุกคามทันที
-                            # 3) ถ้าหัวขีปนาวุธพุ่งตรงมาที่เรา -> ถือเป็นภัยคุกคามทันที (ยกเว้นล็อกคนอื่นชัดเจนและอยู่นอกระยะอันตราย)
+                            # 2) ถ้า SAM / Guided Missile นำวิถีพุ่งเข้าหาเรา -> ถือเป็นภัยคุกคามทันที
+                            # 3) หากตั้ง MISSILE_ALERT_ONLY_GUIDED = True:
+                            #    จะแจ้งเตือน (Warning HUD / Red Border / Auto CM) เฉพาะขีปนาวุธนำวิถี (is_exact_locked_me หรือ is_guided_to_me) เท่านั้น
+                            #    จะไม่แจ้งเตือนจรวด unguided ทั่วไป (เช่น FFAR, S-8, S-13) หรือลูกที่ล็อกคนอื่นเด็ดขาด
                             threat_to_me = False
                             if is_exact_locked_me:
                                 threat_to_me = True
                             elif is_guided_to_me:
                                 threat_to_me = True
-                            elif is_heading_to_me:
+                            elif not MISSILE_ALERT_ONLY_GUIDED and is_heading_to_me:
                                 if not is_guided_to_other or dist <= AUTO_CM_STAGE1_MAX_RANGE or time_to_impact <= AUTO_CM_STAGE1_TIME_LEFT:
                                     threat_to_me = True
 
