@@ -1,6 +1,9 @@
 @add
-- increase Thread warning angle when My_Unit is Air and Threat is SPAA/Ground
+- increase Thread warning FOV when My_Unit is Air and Threat is SPAA/Ground
+- option to show countermeasures remain count
+-   
 
 @Fix
 - add air ghost filter [if air_unit_vel > 0 and pos == prev_pos]
 - target lock cuase ground Hitpoint simulation: make this feature specific for Air Unit and can be lock ground unit only
+- [FIXED] missiles detection issue: undetect some missile in some situation | detect flare of some specific aircrat as Missile that are fired

@@ -4065,6 +4065,9 @@ class ESPOverlay(QOpenGLWidget):
                 self.my_unit_spawn_grace_until = curr_t + 0.40
                 self.kalman_filters = {}
                 if hasattr(self, "missile_tracks"): self.missile_tracks.clear()
+                self.missile_cache = []
+                if hasattr(self, "missile_scanner"): self.missile_scanner.clear_cache()
+                if hasattr(self, "_data_pump") and self._data_pump: self._data_pump.clear_missile_cache()
                 self.auto_cm_active_stage = 0
                 self.auto_cm_last_trigger_t = 0.0
                 self.auto_cm_next_trigger_t = 0.0

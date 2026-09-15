@@ -83,12 +83,20 @@ def _is_valid_ptr(v):
 def _vlen(v):
     return math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
 
+COUNTERMEASURE_KEYWORDS = (
+    "flare", "chaff", "countermeasure", "decoy", "dispenser",
+    "cm_", "cartridge", "split_launcher", "bullet_flare",
+    "flares", "bol_pod", "anti_radar", "infrared_decoy",
+)
+
 def _is_valid_vec3(v):
-    """Validate 3D vector (must be finite and contain no subnormal floats)"""
+    """Validate 3D vector (must be finite and contain no true subnormal floats)"""
     if not all(math.isfinite(x) for x in v):
         return False
     for x in v:
-        if x != 0.0 and abs(x) < 1e-3:
+        # Standard IEEE 754 float32 subnormals are < 1.17e-38.
+        # Use 1e-30 to avoid rejecting valid small coordinates or velocities.
+        if x != 0.0 and abs(x) < 1e-30:
             return False
     return True
 
@@ -104,9 +112,8 @@ def _is_valid_missile_motion(pos, vel):
         return False, 0.0
     
     spd = _vlen(vel)
-    if not (25.0 < spd < 4500.0):
-        return False, 0.0
-    if sum(1 for x in vel if abs(x) > 0.05) < 2:
+    # Detect missiles from 10.0 m/s (e.g. freshly launched from hovering helicopters or stationary SAMs) up to hypersonic 4500 m/s
+    if not (10.0 < spd < 4500.0):
         return False, 0.0
     return True, spd
 
@@ -160,6 +167,11 @@ class MissileScanner:
         self._initialized = False
         self._name_cache = {}
         self._props_name_cache = {}
+    
+    def clear_cache(self):
+        """Reset weapon name and props caches (called on match change)"""
+        self._name_cache.clear()
+        self._props_name_cache.clear()
     
     def _init_ecs(self, scanner, base):
         """Initialize ECS manager pointers dynamically from mul.OFF_ECS_MANAGER"""
@@ -313,62 +325,57 @@ class MissileScanner:
         props = struct.unpack_from("<Q", header, OFF_RKT_PROPS)[0] if len(header) >= OFF_RKT_PROPS + 8 else 0
         name = ""
         
-        # Priority A: props pointer (+0x6c8 -> +0x50)
+        # Priority A: props pointer (+0x6c8)
+        # In Dagor Engine, weapon properties struct holds:
+        #   +0x28: full weapon BLK path (e.g. 'gameData/Weapons/rocketGuns/countermeasure_split_launcher_jet.blk' or 'us_aim9l_sidewinder.blk')
+        #   +0x50: launcher or weapon name (e.g. 'f_2a_adtw^us_2_75_in_ffar_mighty_mouse.blk' or 'flare_launcher')
+        #   +0x58: clean name (e.g. 'us_2_75_in_ffar_mighty_mouse')
         if _is_valid_ptr(props):
             if props in self._props_name_cache:
-                cached = self._props_name_cache[props]
-                if cached is None:
-                    return None  # Known flare / chaff / non-missile
-                name = cached
+                name = self._props_name_cache[props]
             else:
-                name_ptr = _rp(scanner, props + 0x50)
-                if _is_valid_ptr(name_ptr):
-                    s = _rstr(scanner, name_ptr)
-                    # 🚫 ตรวจพบว่าเป็น Flare / Chaff ให้คัดทิ้งทันที และบันทึกใน props cache
-                    if s and any(ign in s.lower() for ign in ("flare", "chaff")):
-                        self._props_name_cache[props] = None
-                        return None
-                    if s and (s.endswith(".blk") or any(k in s.lower() for k in ("missile", "rocket", "aim", "sam"))):
-                        name = s
-                        if len(self._props_name_cache) > 500:
-                            self._props_name_cache.clear()
-                        self._props_name_cache[props] = name
+                found_cm = False
+                cand_name = ""
+                # Check offsets +0x28, +0x50, +0x58 in props struct
+                for poff in (0x28, 0x50, 0x58):
+                    n_ptr = _rp(scanner, props + poff)
+                    if _is_valid_ptr(n_ptr):
+                        s = _rstr(scanner, n_ptr)
+                        if not s:
+                            continue
+                        s_lower = s.lower()
+                        # 🚫 คัดทิ้งเป้าลวง/แฟลร์ทันที 100% ถ้าพบคำใน COUNTERMEASURE_KEYWORDS
+                        if any(ign in s_lower for ign in COUNTERMEASURE_KEYWORDS):
+                            found_cm = True
+                            break
+                        # ตรวจหาชื่อไฟล์ .blk หรือคีย์เวิร์ดอาวุธจรวด/ขีปนาวุธ
+                        if not cand_name:
+                            if s.endswith(".blk") or any(k in s_lower for k in ("missile", "rocket", "aim", "sam", "agm", "r_", "aam")):
+                                clean_s = s.split("/")[-1].split("\\")[-1]
+                                cand_name = clean_s
+                
+                if found_cm:
+                    return None
+                
+                if cand_name:
+                    name = cand_name
+                    if len(self._props_name_cache) > 500:
+                        self._props_name_cache.clear()
+                    # Only cache positive, verified missile names (never pollute with None)
+                    self._props_name_cache[props] = name
         
-        # Priority B: Component weapon pointers (+0x420, +0x440)
-        if not name:
-            for off in (0x420, 0x440):
-                if len(header) >= off + 8:
-                    comp_p = struct.unpack_from("<Q", header, off)[0]
-                    if _is_valid_ptr(comp_p):
-                        s = _rstr(scanner, comp_p + 0x08, 48)
-                        if s and any(ign in s.lower() for ign in ("flare", "chaff")):
-                            return None
-                        if s and any(k in s for k in ("missile", "rocket", "sam", "aim", "agm", "r_")):
-                            clean_s = s.split("\x00")[0].split("*")[0].strip()
-                            if clean_s:
-                                name = clean_s + ".blk"
-                                break
-        
-        # Priority C: Raw Header strings
-        if not name:
-            for off in [0x230, 0x240, 0x380]:
-                if len(header) >= off + 40:
-                    s = header[off:off+40]
-                    if b"aim_" in s or b"rocket" in s or b"missile" in s or b".blk" in s:
-                        name = s.split(b"\x00")[0].decode("utf-8", errors="ignore")
-                        break
-        
-        # Priority D: Fallback name for SAM / SPAA bot missiles without string
+        # Priority B: Fallback name for SAM / SPAA bot missiles without string
         # Can ONLY fallback if it has a VERIFIED guidance pointer AND a VERIFIED owner AND an active flight state!
+        # Flares NEVER have guidance, so flares will NEVER trigger this fallback!
         if not name:
             if _is_valid_ptr(guid) and _is_valid_ptr(owner_unit) and state in (0, 1, 2):
                 name = "sam_missile.blk"
             else:
                 return None
         
-        # 🚫 FILTER OUT FLARES / CHAFF / DECOYS
+        # 🚫 FINAL SAFETY FILTER: Ensure no countermeasure name ever passes through
         name_lower = name.lower()
-        if any(ign in name_lower for ign in ["flare", "chaff"]):
+        if any(ign in name_lower for ign in COUNTERMEASURE_KEYWORDS):
             return None
         
         # Build MissileInfo

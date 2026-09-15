@@ -245,6 +245,14 @@ class DataPumpWorker(QThread):
         with self._snapshot_lock:
             return self._latest_snapshot
 
+    def clear_missile_cache(self):
+        """Reset missile scanner cache and clear latest missile list"""
+        if hasattr(self, 'missile_scanner') and self.missile_scanner:
+            self.missile_scanner.clear_cache()
+        self.latest_missiles.clear()
+        self.missile_scan_seq = 0
+        self.last_missile_scan_t = 0.0
+
     def request_stop(self):
         self._stop_flag = True
 
@@ -354,6 +362,7 @@ class DataPumpWorker(QThread):
             self.profile_cache.clear()
             self.unit_id_cache.clear()
             self.active_targets.clear()
+            self.clear_missile_cache()
             self.last_my_unit = 0
             snap.all_unit_ptrs = set()
             snap.valid_targets = []
@@ -365,6 +374,7 @@ class DataPumpWorker(QThread):
             self.profile_cache.clear()
             self.unit_id_cache.clear()
             self.active_targets.clear()
+            self.clear_missile_cache()
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
         elif my_unit and not self.last_my_unit:
