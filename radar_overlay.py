@@ -1087,7 +1087,7 @@ UNIT_FAMILY_SHIP_BATTLESHIP = 13
 UNIT_FAMILY_GROUND_LIGHT_TANK = 14
 
 def _solve_static_ground_leadmark(target_pos, fire_origin, my_vel, bullet_speed, zeroing, model, zero_pitch, my_rot=None):
-    if not target_pos or not fire_origin or bullet_speed <= 0.0:
+    if not target_pos or not fire_origin or bullet_speed <= 0.0 or not model or not model.get("is_armed", False):
         return None
 
     t_x, t_y, t_z = target_pos
@@ -2429,8 +2429,7 @@ def _read_ballistic_profile(scanner, cgame_base):
         "weapon_ptr": 0,
         "bullet_type_idx": -1,
         "model_enum": 0,
-        "bullet_type_idx": -1,
-        "speed": 1000.0,
+        "speed": 0.0,
         "mass": 0.0,
         "caliber": 0.0,
         "cx": 0.0,
@@ -2438,6 +2437,7 @@ def _read_ballistic_profile(scanner, cgame_base):
         "vel_range": (0.0, 0.0),
         "vel_range_addr": 0,
         "drag_valid": False,
+        "is_valid": False,
     }
     weapon_ptr = _read_ptr_fast(scanner, cgame_base + OFF_WEAPON_PTR)
     if not is_valid_ptr(weapon_ptr):
@@ -2445,7 +2445,7 @@ def _read_ballistic_profile(scanner, cgame_base):
 
     props_base = weapon_ptr + BALLISTIC_STRUCT_BASE_OFF
     model_enum = _read_u32_fast(scanner, props_base + 0x00, 0)
-    speed = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_SPEED_OFF, 1000.0)
+    speed = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_SPEED_OFF, 0.0)
     mass = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_MASS_OFF, 0.0)
     caliber = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_CALIBER_OFF, 0.0)
     cx = _read_f32_fast(scanner, weapon_ptr + BALLISTIC_CX_OFF, 0.0)
@@ -2504,27 +2504,34 @@ def _read_ballistic_profile(scanner, cgame_base):
         if not (vel_min <= vel_max <= BALLISTIC_MAX_VEL_RANGE) and BALLISTIC_MIN_VEL_RANGE <= scan_vel_max <= BALLISTIC_MAX_VEL_RANGE:
             vel_max = scan_vel_max
 
-    if not (BALLISTIC_MIN_SPEED <= speed <= BALLISTIC_MAX_SPEED):
-        speed = 1000.0
-    if not (BALLISTIC_MIN_MASS <= mass <= BALLISTIC_MAX_MASS):
+    is_valid = bool(BALLISTIC_MIN_SPEED <= speed <= BALLISTIC_MAX_SPEED)
+    if not is_valid:
+        speed = 0.0
         mass = 0.0
-    if not (BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_MAX_CALIBER):
         caliber = 0.0
-    if not (BALLISTIC_MIN_CX <= cx <= BALLISTIC_MAX_CX):
         cx = 0.0
-    if vel_min < BALLISTIC_MIN_VEL_RANGE or vel_min > BALLISTIC_MAX_VEL_RANGE:
-        vel_min = 0.0
-    if vel_max < vel_min or vel_max > BALLISTIC_MAX_VEL_RANGE:
-        vel_max = max(vel_min, 0.0)
-    if vel_max <= vel_min:
+        max_distance = 0.0
         vel_min = 0.0
         vel_max = 0.0
+    else:
+        if not (BALLISTIC_MIN_MASS <= mass <= BALLISTIC_MAX_MASS):
+            mass = 0.0
+        if not (BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_MAX_CALIBER):
+            caliber = 0.0
+        if not (BALLISTIC_MIN_CX <= cx <= BALLISTIC_MAX_CX):
+            cx = 0.0
+        if vel_min < BALLISTIC_MIN_VEL_RANGE or vel_min > BALLISTIC_MAX_VEL_RANGE:
+            vel_min = 0.0
+        if vel_max < vel_min or vel_max > BALLISTIC_MAX_VEL_RANGE:
+            vel_max = max(vel_min, 0.0)
+        if vel_max <= vel_min:
+            vel_min = 0.0
+            vel_max = 0.0
 
     profile.update({
         "weapon_ptr": weapon_ptr,
         "bullet_type_idx": bullet_type_idx,
         "model_enum": model_enum,
-        "bullet_type_idx": bullet_type_idx,
         "speed": speed,
         "mass": mass,
         "caliber": caliber,
@@ -2533,16 +2540,56 @@ def _read_ballistic_profile(scanner, cgame_base):
         "vel_range": (vel_min, vel_max),
         "vel_range_addr": slot_vel_addr,
         "drag_valid": (
+            is_valid and
             BALLISTIC_MIN_CX <= cx <= BALLISTIC_MAX_CX_FOR_DRAG and
             BALLISTIC_MIN_MASS <= mass <= BALLISTIC_MAX_MASS and
             BALLISTIC_MIN_CALIBER <= caliber <= BALLISTIC_MAX_CALIBER
         ),
+        "is_valid": is_valid,
     })
     return profile
 
 
 def _make_ballistic_model(profile, altitude):
-    speed = max(profile.get("speed", 1000.0), 1.0)
+    if not profile or not profile.get("is_valid", False):
+        return {
+            "model_enum": 0,
+            "speed": 0.0,
+            "mass": 0.0,
+            "caliber": 0.0,
+            "cx": 0.0,
+            "rho": 0.0,
+            "drag_k": 0.0,
+            "base_k": 0.0,
+            "vel_lo": 0.0,
+            "vel_hi": 0.0,
+            "max_distance": 0.0,
+            "drag_valid": False,
+            "is_subcaliber": False,
+            "is_armed": False,
+            "is_valid": False,
+        }
+
+    speed = max(profile.get("speed", 0.0), 0.0)
+    if speed < BALLISTIC_MIN_SPEED:
+        return {
+            "model_enum": 0,
+            "speed": 0.0,
+            "mass": 0.0,
+            "caliber": 0.0,
+            "cx": 0.0,
+            "rho": 0.0,
+            "drag_k": 0.0,
+            "base_k": 0.0,
+            "vel_lo": 0.0,
+            "vel_hi": 0.0,
+            "max_distance": 0.0,
+            "drag_valid": False,
+            "is_subcaliber": False,
+            "is_armed": False,
+            "is_valid": False,
+        }
+
     drag_valid = bool(profile.get("drag_valid", False))
     model_enum = int(profile.get("model_enum", 0) or 0)
     raw_mass = profile.get("mass", 0.0)
@@ -2580,14 +2627,17 @@ def _make_ballistic_model(profile, altitude):
         "max_distance": max(profile.get("max_distance", 0.0), 0.0),
         "drag_valid": drag_valid,
         "is_subcaliber": is_subcaliber,
+        "is_armed": True,
+        "is_valid": True,
     }
 
 
 def _get_leadmark_range_limit(profile):
+    if not profile or not profile.get("is_valid", False) or profile.get("speed", 0.0) <= 0.0:
+        return 0.0
     max_distance = max(profile.get("max_distance", 0.0), 0.0)
-    # 🎯 Fallback to 5000 if reading garbage data or 0
     if not math.isfinite(max_distance) or max_distance <= 1.0 or max_distance > 50000.0:
-        max_distance = 5000.0
+        return 0.0
     return max_distance * LEADMARK_RANGE_LIMIT_RATIO
 
 
@@ -2639,7 +2689,11 @@ def _drag_band_factor(model, speed):
 _BALLISTIC_SIM_CACHE = {}
 
 def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
-    model_speed = model.get("speed", 800.0) if model else 800.0
+    if not model or not model.get("is_armed", False):
+        return 0.0, 0.0, 0.0
+    model_speed = model.get("speed", 0.0) if model else 0.0
+    if model_speed <= 0.0:
+        return 0.0, 0.0, 0.0
     model_base_k = model.get("base_k", 0.0001) if model else 0.0001
 
     if horizontal_range <= 0.001:
@@ -2860,7 +2914,7 @@ def _simulate_rocket_impact(my_pos, my_vel, my_forward, ground_y, burn_time=None
     return impact_pos
 
 def _solve_zero_pitch(zeroing_distance, model):
-    if zeroing_distance <= 1.0:
+    if zeroing_distance <= 1.0 or not model or not model.get("is_armed", False) or model.get("speed", 0.0) <= 0.0:
         return 0.0
 
     pitch = 0.0
@@ -3958,15 +4012,17 @@ class ESPOverlay(QOpenGLWidget):
                 return
             self.invalid_runtime_frames = 0
 
-            ballistic_profile = _read_ballistic_profile(self.scanner, cgame_base)
-            leadmark_range_limit = _get_leadmark_range_limit(ballistic_profile)
-            current_bullet_speed = ballistic_profile["speed"]
-            current_zeroing = get_sight_compensation_factor(self.scanner, self.base_address)
-            current_bullet_mass = ballistic_profile["mass"]
-            current_bullet_cd = ballistic_profile["cx"]
-            current_bullet_caliber = ballistic_profile["caliber"]
-
             snapshot = self._data_pump.get_latest_snapshot() if hasattr(self, '_data_pump') and self._data_pump else self._latest_snapshot
+            if snapshot and getattr(snapshot, 'ballistic_profile', None):
+                ballistic_profile = snapshot.ballistic_profile
+            else:
+                ballistic_profile = _read_ballistic_profile(self.scanner, cgame_base)
+            leadmark_range_limit = _get_leadmark_range_limit(ballistic_profile)
+            current_bullet_speed = ballistic_profile.get("speed", 0.0)
+            current_zeroing = (getattr(snapshot, 'current_zeroing', 0.0) if snapshot and snapshot.is_valid else None) or get_sight_compensation_factor(self.scanner, self.base_address)
+            current_bullet_mass = ballistic_profile.get("mass", 0.0)
+            current_bullet_cd = ballistic_profile.get("cx", 0.0)
+            current_bullet_caliber = ballistic_profile.get("caliber", 0.0)
             worker_fps_str = f" (Pump: {int(snapshot.worker_fps)})" if (snapshot and snapshot.is_valid and snapshot.worker_fps > 0) else ""
             painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
             painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}{worker_fps_str}")
@@ -4645,7 +4701,8 @@ class ESPOverlay(QOpenGLWidget):
             # 🔧 PRE-CALCULATE BALLISTICS & ORIGIN FOR THIS FRAME
             altitude = max(0.0, my_pos[1]) if my_pos else 0.0
             ballistic_model = _make_ballistic_model(ballistic_profile, altitude)
-            zero_pitch = _solve_zero_pitch(current_zeroing, ballistic_model)
+            is_armed = bool(ballistic_model.get("is_armed", False))
+            zero_pitch = _solve_zero_pitch(current_zeroing, ballistic_model) if is_armed else 0.0
             fire_origin = my_ground_shot_origin if my_ground_shot_origin else (my_pos if my_pos else (0.0, 0.0, 0.0))
             
             # 🎯 Pre-fetch my_rot ONCE for the entire frame (Eliminates repeated syscalls in targets loop)
@@ -4665,6 +4722,12 @@ class ESPOverlay(QOpenGLWidget):
                 self._last_sniper_qimg = None
                 active_sniper_data = None
                 valid_targets = []
+            elif not is_armed:
+                self.last_active_sniper_data = None
+                self.sniper_hold_until = 0.0
+                self.sniper_active_target_ptr = 0
+                self._last_sniper_qimg = None
+                active_sniper_data = None
 
             locked_ground_target_y = None
             for (
@@ -5377,7 +5440,8 @@ class ESPOverlay(QOpenGLWidget):
                             )
                     is_turning = False 
                     
-                    if not vel or current_bullet_speed <= 0 or not my_pos or dist <= 10.0: continue
+                    if not vel or not is_armed or current_bullet_speed <= 0.0 or not my_pos or dist <= 10.0:
+                        continue
                         
                     # 🚀 DISTANCE GATING: สำหรับเป้าหมายทางอากาศที่อยู่นอกระยะยิงปืน (เกิน 2500m) และไม่ได้เป็นเป้าหมายที่ถูกล็อค
                     # ให้ข้ามการคำนวณ 9x9 Kalman Filter และ Numerical Ballistics Simulation เพื่อรักษา 60 FPS นิ่งๆ

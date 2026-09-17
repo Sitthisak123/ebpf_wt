@@ -1756,18 +1756,17 @@ def get_ground_omega(scanner, unit_ptr):
 def get_bullet_speed(scanner, cgame_base):
     try:
         raw_weapon_ptr = scanner.read_mem(cgame_base + OFF_WEAPON_PTR, 8)
-        if not raw_weapon_ptr: return 1000.0
+        if not raw_weapon_ptr: return 0.0
         weapon_ptr = struct.unpack("<Q", raw_weapon_ptr)[0]
-        if not is_valid_ptr(weapon_ptr): return 1000.0
+        if not is_valid_ptr(weapon_ptr): return 0.0
         
         speed_data = scanner.read_mem(weapon_ptr + OFF_BULLET_SPEED, 4)
-        if not speed_data: return 1000.0
+        if not speed_data: return 0.0
         speed = struct.unpack("<f", speed_data)[0]
         if math.isfinite(speed) and 50.0 < speed < 3000.0: return speed
-        return 1000.0
+        return 0.0
     except Exception as e: 
-        print("get_bullet_speed: ", e)
-        return 1000.0
+        return 0.0
 
 def get_pince_segment(pid, segment_idx=4):
     segments = []

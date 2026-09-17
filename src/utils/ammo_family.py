@@ -147,6 +147,18 @@ def classify_weapon_caliber(speed, caliber, mass=0.0, cx=0.0, vehicle_name="", i
 
     raw_cal_mm = caliber * 1000.0
 
+    if speed < 50.0:
+        return {
+            "ammo_type": "UNARMED",
+            "ammo_flag": 0,
+            "cal_class": "UNARMED",
+            "cal_flag": 0,
+            "effective_bore_mm": 0.0,
+            "dart_caliber_mm": 0.0,
+            "is_subcaliber": False,
+            "hud_str": "🔫 Gun : UNARMED",
+        }
+
     # ✈️ Aircraft Gun Classification
     if is_air:
         if raw_cal_mm < 15.0:
