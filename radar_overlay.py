@@ -949,9 +949,9 @@ def _load_unit_bbox_persistence():
             print("[!] Persistence warning: bbox ignored due to invalid offset range")
             return False
         OFF_UNIT_BBMIN = bbmin_off
-        # OFF_UNIT_BBMAX = bbmax_off
-        # mul.OFF_UNIT_BBMIN = bbmin_off
-        # mul.OFF_UNIT_BBMAX = bbmax_off
+        OFF_UNIT_BBMAX = bbmax_off
+        mul.OFF_UNIT_BBMIN = bbmin_off
+        mul.OFF_UNIT_BBMAX = bbmax_off
         print("[*] 📦 Loaded BBox Persistence")
 
         print(

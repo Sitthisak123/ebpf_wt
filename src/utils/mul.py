@@ -24,8 +24,8 @@ OFF_VIEW_MATRIX     = 0x1D8
 
 OFF_UNIT_X          = 0x0D38
 OFF_UNIT_ROTATION   = OFF_UNIT_X - 0x24
-OFF_UNIT_BBMIN      = 0x0258
-OFF_UNIT_BBMAX      = 0x0264
+OFF_UNIT_BBMIN      = 0x0260
+OFF_UNIT_BBMAX      = 0x026C
 _BBOX_FALLBACK_LOGGED = set()
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
@@ -39,7 +39,7 @@ OFF_INFO_SHORT_NAME = 0x28         # 🏷️ ชื่อย่อยูนิ�
 OFF_INFO_FAMILY     = 0x38         # 📂 ตระกูลยูนิต (เช่น exp_tank)
 OFF_INFO_STATUS     = 0x290        # 📊 สถานะพิเศษ (Class ID)
 OFF_UNIT_NATION     = 0x98c        # 🏳️ ID ประเทศ
-OFF_UNIT_INVUL      = 0x0E70       # 🛡️ สถานะอมตะ (Is Invulnerable - 0x0E70)
+OFF_UNIT_INVUL      = 0x0E90       # 🛡️ สถานะอมตะ (Is Invulnerable - 0x0E90)
 OFF_UNIT_TYPE       = 0x80         # ✈️ Unit Type discriminator (0x80=1, 0x84=2 for Air; 0 for Ground)
 OFF_UNIT_CLASS_PTR  = 0      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
 
@@ -90,9 +90,9 @@ OFF_BULLET_MASS     = 0x20F4       # ⚖️ มวลกระสุน
 OFF_BULLET_CALIBER  = 0x20F8       # 📏 Caliber (เมตร)
 OFF_BULLET_CD       = 0x20FC       # 💨 Drag Coeff
 
-OFF_INVUL_TIMER     = 0x0E4C       # 🛡️ นับถอยหลังอมตะเกิดใหม่ (วินาที)
-OFF_INVULNERABLE    = 0x0E70       # 🛡️ แฟล็กอมตะเกิดใหม่ (bool)
-OFF_PLAYER_INFO     = 0x0F78       # 👤 พอยเตอร์ PlayerInfo (มีค่าเฉพาะผู้เล่นจริง, บอท/ซากเป็น Null)
+OFF_INVUL_TIMER     = 0x0E6C       # 🛡️ นับถอยหลังอมตะเกิดใหม่ (วินาที)
+OFF_INVULNERABLE    = 0x0E90       # 🛡️ แฟล็กอมตะเกิดใหม่ (bool)
+OFF_PLAYER_INFO     = 0x0F98       # 👤 พอยเตอร์ PlayerInfo (มีค่าเฉพาะผู้เล่นจริง, บอท/ซากเป็น Null)
 
 
 OFF_WEAPON_BARREL   = 0x480  # 🎯 ตัวคูณทิศทางลำกล้อง

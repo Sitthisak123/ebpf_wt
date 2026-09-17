@@ -131,8 +131,8 @@ def scan_bbox(scanner, target_ptr):
 def main():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--write-persistence", action="store_true")
-    parser.add_argument("--bbmin-off", type=lambda x: int(x, 0), default=0x238)
-    parser.add_argument("--bbmax-off", type=lambda x: int(x, 0), default=0x244)
+    parser.add_argument("--bbmin-off", type=lambda x: int(x, 0), default=0x260)
+    parser.add_argument("--bbmax-off", type=lambda x: int(x, 0), default=0x26c)
     args = parser.parse_args()
 
     pid = get_game_pid()
