@@ -5541,18 +5541,8 @@ class ESPOverlay(QOpenGLWidget):
                             vx, vy, vz = smoothed_vel
                             ax, ay, az = smoothed_acc
 
-                            # 🛡️ Physical Acceleration Slew Limiter: ป้องกันความเร่งกระชากฉับพลันใน 1 เฟรม (Jerk Limit: 35 m/s^3)
-                            prev_acc_entry = self._target_acc_cache.get(u_ptr)
-                            if prev_acc_entry:
-                                dt_acc = max(0.008, min(0.1, curr_t - prev_acc_entry[3]))
-                                max_da = 35.0 * dt_acc
-                                d_ax = max(-max_da, min(max_da, ax - prev_acc_entry[0]))
-                                d_ay = max(-max_da, min(max_da, ay - prev_acc_entry[1]))
-                                d_az = max(-max_da, min(max_da, az - prev_acc_entry[2]))
-                                ax = prev_acc_entry[0] + d_ax
-                                ay = prev_acc_entry[1] + d_ay
-                                az = prev_acc_entry[2] + d_az
-                            self._target_acc_cache[u_ptr] = (ax, ay, az, curr_t)
+
+
 
                             # 3. คำนวณความเร่งรวมเพื่อใช้ประเมินว่า "เครื่องบินกำลังเลี้ยวหรือไม่"
                             a_mag = math.sqrt(ax**2 + ay**2 + az**2)
@@ -5566,9 +5556,9 @@ class ESPOverlay(QOpenGLWidget):
                                 else:
                                     is_turning = False 
                                     
-                            # 4. Limit Acceleration ป้องกันเป้ากระตุกหลุดจอเวลา Memory อ่านค่าเพี้ยนฉับพลัน (Max 8.5G)
-                            if a_mag > 85.0: 
-                                ax, ay, az = (ax/a_mag)*85.0, (ay/a_mag)*85.0, (az/a_mag)*85.0
+                            # 4. Limit Acceleration ป้องกันเป้ากระตุกหลุดจอเวลา Memory อ่านค่าเพี้ยนฉับพลัน
+                            if a_mag > 150.0: 
+                                ax, ay, az = (ax/a_mag)*150.0, (ay/a_mag)*150.0, (az/a_mag)*150.0
                         
                         t_x, t_y, t_z = pos[0], pos[1], pos[2]
                         
@@ -5660,9 +5650,9 @@ class ESPOverlay(QOpenGLWidget):
                     origin_y = my_pos[1] + (gun_up_offset * up_y)
                     origin_z = my_pos[2] + (gun_up_offset * up_z)
 
-                    # 🔄 Fast Iterative TOF Solver (วนลูป 3 รอบสำหรับอากาศยานเพื่อความลู่เข้าสมบูรณ์)
+                    # 🔄 Fast Iterative TOF Solver (วนลูป 2 รอบ พร้อม Early Exit เมื่อระยะลู่เข้า)
                     prev_range = -999.0
-                    for _ in range(3 if physics_is_air else 2):
+                    for _ in range(2):
                         if physics_is_air:
                             pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
                             pred_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
@@ -5708,17 +5698,8 @@ class ESPOverlay(QOpenGLWidget):
                             
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
 
-                    # 🛡️ TOF Temporal Anti-Jitter Clamping & EMA Smoothing:
-                    # ป้องกันการกระโดดของ TOF ระหว่างเฟรม เพื่อให้จุดลีดมาร์กลื่นไหลสนิท 100%
-                    if physics_is_air and current_bullet_speed > 0:
-                        prev_tof_entry = self._target_tof_cache.get(u_ptr)
-                        if prev_tof_entry:
-                            prev_t_val, prev_t_time = prev_tof_entry
-                            dt_frame = max(0.008, min(0.1, curr_t - prev_t_time))
-                            max_dtof = 1.2 * dt_frame
-                            clamped_t = max(prev_t_val - max_dtof, min(prev_t_val + max_dtof, best_t))
-                            best_t = (prev_t_val * 0.82) + (clamped_t * 0.18)
-                        self._target_tof_cache[u_ptr] = (best_t, curr_t)
+
+
 
                     # ให้ตำแหน่งสุดท้ายใช้ TOF ล่าสุดจริง
                     if physics_is_air:
