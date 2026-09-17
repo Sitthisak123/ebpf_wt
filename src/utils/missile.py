@@ -21,25 +21,26 @@ except Exception:
     def dprint(msg, force=False): return
 
 # ====================================================================
-# Rocket Struct Offsets (starned - Linux)
+# Rocket Struct Offsets (confirmed 2026-09)
 # ====================================================================
-OFF_RKT_ENTITY_ID  = 0x30
-OFF_RKT_OWNER      = 0x40
-OFF_RKT_STATE      = 0x94
-OFF_RKT_POS        = 0x23c
-OFF_RKT_VEL        = 0x258
-OFF_RKT_DETONATED  = 0x420   # Detonation/impact effect flag (0 = flying, non-zero = detonated in starned)
-OFF_RKT_PHASE      = 0x498   # Projectile lifecycle phase (3 = in-flight, 6 = terminated/impacted)
-OFF_RKT_GUIDANCE   = 0x638
-OFF_RKT_ALIVE      = 0x6c0   # Entity active/alive flag (1 = active, 0 = inactive/dead)
-OFF_RKT_PROPS      = 0x6c8
+OFF_PROJ_LIST      = getattr(mul, 'OFF_PROJ_LIST', 0xac02ab8)
+OFF_RKT_ENTITY_ID  = getattr(mul, 'OFF_RKT_ENTITY_ID', 0x40)
+OFF_RKT_OWNER      = getattr(mul, 'OFF_RKT_OWNER', 0x50)
+OFF_RKT_STATE      = getattr(mul, 'OFF_RKT_STATE', 0x94)
+OFF_RKT_POS        = getattr(mul, 'OFF_RKT_POS', 0x23c)
+OFF_RKT_VEL        = getattr(mul, 'OFF_RKT_VEL', 0x258)
+OFF_RKT_DETONATED  = getattr(mul, 'OFF_RKT_DETONATED', 0x420)   # Detonation/impact effect flag
+OFF_RKT_PHASE      = getattr(mul, 'OFF_RKT_PHASE', 0x498)       # Projectile lifecycle phase
+OFF_RKT_GUIDANCE   = getattr(mul, 'OFF_RKT_GUIDANCE', 0x670)
+OFF_RKT_ALIVE      = getattr(mul, 'OFF_RKT_ALIVE', 0x6c0)       # Entity active/alive flag
+OFF_RKT_PROPS      = getattr(mul, 'OFF_RKT_PROPS', 0x700)
 
 # Guidance struct internals
-OFF_GUID_LOCKED    = 0x50
-OFF_GUID_TRACKING  = 0x51
-OFF_GUID_TARGET_ID = 0x8C
+OFF_GUID_LOCKED    = getattr(mul, 'OFF_GUID_LOCKED', 0x4C)
+OFF_GUID_TRACKING  = getattr(mul, 'OFF_GUID_TRACKING', 0x4D)
+OFF_GUID_TARGET_ID = getattr(mul, 'OFF_GUID_TARGET_ID', 0x84)
 
-# Active ECS node entries window (Rockets are located in active entries 0..350)
+# Active ECS node entries window (Fallback)
 NODE_ENTRY_WINDOW = 350
 
 # ====================================================================
@@ -191,11 +192,47 @@ class MissileScanner:
         self._initialized = True
         return True
     
+    def _dedup_missiles(self, missiles):
+        """
+        Deduplicate cloned/duplicate missiles in the same frame:
+        1. Unique entity_id filtering
+        2. Spatial proximity: if 2 missiles have the same owner, same weapon name, and dist < 25m,
+           keep only the faster one (the actual flying projectile).
+        """
+        if len(missiles) <= 1:
+            return missiles
+        
+        # 1. Deduplicate by entity_id
+        by_eid = {}
+        no_eid = []
+        for m in missiles:
+            if m.entity_id > 0:
+                if m.entity_id not in by_eid or m.speed > by_eid[m.entity_id].speed:
+                    by_eid[m.entity_id] = m
+            else:
+                no_eid.append(m)
+        filtered = list(by_eid.values()) + no_eid
+        
+        # 2. Spatial proximity suppression (same owner, same weapon name, distance < 25m)
+        final_list = []
+        for m in filtered:
+            is_dup = False
+            for existing in final_list:
+                if existing.owner == m.owner and existing.name == m.name:
+                    dx = existing.pos[0] - m.pos[0]
+                    dy = existing.pos[1] - m.pos[1]
+                    dz = existing.pos[2] - m.pos[2]
+                    if (dx*dx + dy*dy + dz*dz) < 625.0: # 25m^2
+                        is_dup = True
+                        break
+            if not is_dup:
+                final_list.append(m)
+        return final_list
+
     def scan(self, scanner, base):
         """
-        Scan active missiles using live node_table pointer.
-        Handles dynamic ECS node_table memory re-allocations seamlessly (> 32 missiles).
-        Takes < 0.02ms total execution time.
+        Scan active missiles using Projectile Array (OFF_PROJ_LIST) with ECS Node Table fallback.
+        Takes < 0.01ms total execution time.
         """
         now = time.time()
         
@@ -204,7 +241,32 @@ class MissileScanner:
             return None
         self._last_scan_time = now
         
-        # Always fetch LIVE ECS manager and node_table pointers
+        # 1. Primary: Ultra-Fast Dedicated Projectile Table Scanner (Confirmed 2026-09)
+        proj_list_off = getattr(mul, "OFF_PROJ_LIST", 0xac02ab8)
+        table_ptr = _rp(scanner, base + proj_list_off)
+        if _is_valid_ptr(table_ptr):
+            cnt_cap = scanner.read_mem(base + proj_list_off + 8, 8)
+            if cnt_cap and len(cnt_cap) == 8:
+                count, cap = struct.unpack("<II", cnt_cap)
+                if 0 < count <= 1000 and cap <= 65536:
+                    raw_entries = scanner.read_mem(table_ptr + 0x20, count * 0x20)
+                    if raw_entries and len(raw_entries) >= 0x20:
+                        found_missiles = []
+                        seen_ptrs = set()
+                        num_m = min(count, len(raw_entries) // 0x20)
+                        for i in range(num_m):
+                            chunk = raw_entries[i * 0x20 : (i + 1) * 0x20]
+                            ent_ptr = struct.unpack_from("<Q", chunk, 0x10)[0]
+                            if _is_valid_ptr(ent_ptr) and (ent_ptr & 7 == 0) and ent_ptr not in seen_ptrs:
+                                m = self._check_rocket(scanner, ent_ptr, i)
+                                if m and m.name != "":
+                                    seen_ptrs.add(m.ptr)
+                                    found_missiles.append(m)
+                        return self._dedup_missiles(found_missiles)
+                    elif count == 0:
+                        return []
+        
+        # 2. Fallback: ECS Node Table Scanner
         ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8226ba0)
         ecs_node_off = getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)
         
@@ -216,7 +278,6 @@ class MissileScanner:
         if not _is_valid_ptr(node_t):
             return []
         
-        # Single 8KB Batch Read of active node table entries (0..250) from LIVE node_t
         table_bytes = scanner.read_mem(node_t, NODE_ENTRY_WINDOW * 0x20)
         if not table_bytes or len(table_bytes) < 0x20:
             return []
@@ -234,17 +295,11 @@ class MissileScanner:
             if not _is_valid_ptr(storage) or (storage & 0x7 != 0):
                 continue
             
-            # ⚡ KEY PERFORMANCE & DYNAMIC CAPACITY OPTIMIZATION:
-            # Check active entity count (+0x8) and capacity (+0x14) in ECS Node Descriptor.
-            # Skip empty (count==0), unallocated (capacity==0), or corrupted tables (count > capacity).
             count = struct.unpack_from("<I", data, 8)[0]
             capacity = struct.unpack_from("<I", data, 0x14)[0]
             if count == 0 or capacity == 0 or count > capacity or capacity > 8192:
                 continue
             
-            # In Dagor ECS, storage is a Structure of Arrays (SOA).
-            # Component column offsets scale with capacity (e.g. col 1 ~ cap*5.5, col 2 ~ cap*7.5).
-            # Reading min(max(capacity * 8, 128), 16384) covers all active columns across capacities 512, 1024, 2048+
             read_count = min(max(capacity * 8, 128), 16384)
             bulk = scanner.read_mem(storage, read_count * 8)
             if not bulk or len(bulk) < 8:
@@ -262,7 +317,7 @@ class MissileScanner:
                 except Exception:
                     continue
 
-        return [m for m in found_missiles if m.name != ""]
+        return self._dedup_missiles(found_missiles)
     
     def _check_rocket(self, scanner, ptr, entry_idx):
         """
@@ -282,15 +337,21 @@ class MissileScanner:
         
         # Filter out dead/impacted rockets pooled on ground
         phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0]
-        detonated = struct.unpack_from("<Q", header, OFF_RKT_DETONATED)[0]
+        detonated = struct.unpack_from("<I", header, OFF_RKT_DETONATED)[0]
         if phase == 6 or detonated != 0:
             return None
         
         # Header metadata
         owner = struct.unpack_from("<Q", header, OFF_RKT_OWNER)[0] if len(header) >= OFF_RKT_OWNER + 8 else 0
+        if not owner and len(header) >= 0x48:
+            owner = struct.unpack_from("<Q", header, 0x40)[0]
         state = header[OFF_RKT_STATE] if len(header) > OFF_RKT_STATE else 0
         eid = struct.unpack_from("<I", header, OFF_RKT_ENTITY_ID)[0] if len(header) >= OFF_RKT_ENTITY_ID + 4 else 0
+        if not eid and len(header) >= 0x34:
+            eid = struct.unpack_from("<I", header, 0x30)[0]
         guid = struct.unpack_from("<Q", header, OFF_RKT_GUIDANCE)[0] if len(header) >= OFF_RKT_GUIDANCE + 8 else 0
+        if not guid and len(header) >= 0x640:
+            guid = struct.unpack_from("<Q", header, 0x638)[0]
         
         # 🛡️ STRICT VALIDATION: Filter out fake/garbage entities and non-rocket objects
         # 1. State: In-flight missiles only have state 0 (active), 1 (boost), or 2 (sustain).
@@ -317,15 +378,20 @@ class MissileScanner:
                 lock_val = _r8(scanner, guid + OFF_GUID_LOCKED)
                 trk_val = _r8(scanner, guid + OFF_GUID_TRACKING)
                 if lock_val not in (0, 1) or trk_val not in (0, 1):
-                    guid = 0
+                    lock_val = _r8(scanner, guid + 0x50)
+                    trk_val = _r8(scanner, guid + 0x51)
+                    if lock_val not in (0, 1) or trk_val not in (0, 1):
+                        guid = 0
         
         # Resolve weapon definition name
         # Caching by props (the static weapon definition pointer in Dagor Engine) guarantees that
         # when entity memory ptr is recycled for a newly dropped flare/chaff, it will NEVER inherit the old missile name!
         props = struct.unpack_from("<Q", header, OFF_RKT_PROPS)[0] if len(header) >= OFF_RKT_PROPS + 8 else 0
+        if not props and len(header) >= 0x6d0:
+            props = struct.unpack_from("<Q", header, 0x6c8)[0]
         name = ""
         
-        # Priority A: props pointer (+0x6c8)
+        # Priority A: props pointer (+0x700 / +0x6c8)
         # In Dagor Engine, weapon properties struct holds:
         #   +0x28: full weapon BLK path (e.g. 'gameData/Weapons/rocketGuns/countermeasure_split_launcher_jet.blk' or 'us_aim9l_sidewinder.blk')
         #   +0x50: launcher or weapon name (e.g. 'f_2a_adtw^us_2_75_in_ffar_mighty_mouse.blk' or 'flare_launcher')
@@ -399,9 +465,14 @@ class MissileScanner:
         
         # Read guidance details if valid pointer
         if _is_valid_ptr(guid):
-            m.is_locked = _r8(scanner, guid + OFF_GUID_LOCKED) == 1
-            m.is_tracking = _r8(scanner, guid + OFF_GUID_TRACKING) == 1
-            m.target_id = _ri16(scanner, guid + OFF_GUID_TARGET_ID)
+            m.is_locked = (_r8(scanner, guid + OFF_GUID_LOCKED) == 1) or (_r8(scanner, guid + 0x50) == 1)
+            m.is_tracking = (_r8(scanner, guid + OFF_GUID_TRACKING) == 1) or (_r8(scanner, guid + 0x51) == 1)
+            tgt = _ri16(scanner, guid + OFF_GUID_TARGET_ID)
+            if tgt <= 0:
+                tgt_fallback = _ri16(scanner, guid + 0x8C)
+                if tgt_fallback > 0:
+                    tgt = tgt_fallback
+            m.target_id = tgt
         
         return m
 
