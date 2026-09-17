@@ -54,9 +54,11 @@ OFF_ACTIVE_EXTRA_UNIT_LISTS = (
 )
 ENABLE_WORLD_UNIT_LIST_FALLBACK = True
 OFF_AIR_UNITS       = (0x310, True)
-OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kinematics dumpers
+OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kinematics dumpers (Legacy net)
 OFF_AIR_VEL         = 0x0318      # 🎯 Velocity (FLOAT Vector 12-byte)
 OFF_AIR_OMEGA       = 0x0550      # 🌪️ Angular Velocity (Updated 2026-09: 0x0550 FLOAT vec3)
+OFF_AIR_HIGH_TICK_MOVEMENT = 0x20F0  # 🚀 High-Tick Target Air Movement pointer (41-43 Hz 3D World Vec)
+OFF_AIR_HIGH_TICK_VEL      = 0x07C0  # 🚀 High-Tick Air 3D Velocity (FLOAT vec3)
 OFF_MY_AIR_VEL      = 0x0068      # My air velocity: DOUBLE vec3 at move_ptr + 0x0068 (47.5Hz)
 OFF_MY_AIR_MOVEMENT = 0x0D48      # My air movement pointer (Updated 2026-09: 0x0D48 / 0x0D50)
 OFF_MY_AIR_OMEGA    = 0x0098      # 🌪️ My air angular velocity: DOUBLE vec3 at move_ptr + 0x0098 (Updated 2026-09)
@@ -447,14 +449,16 @@ VELOCITY_PROFILES = {
     "air": {
         "requested_label": "AIR",
         "primary": {
-            "label": "AIR_PRIMARY",
-            "mov_off": lambda: 0x0D48,
-            "vel_off": lambda: 0x0068,
-            "fmt": "ddd",
+            "label": "AIR_TARGET_HIGH_TICK",
+            "mov_off": lambda: OFF_AIR_HIGH_TICK_MOVEMENT,
+            "vel_off": lambda: OFF_AIR_HIGH_TICK_VEL,
+            "fmt": "fff",
             "max_speed": 15000.0,
         },
         "fallbacks": [
-            {"label": "AIR_PLAYER", "mov_off": lambda: OFF_MY_AIR_MOVEMENT, "vel_off": lambda: OFF_MY_AIR_VEL, "fmt": "fff", "max_speed": 15000.0},
+            {"label": "AIR_UNIVERSAL_HIGH_TICK", "mov_off": lambda: 0x24C0, "vel_off": lambda: 0x0E90, "fmt": "fff", "max_speed": 15000.0},
+            {"label": "AIR_PLAYER", "mov_off": lambda: OFF_MY_AIR_MOVEMENT, "vel_off": lambda: OFF_MY_AIR_VEL, "fmt": "ddd", "max_speed": 15000.0},
+            {"label": "AIR_LEGACY_NET", "mov_off": lambda: OFF_AIR_MOVEMENT, "vel_off": lambda: OFF_AIR_VEL, "fmt": "fff", "max_speed": 15000.0},
         ],
     },
     "ground": {
@@ -1639,38 +1643,126 @@ def get_unit_detailed_dna(scanner, u_ptr):
 # ==========================================
 # Velocity Helpers
 # ==========================================
-def get_air_velocity(scanner, u_ptr):
+def get_air_velocity_detailed(scanner, u_ptr):
     """
-    ดึงเวกเตอร์ความเร็วเครื่องบิน 3 มิติ (Air Velocity)
-    1. Primary: อ่านจาก OFF_AIR_MOVEMENT (0x0018) -> OFF_AIR_VEL (0x0318) แบบ Float (<fff)
-    2. Fallback: กรณีเครื่องบินตนเอง (My Unit) อ่านจาก OFF_MY_AIR_MOVEMENT (0x0D28) -> OFF_MY_AIR_VEL (0x0068) แบบ Double (<ddd)
+    ดึงข้อมูล Air Velocity แบบละเอียดทุกช่องทาง (Candidates):
+    1. 🚀 Target High-Tick (41Hz 3D World Vec): OFF_AIR_HIGH_TICK_MOVEMENT (0x20F0) -> (0x07C0, 0x0CF0, 0x0EA4) Float
+    2. 🚀 Universal High-Tick (39-46Hz): 0x24C0 -> 0x0E90 Float
+    3. 🌟 Local Player High-Tick (57.5Hz): OFF_MY_AIR_MOVEMENT (0x0D48 / 0x0D50) -> 0x0068 Double
+    4. 🚀 Target High-Tick Alt 2 (43Hz): 0x14B8 -> 0x0F48 Float
+    5. ⚪ Legacy Network Fallback (0.1-5Hz): OFF_AIR_MOVEMENT (0x0018) -> 0x0318 Float
+
+    คืนค่า: ((vx, vy, vz), info_dict)
     """
+    info = {
+        "source": "none",
+        "move_off": 0,
+        "vel_off": 0,
+        "move_ptr": 0,
+        "vel_type": "FLOAT",
+        "all_raw": {},
+        "chosen_vel": (0.0, 0.0, 0.0),
+    }
+
     try:
-        # 🌟 1. Primary Air Movement Pointer (0x0018 -> 0x0318 Float vec3)
+        # --- 1. Target High-Tick (0x20F0) ---
+        move_raw = scanner.read_mem(u_ptr + OFF_AIR_HIGH_TICK_MOVEMENT, 8)
+        if move_raw and len(move_raw) == 8:
+            m_ptr = struct.unpack("<Q", move_raw)[0]
+            if is_valid_ptr(m_ptr):
+                for v_off, key in ((OFF_AIR_HIGH_TICK_VEL, "0x20F0_0x07C0"), (0x0CF0, "0x20F0_0x0CF0"), (0x0EA4, "0x20F0_0x0EA4")):
+                    v_raw = scanner.read_mem(m_ptr + v_off, 12)
+                    if v_raw and len(v_raw) == 12:
+                        vx, vy, vz = struct.unpack("<fff", v_raw)
+                        if all(math.isfinite(x) and abs(x) < 2500.0 for x in (vx, vy, vz)):
+                            info["all_raw"][key] = (vx, vy, vz)
+                            if info["source"] == "none" and any(abs(x) > 0.05 for x in (vx, vy, vz)):
+                                info["source"] = key
+                                info["move_off"] = OFF_AIR_HIGH_TICK_MOVEMENT
+                                info["vel_off"] = v_off
+                                info["move_ptr"] = m_ptr
+                                info["chosen_vel"] = (vx, vy, vz)
+
+        # --- 2. Universal High-Tick (0x24C0) ---
+        move_raw = scanner.read_mem(u_ptr + 0x24C0, 8)
+        if move_raw and len(move_raw) == 8:
+            m_ptr = struct.unpack("<Q", move_raw)[0]
+            if is_valid_ptr(m_ptr):
+                v_raw = scanner.read_mem(m_ptr + 0x0E90, 12)
+                if v_raw and len(v_raw) == 12:
+                    vx, vy, vz = struct.unpack("<fff", v_raw)
+                    if all(math.isfinite(x) and abs(x) < 2500.0 for x in (vx, vy, vz)):
+                        info["all_raw"]["0x24C0_0x0E90"] = (vx, vy, vz)
+                        if info["source"] == "none" and any(abs(x) > 0.05 for x in (vx, vy, vz)):
+                            info["source"] = "0x24C0_0x0E90"
+                            info["move_off"] = 0x24C0
+                            info["vel_off"] = 0x0E90
+                            info["move_ptr"] = m_ptr
+                            info["chosen_vel"] = (vx, vy, vz)
+
+        # --- 3. Local Player High-Tick (0x0D48 / 0x0D50 Double) ---
+        for off_mov in (OFF_MY_AIR_MOVEMENT, 0x0D50, 0x0D28, 0x0D10):
+            move_raw = scanner.read_mem(u_ptr + off_mov, 8)
+            if move_raw and len(move_raw) == 8:
+                m_ptr = struct.unpack("<Q", move_raw)[0]
+                if is_valid_ptr(m_ptr):
+                    v_raw = scanner.read_mem(m_ptr + OFF_MY_AIR_VEL, 24)
+                    if v_raw and len(v_raw) == 24:
+                        vx, vy, vz = struct.unpack("<ddd", v_raw)
+                        if all(math.isfinite(x) and abs(x) < 2500.0 for x in (vx, vy, vz)):
+                            info["all_raw"]["0x0D48_0x0068"] = (vx, vy, vz)
+                            if info["source"] == "none" and any(abs(x) > 0.05 for x in (vx, vy, vz)):
+                                info["source"] = "0x0D48_0x0068"
+                                info["move_off"] = off_mov
+                                info["vel_off"] = OFF_MY_AIR_VEL
+                                info["move_ptr"] = m_ptr
+                                info["vel_type"] = "DOUBLE"
+                                info["chosen_vel"] = (vx, vy, vz)
+                            break
+
+        # --- 4. Target High-Tick Alt 2 (0x14B8) ---
+        move_raw = scanner.read_mem(u_ptr + 0x14B8, 8)
+        if move_raw and len(move_raw) == 8:
+            m_ptr = struct.unpack("<Q", move_raw)[0]
+            if is_valid_ptr(m_ptr):
+                v_raw = scanner.read_mem(m_ptr + 0x0F48, 12)
+                if v_raw and len(v_raw) == 12:
+                    vx, vy, vz = struct.unpack("<fff", v_raw)
+                    if all(math.isfinite(x) and abs(x) < 2500.0 for x in (vx, vy, vz)):
+                        info["all_raw"]["0x14B8_0x0F48"] = (vx, vy, vz)
+                        if info["source"] == "none" and any(abs(x) > 0.05 for x in (vx, vy, vz)):
+                            info["source"] = "0x14B8_0x0F48"
+                            info["move_off"] = 0x14B8
+                            info["vel_off"] = 0x0F48
+                            info["move_ptr"] = m_ptr
+                            info["chosen_vel"] = (vx, vy, vz)
+
+        # --- 5. Legacy Fallback (0x0018) ---
         move_raw = scanner.read_mem(u_ptr + OFF_AIR_MOVEMENT, 8)
-        if move_raw:
-            move_ptr = struct.unpack("<Q", move_raw)[0]
-            if is_valid_ptr(move_ptr):
-                vel_raw = scanner.read_mem(move_ptr + OFF_AIR_VEL, 12)
-                if vel_raw and len(vel_raw) == 12:
-                    vx, vy, vz = struct.unpack("<fff", vel_raw)
-                    if all(math.isfinite(v) for v in (vx, vy, vz)) and all(abs(v) < 2500.0 for v in (vx, vy, vz)):
-                        return (vx, vy, vz)
+        if move_raw and len(move_raw) == 8:
+            m_ptr = struct.unpack("<Q", move_raw)[0]
+            if is_valid_ptr(m_ptr):
+                v_raw = scanner.read_mem(m_ptr + OFF_AIR_VEL, 12)
+                if v_raw and len(v_raw) == 12:
+                    vx, vy, vz = struct.unpack("<fff", v_raw)
+                    if all(math.isfinite(x) and abs(x) < 2500.0 for x in (vx, vy, vz)):
+                        info["all_raw"]["0x0018_0x0318"] = (vx, vy, vz)
+                        if info["source"] == "none" and any(abs(x) > 0.05 for x in (vx, vy, vz)):
+                            info["source"] = "0x0018_0x0318"
+                            info["move_off"] = OFF_AIR_MOVEMENT
+                            info["vel_off"] = OFF_AIR_VEL
+                            info["move_ptr"] = m_ptr
+                            info["chosen_vel"] = (vx, vy, vz)
 
-        # 🌟 2. Fallback for Player Air Unit (0x0D28 -> 0x0068 Double vec3)
-        move_raw = scanner.read_mem(u_ptr + OFF_MY_AIR_MOVEMENT, 8)
-        if move_raw:
-            move_ptr = struct.unpack("<Q", move_raw)[0]
-            if is_valid_ptr(move_ptr):
-                vel_raw = scanner.read_mem(move_ptr + OFF_MY_AIR_VEL, 24)
-                if vel_raw and len(vel_raw) == 24:
-                    vx, vy, vz = struct.unpack("<ddd", vel_raw)
-                    if all(math.isfinite(v) for v in (vx, vy, vz)) and all(abs(v) < 2500.0 for v in (vx, vy, vz)):
-                        return (vx, vy, vz)
+        return info["chosen_vel"], info
+    except Exception:
+        return (0.0, 0.0, 0.0), info
 
-        return (0.0, 0.0, 0.0)
-    except Exception as e:
-        return (0.0, 0.0, 0.0)
+
+def get_air_velocity(scanner, u_ptr):
+    """ดึงความเร็วเครื่องบิน 3 มิติ (Air Velocity) คืนค่าเฉพาะเวกเตอร์ (vx, vy, vz)."""
+    v, _ = get_air_velocity_detailed(scanner, u_ptr)
+    return v
 
 def get_my_air_velocity(scanner, my_unit_ptr):
     """
@@ -1715,33 +1807,123 @@ def get_ground_velocity(scanner, u_ptr):
 # ==========================================
 # Omega Helpers (Angular Velocity)
 # ==========================================
-def get_air_omega(scanner, unit_ptr):
+_AIR_ROT_CACHE: Dict[int, Tuple[Tuple[float, ...], float, Tuple[float, float, float], float]] = {}
+
+def get_air_omega_detailed(scanner, unit_ptr):
     """
-    ดึงเวกเตอร์ความเร็วเชิงมุม 3 มิติ (rad/s) ของเครื่องบิน (ศัตรู/ทั่วไป)
-    อ่านจาก OFF_AIR_MOVEMENT (0x0018) -> OFF_AIR_OMEGA (0x0550) แบบ Float (<fff)
+    ดึงเวกเตอร์ความเร็วเชิงมุม 3 มิติ (rad/s) ของเครื่องบิน พร้อมข้อมูล Offsets ละเอียด:
+    1. Net Omega: OFF_AIR_MOVEMENT (0x0018) -> OFF_AIR_OMEGA (0x0550) Float
+    2. Kinematic Omega: OFF_UNIT_ROTATION (0x0D14) 3x3 Matrix แบบ Non-Strobe Anti-Jitter (~46Hz)
+
+    คืนค่า: ((wx, wy, wz), info_dict)
     """
+    global _AIR_ROT_CACHE
+    info = {
+        "source": "none",
+        "offset": 0,
+        "raw_0550": (0.0, 0.0, 0.0),
+        "raw_0d14": (0.0, 0.0, 0.0),
+        "chosen_omega": (0.0, 0.0, 0.0),
+    }
+
     try:
+        # 1. Net Omega (0x0018 + 0x0550)
         mov_ptr_raw = scanner.read_mem(unit_ptr + OFF_AIR_MOVEMENT, 8)
-        if not mov_ptr_raw: return (0.0, 0.0, 0.0)
-        mov_ptr = struct.unpack("<Q", mov_ptr_raw)[0]
-        if not is_valid_ptr(mov_ptr): return (0.0, 0.0, 0.0)
-        
-        # 1. ลองอ่านจาก Offset 0x0550 ที่เพิ่งค้นพบใหม่
-        omega_data = scanner.read_mem(mov_ptr + OFF_AIR_OMEGA, 12)
-        if omega_data and len(omega_data) == 12:
-            wx, wy, wz = struct.unpack("<fff", omega_data)
-            if math.isfinite(wx) and math.isfinite(wy) and math.isfinite(wz):
-                return (wx, wy, wz)
-                
-        # 2. Fallback: ลองอ่านจาก 0x03F8 (Historic)
-        omega_data_old = scanner.read_mem(mov_ptr + 0x03F8, 12)
-        if omega_data_old and len(omega_data_old) == 12:
-            wx, wy, wz = struct.unpack("<fff", omega_data_old)
-            if math.isfinite(wx) and math.isfinite(wy) and math.isfinite(wz):
-                return (wx, wy, wz)
-    except Exception as e: 
+        if mov_ptr_raw and len(mov_ptr_raw) == 8:
+            mov_ptr = struct.unpack("<Q", mov_ptr_raw)[0]
+            if is_valid_ptr(mov_ptr):
+                omega_data = scanner.read_mem(mov_ptr + OFF_AIR_OMEGA, 12)
+                if omega_data and len(omega_data) == 12:
+                    wx, wy, wz = struct.unpack("<fff", omega_data)
+                    if math.isfinite(wx) and math.isfinite(wy) and math.isfinite(wz):
+                        info["raw_0550"] = (wx, wy, wz)
+                        if (wx*wx + wy*wy + wz*wz) > 1e-4:
+                            info["source"] = "0x0018_0x0550"
+                            info["offset"] = OFF_AIR_OMEGA
+                            info["chosen_omega"] = (wx, wy, wz)
+                            return (wx, wy, wz), info
+
+        # 2. Kinematic Omega (OFF_UNIT_ROTATION = 0x0D14)
+        rot_raw = scanner.read_mem(unit_ptr + OFF_UNIT_ROTATION, 36)
+        if rot_raw and len(rot_raw) == 36:
+            r_curr = struct.unpack("<9f", rot_raw)
+            if all(math.isfinite(x) for x in r_curr):
+                now = time.time()
+                cached = _AIR_ROT_CACHE.get(unit_ptr)
+                if cached:
+                    r_prev, t_prev, w_prev, t_last_change = cached
+                    dt = now - t_prev
+                    if 0.005 <= dt <= 0.5:
+                        # R_rel = r_curr * r_prev^T
+                        r_rel = [0.0] * 9
+                        for i in range(3):
+                            for j in range(3):
+                                r_rel[i*3 + j] = sum(r_curr[i*3 + k] * r_prev[j*3 + k] for k in range(3))
+                        trace = r_rel[0] + r_rel[4] + r_rel[8]
+                        val = max(-1.0, min(1.0, (trace - 1.0) * 0.5))
+                        angle = math.acos(val)
+
+                        if angle >= 1e-4:
+                            sin_a = math.sin(angle)
+                            if abs(sin_a) >= 1e-4:
+                                dt_eff = max(0.005, now - t_last_change)
+                                scale = angle / (2.0 * sin_a * dt_eff)
+                                # 🛠️ Matrix Transposition Alignment:
+                                # ในหน่วยความจำของ War Thunder เมทริกซ์ 0x0D14 จัดเก็บแบบ Transpose (Column-Major)
+                                # สลับเครื่องหมายให้ตรงกับเวกเตอร์การเลี้ยวจริงใน World Space (+0.615 alignment)
+                                raw_wx = (r_rel[5] - r_rel[7]) * scale
+                                raw_wy = (r_rel[6] - r_rel[2]) * scale
+                                raw_wz = (r_rel[1] - r_rel[3]) * scale
+                                if all(math.isfinite(x) and abs(x) < 25.0 for x in (raw_wx, raw_wy, raw_wz)):
+                                    # Low-Pass Filter ป้องกันการสไปก์ฉับพลัน
+                                    filt_wx = (w_prev[0] * 0.35) + (raw_wx * 0.65)
+                                    filt_wy = (w_prev[1] * 0.35) + (raw_wy * 0.65)
+                                    filt_wz = (w_prev[2] * 0.35) + (raw_wz * 0.65)
+                                    w_res = (filt_wx, filt_wy, filt_wz)
+                                    _AIR_ROT_CACHE[unit_ptr] = (r_curr, now, w_res, now)
+                                    info["raw_0d14"] = w_res
+                                    info["source"] = "0x0D14_RotMatrix"
+                                    info["offset"] = OFF_UNIT_ROTATION
+                                    info["chosen_omega"] = w_res
+                                    return w_res, info
+                        else:
+                            # 🛡️ ANTI-STROBE: เมื่อ Matrix ยังไม่อัปเดตในเฟรมนี้ (เช่น overlay 60Hz แต่เกมอัปเดต 46Hz)
+                            # ไม่ดรอปเป็น 0 ทันที เพื่อป้องกัน Jitter แบบฟันปลา!
+                            idle_time = now - t_last_change
+                            if idle_time < 0.08:
+                                # คงค่าเดิมไว้เพื่อให้ Leadmark นิ่งสนิท
+                                info["raw_0d14"] = w_prev
+                                info["source"] = "0x0D14_RotMatrix_Hold"
+                                info["offset"] = OFF_UNIT_ROTATION
+                                info["chosen_omega"] = w_prev
+                                return w_prev, info
+                            elif idle_time < 0.25:
+                                # ค่อยๆ Decay สู่ 0 อย่างนุ่มนวล
+                                decay = max(0.0, 1.0 - ((idle_time - 0.08) / 0.17))
+                                w_decayed = (w_prev[0] * decay, w_prev[1] * decay, w_prev[2] * decay)
+                                info["raw_0d14"] = w_decayed
+                                info["source"] = "0x0D14_RotMatrix_Decay"
+                                info["offset"] = OFF_UNIT_ROTATION
+                                info["chosen_omega"] = w_decayed
+                                return w_decayed, info
+                            else:
+                                # เครื่องบินบินตรงจริงๆ เกิน 0.25 วินาที
+                                _AIR_ROT_CACHE[unit_ptr] = (r_curr, now, (0.0, 0.0, 0.0), now)
+                                info["source"] = "0x0D14_Cruising"
+                                info["offset"] = OFF_UNIT_ROTATION
+                                return (0.0, 0.0, 0.0), info
+                else:
+                    _AIR_ROT_CACHE[unit_ptr] = (r_curr, now, (0.0, 0.0, 0.0), now)
+    except Exception as e:
         dprint(f"get_air_omega error: {e}", force=False)
-    return (0.0, 0.0, 0.0)
+
+    return (0.0, 0.0, 0.0), info
+
+
+def get_air_omega(scanner, unit_ptr):
+    """ดึงเวกเตอร์ความเร็วเชิงมุม 3 มิติ (rad/s) คืนค่าเฉพาะเวกเตอร์ (wx, wy, wz)."""
+    w, _ = get_air_omega_detailed(scanner, unit_ptr)
+    return w
 
 
 def get_my_air_omega(scanner, my_unit_ptr):

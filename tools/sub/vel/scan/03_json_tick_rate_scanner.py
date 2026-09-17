@@ -11,6 +11,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
+from src.utils.mul import is_valid_ptr, get_local_team
 
 
 LATEST_JSON = os.path.join(PROJECT_ROOT, "dumps", "01_my_unit_velocity_scan_latest.json")
@@ -66,19 +67,32 @@ def speed_kmh(vec):
     return math.sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]) * 3.6
 
 
-def build_monitors(scanner, seed_candidates):
+def to_int(val):
+    if isinstance(val, int):
+        return val
+    return int(str(val), 0)
+
+
+def build_monitors(scanner, seed_candidates, active_my_unit_ptr=None):
     monitors = []
     for cand in seed_candidates:
-        unit_ptr = int(cand["unit_ptr"])
-        move_ptr_off = int(cand["move_ptr_offset"])
-        vel_off = int(cand["vel_offset"])
-        data_type = cand["data_type"]
+        raw_u = cand.get("unit_ptr", 0)
+        unit_ptr = to_int(raw_u)
+
+        # หากเป็น My Unit แล้วเกิดใหม่ ให้ใช้ my_unit_ptr ปัจจุบัน
+        if active_my_unit_ptr and is_valid_ptr(active_my_unit_ptr):
+            if not is_valid_ptr(unit_ptr):
+                unit_ptr = active_my_unit_ptr
+
+        move_ptr_off = to_int(cand.get("move_ptr_offset", 0))
+        vel_off = to_int(cand.get("vel_offset", 0))
+        data_type = cand.get("data_type", "FLOAT")
 
         move_raw = scanner.read_mem(unit_ptr + move_ptr_off, 8)
         if not move_raw:
             continue
         move_ptr = struct.unpack("<Q", move_raw)[0]
-        if move_ptr < 0x10000:
+        if not is_valid_ptr(move_ptr):
             continue
 
         unit_vec = read_vec(scanner, unit_ptr, vel_off, data_type)
@@ -198,8 +212,8 @@ def main():
     base_addr = get_game_base_address(pid)
     scanner = MemoryScanner(pid)
     init_dynamic_offsets(scanner, base_addr)
-
-    monitors = build_monitors(scanner, candidates)
+    my_unit_ptr, _ = get_local_team(scanner, base_addr) if base_addr else (None, 0)
+    monitors = build_monitors(scanner, candidates, my_unit_ptr)
     if not monitors:
         print("[-] ไม่มี candidate ที่อ่านได้จาก JSON นี้")
         return

@@ -7,8 +7,8 @@ import json
 import shutil
 import subprocess
 import traceback
-import pwd
 import mss
+from collections import deque
 from PyQt5.QtGui import QImage, QPixmap, QPolygon
 from PyQt5.QtCore import QRect, QPoint
 
@@ -493,7 +493,7 @@ BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
-SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
+SHOW_BOT_UNITS = False               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
@@ -2547,7 +2547,56 @@ def _read_ballistic_profile(scanner, cgame_base):
         ),
         "is_valid": is_valid,
     })
-    return profile
+
+    # 🛡️ BALLISTIC PROFILE DEBOUNCE & HYSTERESIS:
+    # ป้องกันการสลับค่าความเร็วลูกปืนไปมา (Flip-Flop เช่น 730 <-> 750 m/s ในเครื่องบินที่มีปืนหลายขนาด)
+    # ซึ่งเป็นสาเหตุอันดับ 1 ที่ทำให้ TOF กระโดด 200-500ms และ Leadmark กระตุก 40-50 พิกเซล
+    global _BALLISTIC_DEBOUNCE_STATE
+    if '_BALLISTIC_DEBOUNCE_STATE' not in globals():
+        _BALLISTIC_DEBOUNCE_STATE = {
+            "active_profile": None,
+            "candidate_speed": 0.0,
+            "candidate_frames": 0,
+            "last_switch_time": 0.0,
+        }
+
+    now_t = time.time()
+    if not is_valid:
+        if _BALLISTIC_DEBOUNCE_STATE["active_profile"] and (now_t - _BALLISTIC_DEBOUNCE_STATE["last_switch_time"]) < 2.0:
+            return _BALLISTIC_DEBOUNCE_STATE["active_profile"]
+        return profile
+
+    active_prof = _BALLISTIC_DEBOUNCE_STATE["active_profile"]
+    if active_prof is None or not active_prof.get("is_valid", False):
+        _BALLISTIC_DEBOUNCE_STATE["active_profile"] = profile
+        _BALLISTIC_DEBOUNCE_STATE["last_switch_time"] = now_t
+        return profile
+
+    curr_spd = profile.get("speed", 0.0)
+    active_spd = active_prof.get("speed", 0.0)
+
+    if abs(curr_spd - active_spd) < 1.0:
+        # ความเร็วเดิม: รีเซ็ต candidate และอัปเดตค่าโปรไฟล์ล่าสุด
+        _BALLISTIC_DEBOUNCE_STATE["candidate_frames"] = 0
+        _BALLISTIC_DEBOUNCE_STATE["candidate_speed"] = 0.0
+        _BALLISTIC_DEBOUNCE_STATE["active_profile"] = profile
+        return profile
+    else:
+        # ตรวจพบการสลับสเปกกระสุน: ต้องคงค่าใหม่ต่อเนื่องอย่างน้อย 30 เฟรม (~0.5s) จึงจะยอมเปลี่ยน
+        cand_spd = _BALLISTIC_DEBOUNCE_STATE["candidate_speed"]
+        if abs(curr_spd - cand_spd) < 1.0:
+            _BALLISTIC_DEBOUNCE_STATE["candidate_frames"] += 1
+            if _BALLISTIC_DEBOUNCE_STATE["candidate_frames"] >= 30 and (now_t - _BALLISTIC_DEBOUNCE_STATE["last_switch_time"]) >= 0.8:
+                _BALLISTIC_DEBOUNCE_STATE["active_profile"] = profile
+                _BALLISTIC_DEBOUNCE_STATE["candidate_frames"] = 0
+                _BALLISTIC_DEBOUNCE_STATE["last_switch_time"] = now_t
+                return profile
+        else:
+            _BALLISTIC_DEBOUNCE_STATE["candidate_speed"] = curr_spd
+            _BALLISTIC_DEBOUNCE_STATE["candidate_frames"] = 1
+
+        # รักษาโปรไฟล์เดิมที่เสถียรไว้ ไม่ให้ flip-flop frame-by-frame
+        return _BALLISTIC_DEBOUNCE_STATE["active_profile"]
 
 
 def _make_ballistic_model(profile, altitude):
@@ -3047,6 +3096,14 @@ class ESPOverlay(QOpenGLWidget):
         self.q_pressed_last = False
         self.target_locked_ptr = 0       # 🔒 TAB-lock: ptr ของ target ที่ถูกล็อค (0=ไม่ล็อค)
         self.tab_pressed_last = False    # 🔒 TAB debounce
+
+        # 🎯 Target Kinematic State Cache (Acceleration Slew Limiter & TOF Anti-Jitter)
+        self._target_acc_cache = {}  # {u_ptr: (ax, ay, az, timestamp)}
+        self._target_tof_cache = {}  # {u_ptr: (tof, timestamp)}
+        self.air_screen_smooth = {}  # {u_ptr: (px, py, timestamp)} anti-jitter EMA
+        self.target_leadmark_is_valid = False
+        self.last_valid_leadmark_time = 0.0
+
         self.last_rocket_impact_pos = None # 🚀 Smooth 3D CCIP impact position
         self.last_rkt_path_pts = None      # 🚀 Smooth 3D trajectory arc points
         self.last_bomb_impact_pos = None   # 💣 Smooth 3D CCIP impact position
@@ -3213,6 +3270,10 @@ class ESPOverlay(QOpenGLWidget):
         app = QApplication.instance()
         if app is not None:
             app.quit()
+
+    def closeEvent(self, event):
+        """Clean shutdown when window is closed."""
+        super().closeEvent(event)
 
     def _on_worker_frame(self, snapshot):
         """Slot: receives FrameSnapshot from DataPumpWorker on each cycle."""
@@ -3794,8 +3855,12 @@ class ESPOverlay(QOpenGLWidget):
         return (calib_x, calib_y)
 
     def _stabilize_velocity(self, u_ptr, is_air, pos, curr_t):
+        air_vel_info = {}
         if u_ptr and pos:
-            raw_vel = get_air_velocity(self.scanner, u_ptr) if is_air else get_ground_velocity(self.scanner, u_ptr)
+            if is_air:
+                raw_vel, air_vel_info = get_air_velocity_detailed(self.scanner, u_ptr)
+            else:
+                raw_vel = get_ground_velocity(self.scanner, u_ptr)
         else:
             raw_vel = (0.0, 0.0, 0.0)
         cached = self.velocity_cache.get(u_ptr)
@@ -3835,13 +3900,13 @@ class ESPOverlay(QOpenGLWidget):
             raw_is_abnormal_low = bool(pos_vel and pos_mag > 25.0 and raw_mag < 2.0)
             if raw_vel and raw_mag > 0.0001 and not raw_is_abnormal_low:
                 chosen_vel = raw_vel
-                source = "raw_air_trusted"
+                source = air_vel_info.get("source", "raw_air_trusted")
             elif pos_vel:
                 chosen_vel = pos_vel
                 source = "pos_air_fallback"
             else:
                 chosen_vel = raw_vel
-                source = "raw_air_default"
+                source = air_vel_info.get("source", "raw_air_default")
         else:
             # 🛡️ GROUND: ใช้ความเร็วจาก Physics ของเกม (raw_vel) 100% เสมอหากอ่านค่าได้
             if raw_vel and any(abs(v) > 0.0001 for v in raw_vel):
@@ -3888,6 +3953,7 @@ class ESPOverlay(QOpenGLWidget):
             'pos_mag': pos_mag,
             'chosen_vel': chosen_vel,
             'ground_motion_state': "move" if not is_air else "",
+            'air_vel_info': air_vel_info,
         }
 
         if source not in ("raw", "ground_idle") and u_ptr != 0:
@@ -4138,6 +4204,7 @@ class ESPOverlay(QOpenGLWidget):
             
             my_spawn_in_grace = curr_t < self.my_unit_spawn_grace_until
             my_acc = (0.0, 0.0, 0.0)
+            my_omega = (0.0, 0.0, 0.0)
             
             if my_spawn_in_grace:
                 my_vel = (0.0, 0.0, 0.0)
@@ -4145,10 +4212,12 @@ class ESPOverlay(QOpenGLWidget):
                 if my_unit:
                     if my_is_air:
                         my_vel = (snapshot.my_vel if snapshot and snapshot.my_vel else None) or get_my_air_velocity(self.scanner, my_unit) or (0.0, 0.0, 0.0)
+                        my_omega = (snapshot.my_omega if snapshot and hasattr(snapshot, 'my_omega') and snapshot.my_omega else None) or get_my_air_omega(self.scanner, my_unit) or (0.0, 0.0, 0.0)
                         my_speed_raw = math.sqrt(my_vel[0]**2 + my_vel[1]**2 + my_vel[2]**2)
                         self.last_velocity_meta[my_unit] = {
-                            'source': 'my_air_0d10_0068',
+                            'source': 'my_air_0d48_0068',
                             'raw_vel': my_vel,
+                            'raw_omega': my_omega,
                             'raw_mag': my_speed_raw,
                             'pos_vel': None,
                             'pos_vel_filtered': None,
@@ -4729,6 +4798,8 @@ class ESPOverlay(QOpenGLWidget):
                 self.sniper_active_target_ptr = 0
                 self._last_sniper_qimg = None
                 active_sniper_data = None
+
+            self.target_leadmark_is_valid = False
 
             locked_ground_target_y = None
             for (
@@ -5452,8 +5523,11 @@ class ESPOverlay(QOpenGLWidget):
 
                     vx, vy, vz = vel
                     ax, ay, az = 0.0, 0.0, 0.0
+                    ac_x, ac_y, ac_z = 0.0, 0.0, 0.0
                     
                     if physics_is_air:
+                        # 🌪️ ใช้ Angular Velocity (Omega) ที่อ่านมาแล้ว
+
                         if u_ptr not in self.kalman_filters:
                             self.kalman_filters[u_ptr] = KinematicKalmanFilter(pos, vel)
                             self.vel_window[u_ptr] = {'turn_time': 0.0} # ใช้เก็บแค่ Timestamp ตอนเครื่องบินหักเลี้ยว
@@ -5466,7 +5540,20 @@ class ESPOverlay(QOpenGLWidget):
                             vel = smoothed_vel
                             vx, vy, vz = smoothed_vel
                             ax, ay, az = smoothed_acc
-                            
+
+                            # 🛡️ Physical Acceleration Slew Limiter: ป้องกันความเร่งกระชากฉับพลันใน 1 เฟรม (Jerk Limit: 35 m/s^3)
+                            prev_acc_entry = self._target_acc_cache.get(u_ptr)
+                            if prev_acc_entry:
+                                dt_acc = max(0.008, min(0.1, curr_t - prev_acc_entry[3]))
+                                max_da = 35.0 * dt_acc
+                                d_ax = max(-max_da, min(max_da, ax - prev_acc_entry[0]))
+                                d_ay = max(-max_da, min(max_da, ay - prev_acc_entry[1]))
+                                d_az = max(-max_da, min(max_da, az - prev_acc_entry[2]))
+                                ax = prev_acc_entry[0] + d_ax
+                                ay = prev_acc_entry[1] + d_ay
+                                az = prev_acc_entry[2] + d_az
+                            self._target_acc_cache[u_ptr] = (ax, ay, az, curr_t)
+
                             # 3. คำนวณความเร่งรวมเพื่อใช้ประเมินว่า "เครื่องบินกำลังเลี้ยวหรือไม่"
                             a_mag = math.sqrt(ax**2 + ay**2 + az**2)
                             
@@ -5479,9 +5566,9 @@ class ESPOverlay(QOpenGLWidget):
                                 else:
                                     is_turning = False 
                                     
-                            # 4. Limit Acceleration ป้องกันเป้ากระตุกหลุดจอเวลา Memory อ่านค่าเพี้ยนฉับพลัน
-                            if a_mag > 150.0: 
-                                ax, ay, az = (ax/a_mag)*150.0, (ay/a_mag)*150.0, (az/a_mag)*150.0
+                            # 4. Limit Acceleration ป้องกันเป้ากระตุกหลุดจอเวลา Memory อ่านค่าเพี้ยนฉับพลัน (Max 8.5G)
+                            if a_mag > 85.0: 
+                                ax, ay, az = (ax/a_mag)*85.0, (ay/a_mag)*85.0, (az/a_mag)*85.0
                         
                         t_x, t_y, t_z = pos[0], pos[1], pos[2]
                         
@@ -5573,9 +5660,9 @@ class ESPOverlay(QOpenGLWidget):
                     origin_y = my_pos[1] + (gun_up_offset * up_y)
                     origin_z = my_pos[2] + (gun_up_offset * up_z)
 
-                    # 🔄 Fast Iterative TOF Solver (วนลูป 2 รอบ พร้อม Early Exit เมื่อระยะลู่เข้า)
+                    # 🔄 Fast Iterative TOF Solver (วนลูป 3 รอบสำหรับอากาศยานเพื่อความลู่เข้าสมบูรณ์)
                     prev_range = -999.0
-                    for _ in range(2):
+                    for _ in range(3 if physics_is_air else 2):
                         if physics_is_air:
                             pred_x = t_x + (vx * best_t) + (0.5 * ax * (best_t ** 2))
                             pred_y = t_y + (vy * best_t) + (0.5 * ay * (best_t ** 2))
@@ -5620,6 +5707,18 @@ class ESPOverlay(QOpenGLWidget):
                             best_t = 999.0
                             
                         final_x, final_y, final_z = pred_x, pred_y, pred_z
+
+                    # 🛡️ TOF Temporal Anti-Jitter Clamping & EMA Smoothing:
+                    # ป้องกันการกระโดดของ TOF ระหว่างเฟรม เพื่อให้จุดลีดมาร์กลื่นไหลสนิท 100%
+                    if physics_is_air and current_bullet_speed > 0:
+                        prev_tof_entry = self._target_tof_cache.get(u_ptr)
+                        if prev_tof_entry:
+                            prev_t_val, prev_t_time = prev_tof_entry
+                            dt_frame = max(0.008, min(0.1, curr_t - prev_t_time))
+                            max_dtof = 1.2 * dt_frame
+                            clamped_t = max(prev_t_val - max_dtof, min(prev_t_val + max_dtof, best_t))
+                            best_t = (prev_t_val * 0.82) + (clamped_t * 0.18)
+                        self._target_tof_cache[u_ptr] = (best_t, curr_t)
 
                     # ให้ตำแหน่งสุดท้ายใช้ TOF ล่าสุดจริง
                     if physics_is_air:
@@ -5806,6 +5905,18 @@ class ESPOverlay(QOpenGLWidget):
                                 box_h = max(target_box_rect[3] - target_box_rect[1], 1.0)
                                 leadmark_vertical_correction = self.vertical_correction + auto_vertical_baseline
                                 cand_py += (leadmark_vertical_correction / 100.0) * box_h
+                            elif display_is_air:
+                                # 🎯 Anti-Jitter EMA Filter for Air Leadmark Screen Coordinates
+                                prev_scr = self.air_screen_smooth.get(u_ptr)
+                                if prev_scr:
+                                    prev_px, prev_py, prev_t = prev_scr
+                                    if 0.001 <= (curr_t - prev_t) <= 0.2:
+                                        d_jump = math.hypot(cand_px - prev_px, cand_py - prev_py)
+                                        if d_jump < 25.0:
+                                            alpha = 0.70
+                                            cand_px = (cand_px * alpha) + (prev_px * (1.0 - alpha))
+                                            cand_py = (cand_py * alpha) + (prev_py * (1.0 - alpha))
+                                self.air_screen_smooth[u_ptr] = (cand_px, cand_py, curr_t)
                             
                             is_on_screen = (0 <= cand_px <= self.screen_width and 0 <= cand_py <= self.screen_height)
                             if is_on_screen:
@@ -5870,6 +5981,20 @@ class ESPOverlay(QOpenGLWidget):
                                     'style': 'main',
                                     'is_clamped': is_clamped,
                                 })
+
+                                if display_is_air and u_ptr == active_target_ptr:
+                                    is_leadmark_valid = (
+                                        leadmark_in_range
+                                        and not is_clamped
+                                        and (px is not None) and (py is not None)
+                                        and math.isfinite(px) and math.isfinite(py)
+                                        and (0 <= px <= self.screen_width) and (0 <= py <= self.screen_height)
+                                        and math.isfinite(draw_sx) and math.isfinite(draw_sy)
+                                        and (current_bullet_speed > 0)
+                                    )
+                                    if is_leadmark_valid:
+                                        self.target_leadmark_is_valid = True
+                                        self.last_valid_leadmark_time = curr_t
 
                     ground_reference_screen = None
                     if (not physics_is_air) and leadmark_in_range and ground_reference_final and all(math.isfinite(c) for c in ground_reference_final):

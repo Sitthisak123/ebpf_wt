@@ -42,6 +42,7 @@ from src.utils.mul import (
     get_weapon_barrel,
     get_local_axes_from_rotation,
     get_my_air_velocity,
+    get_my_air_omega,
     get_sight_compensation_factor,
     world_to_screen,
     is_valid_ptr,
@@ -130,6 +131,7 @@ class FrameSnapshot:
     my_team: int = 0
     my_pos: Optional[Tuple[float, float, float]] = None
     my_vel: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    my_omega: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     my_is_air: bool = False
     my_name: str = ""
     my_name_key: str = ""
@@ -402,11 +404,14 @@ class DataPumpWorker(QThread):
         my_spawn_in_grace = now < self.my_unit_spawn_grace_until
         if my_spawn_in_grace:
             snap.my_vel = (0.0, 0.0, 0.0)
+            snap.my_omega = (0.0, 0.0, 0.0)
         elif my_unit:
             if my_is_air:
                 snap.my_vel = get_my_air_velocity(self.scanner, my_unit) or (0.0, 0.0, 0.0)
+                snap.my_omega = get_my_air_omega(self.scanner, my_unit) or (0.0, 0.0, 0.0)
             else:
                 snap.my_vel = None
+                snap.my_omega = (0.0, 0.0, 0.0)
 
         # My box data & barrel (heavy reads)
         if my_unit and my_pos and not my_is_air:
