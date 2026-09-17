@@ -7010,50 +7010,15 @@ class ESPOverlay(QOpenGLWidget):
                                         if (closing_speed > 25.0 and cur_dist > 300.0) or (my_is_air and is_sam_name):
                                             tr['is_my_missile'] = False
                             else:
-                                # 🎯 TRACK ASSOCIATION & HANDOFF:
-                                # Check if this is an existing missile that changed its pointer / entity_id
-                                # (e.g. rail-to-flight transition, memory reallocation, or temporary clone)
-                                inherited_smooth_pos = m.pos
-                                inherited_smooth_vel = m.vel
-                                inherited_smooth_speed = m.speed
-                                matching_old_ptrs = []
-                                
-                                for old_p, old_tr in list(self.missile_tracks.items()):
-                                    if old_p == m.ptr:
-                                        continue
-                                    # Match criteria: same entity_id, OR same owner + same weapon name + distance < 35m
-                                    is_match = False
-                                    if m.entity_id > 0 and old_tr.get('entity_id') == m.entity_id:
-                                        is_match = True
-                                    elif owner_unit != 0 and old_tr.get('owner_unit') == owner_unit:
-                                        if old_tr.get('missile') and getattr(old_tr['missile'], 'name', '') == m.name:
-                                            old_sp = old_tr.get('smooth_pos', (0, 0, 0))
-                                            dist_old = math.sqrt((old_sp[0]-m.pos[0])**2 + (old_sp[1]-m.pos[1])**2 + (old_sp[2]-m.pos[2])**2)
-                                            if dist_old < 35.0:
-                                                is_match = True
-                                    if is_match:
-                                        matching_old_ptrs.append(old_p)
-                                        inherited_smooth_pos = old_tr.get('smooth_pos', m.pos)
-                                        inherited_smooth_vel = old_tr.get('smooth_vel', m.vel)
-                                        inherited_smooth_speed = old_tr.get('smooth_speed', m.speed)
-                                        is_my = old_tr.get('is_my_missile', is_my)
-                                        is_verified_me = old_tr.get('is_owner_me_verified', is_verified_me)
-                                        is_friendly = old_tr.get('is_friendly_missile', is_friendly)
-
-                                # Clean up old tracks immediately so we don't render 2 ESP markers for 1 missile!
-                                for old_p in matching_old_ptrs:
-                                    if old_p in self.missile_tracks:
-                                        del self.missile_tracks[old_p]
-
                                 self.missile_tracks[m.ptr] = {
                                     'raw_pos': m.pos,
                                     'raw_vel': m.vel,
                                     'base_pos': m.pos,
                                     'vel': m.vel,
                                     'speed': m.speed,
-                                    'smooth_pos': inherited_smooth_pos,
-                                    'smooth_vel': inherited_smooth_vel,
-                                    'smooth_speed': inherited_smooth_speed,
+                                    'smooth_pos': m.pos,
+                                    'smooth_vel': m.vel,
+                                    'smooth_speed': m.speed,
                                     'last_meas_t': curr_t,
                                     'last_render_t': curr_t,
                                     'last_seen': curr_t,
@@ -7116,24 +7081,6 @@ class ESPOverlay(QOpenGLWidget):
                             ))
 
                     if active_missile_entries:
-                        # 🎯 Render-Time Proximity Suppression (Anti-Duplicate ESP):
-                        # Ensure no two entries from the same shooter within 25m are drawn at once
-                        if len(active_missile_entries) > 1:
-                            suppressed_entries = []
-                            for entry in sorted(active_missile_entries, key=lambda x: -x[3]): # Sort by speed descending (faster first)
-                                m_cur, sp_cur, _, _, _, tr_cur = entry
-                                is_dup = False
-                                for kept in suppressed_entries:
-                                    m_k, sp_k, _, _, _, tr_k = kept
-                                    if tr_cur.get('owner_unit') == tr_k.get('owner_unit') and tr_cur.get('owner_unit') != 0:
-                                        dist_m = math.sqrt((sp_cur[0]-sp_k[0])**2 + (sp_cur[1]-sp_k[1])**2 + (sp_cur[2]-sp_k[2])**2)
-                                        if dist_m < 25.0:
-                                            is_dup = True
-                                            break
-                                if not is_dup:
-                                    suppressed_entries.append(entry)
-                            active_missile_entries = suppressed_entries
-
                         # Check if any missile is tracking ME
                         incoming = []
                         for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:

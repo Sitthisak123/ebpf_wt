@@ -191,44 +191,6 @@ class MissileScanner:
         self._node_table = node_t
         self._initialized = True
         return True
-    
-    def _dedup_missiles(self, missiles):
-        """
-        Deduplicate cloned/duplicate missiles in the same frame:
-        1. Unique entity_id filtering
-        2. Spatial proximity: if 2 missiles have the same owner, same weapon name, and dist < 25m,
-           keep only the faster one (the actual flying projectile).
-        """
-        if len(missiles) <= 1:
-            return missiles
-        
-        # 1. Deduplicate by entity_id
-        by_eid = {}
-        no_eid = []
-        for m in missiles:
-            if m.entity_id > 0:
-                if m.entity_id not in by_eid or m.speed > by_eid[m.entity_id].speed:
-                    by_eid[m.entity_id] = m
-            else:
-                no_eid.append(m)
-        filtered = list(by_eid.values()) + no_eid
-        
-        # 2. Spatial proximity suppression (same owner, same weapon name, distance < 25m)
-        final_list = []
-        for m in filtered:
-            is_dup = False
-            for existing in final_list:
-                if existing.owner == m.owner and existing.name == m.name:
-                    dx = existing.pos[0] - m.pos[0]
-                    dy = existing.pos[1] - m.pos[1]
-                    dz = existing.pos[2] - m.pos[2]
-                    if (dx*dx + dy*dy + dz*dz) < 625.0: # 25m^2
-                        is_dup = True
-                        break
-            if not is_dup:
-                final_list.append(m)
-        return final_list
-
     def scan(self, scanner, base):
         """
         Scan active missiles using Projectile Array (OFF_PROJ_LIST) with ECS Node Table fallback.
@@ -262,7 +224,7 @@ class MissileScanner:
                                 if m and m.name != "":
                                     seen_ptrs.add(m.ptr)
                                     found_missiles.append(m)
-                        return self._dedup_missiles(found_missiles)
+                        return [m for m in found_missiles if m.name != ""]
                     elif count == 0:
                         return []
         
@@ -317,7 +279,7 @@ class MissileScanner:
                 except Exception:
                     continue
 
-        return self._dedup_missiles(found_missiles)
+        return [m for m in found_missiles if m.name != ""]
     
     def _check_rocket(self, scanner, ptr, entry_idx):
         """
