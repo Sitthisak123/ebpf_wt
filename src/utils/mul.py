@@ -56,9 +56,10 @@ ENABLE_WORLD_UNIT_LIST_FALLBACK = True
 OFF_AIR_UNITS       = (0x310, True)
 OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kinematics dumpers
 OFF_AIR_VEL         = 0x0318      # 🎯 Velocity (FLOAT Vector 12-byte)
-OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)
+OFF_AIR_OMEGA       = 0x0550      # 🌪️ Angular Velocity (Updated 2026-09: 0x0550 FLOAT vec3)
 OFF_MY_AIR_VEL      = 0x0068      # My air velocity: DOUBLE vec3 at move_ptr + 0x0068 (47.5Hz)
-OFF_MY_AIR_MOVEMENT = 0x0D28      # My air movement pointer from tick-rate scan (0x0D28 / 0x0D30)
+OFF_MY_AIR_MOVEMENT = 0x0D48      # My air movement pointer (Updated 2026-09: 0x0D48 / 0x0D50)
+OFF_MY_AIR_OMEGA    = 0x0098      # 🌪️ My air angular velocity: DOUBLE vec3 at move_ptr + 0x0098 (Updated 2026-09)
 
 # 🚀 Missile/Rocket Projectile & ECS Offsets (confirmed 2026-09)
 OFF_PROJ_LIST       = 0xac02ab8   # base + this → pointer to active projectile table (Tab<Projectile>)
@@ -447,13 +448,13 @@ VELOCITY_PROFILES = {
         "requested_label": "AIR",
         "primary": {
             "label": "AIR_PRIMARY",
-            "mov_off": lambda: 0x0000,
-            "vel_off": lambda: 0x3A58,
-            "fmt": "fff",
-            "max_speed": 12000.0,
+            "mov_off": lambda: 0x0D48,
+            "vel_off": lambda: 0x0068,
+            "fmt": "ddd",
+            "max_speed": 15000.0,
         },
         "fallbacks": [
-            {"label": "GROUND_ALT", "mov_off": 0x0D10, "vel_off": 0x0068, "fmt": "ddd", "max_speed": 12000.0},
+            {"label": "AIR_PLAYER", "mov_off": lambda: OFF_MY_AIR_MOVEMENT, "vel_off": lambda: OFF_MY_AIR_VEL, "fmt": "fff", "max_speed": 15000.0},
         ],
     },
     "ground": {
@@ -1640,71 +1641,54 @@ def get_unit_detailed_dna(scanner, u_ptr):
 # ==========================================
 def get_air_velocity(scanner, u_ptr):
     """
-    [2026 VERIFIED 60Hz] ดึงความเร็วเครื่องบิน 3 มิติแบบ High-Tick (Smooth)
-    ใช้ระบบ Waterfall ลำดับความสำคัญจากผล Dumper ที่ดีที่สุด
+    ดึงเวกเตอร์ความเร็วเครื่องบิน 3 มิติ (Air Velocity)
+    1. Primary: อ่านจาก OFF_AIR_MOVEMENT (0x0018) -> OFF_AIR_VEL (0x0318) แบบ Float (<fff)
+    2. Fallback: กรณีเครื่องบินตนเอง (My Unit) อ่านจาก OFF_MY_AIR_MOVEMENT (0x0D28) -> OFF_MY_AIR_VEL (0x0068) แบบ Double (<ddd)
     """
     try:
-        # 🌟 1. [60Hz] อ่านตรงจาก Unit Pointer (0x3A58) - ไวที่สุด!
-        vel_raw = scanner.read_mem(u_ptr + 0x3A58, 12)
-        if vel_raw:
-            vx, vy, vz = struct.unpack("<fff", vel_raw)
-            if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
-                return (vx, vy, vz)
-
-        # 🌟 2. [60Hz] สำรอง อ่านตรงจาก Unit Pointer (0x3F48)
-        vel_raw = scanner.read_mem(u_ptr + 0x3F48, 12)
-        if vel_raw:
-            vx, vy, vz = struct.unpack("<fff", vel_raw)
-            if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
-                return (vx, vy, vz)
-
-        # 🌟 3. เข้าสู่ชั้น Move Pointer (ลึกขึ้น 1 สเต็ป)
-        move_raw = scanner.read_mem(u_ptr + 0x0018, 8)
+        # 🌟 1. Primary Air Movement Pointer (0x0018 -> 0x0318 Float vec3)
+        move_raw = scanner.read_mem(u_ptr + OFF_AIR_MOVEMENT, 8)
         if move_raw:
             move_ptr = struct.unpack("<Q", move_raw)[0]
-            if move_ptr > 0x10000:
-                
-                # 🌟 3.1 [60Hz] ผ่าน Move Pointer (0x137C)
-                vel_raw = scanner.read_mem(move_ptr + 0x137C, 12)
-                if vel_raw:
+            if is_valid_ptr(move_ptr):
+                vel_raw = scanner.read_mem(move_ptr + OFF_AIR_VEL, 12)
+                if vel_raw and len(vel_raw) == 12:
                     vx, vy, vz = struct.unpack("<fff", vel_raw)
-                    if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
+                    if all(math.isfinite(v) for v in (vx, vy, vz)) and all(abs(v) < 2500.0 for v in (vx, vy, vz)):
                         return (vx, vy, vz)
-                dprint(f"Air Velocity Fallback to 5Hz", force=True)
-                # 🌟 4. [5Hz] FALLBACK: ตัว Network แม่แบบ (0x318)
-                vel_raw = scanner.read_mem(move_ptr + 0x0318, 12)
-                if vel_raw:
-                    vx, vy, vz = struct.unpack("<fff", vel_raw)
-                    if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
+
+        # 🌟 2. Fallback for Player Air Unit (0x0D28 -> 0x0068 Double vec3)
+        move_raw = scanner.read_mem(u_ptr + OFF_MY_AIR_MOVEMENT, 8)
+        if move_raw:
+            move_ptr = struct.unpack("<Q", move_raw)[0]
+            if is_valid_ptr(move_ptr):
+                vel_raw = scanner.read_mem(move_ptr + OFF_MY_AIR_VEL, 24)
+                if vel_raw and len(vel_raw) == 24:
+                    vx, vy, vz = struct.unpack("<ddd", vel_raw)
+                    if all(math.isfinite(v) for v in (vx, vy, vz)) and all(abs(v) < 2500.0 for v in (vx, vy, vz)):
                         return (vx, vy, vz)
 
         return (0.0, 0.0, 0.0)
     except Exception as e:
-        dprint(f"VEL READ EXCEPTION | unit={hex(u_ptr)} | type=AIR | error={e}", force=False)
         return (0.0, 0.0, 0.0)
 
 def get_my_air_velocity(scanner, my_unit_ptr):
     """
-    [MY UNIT ONLY] ดึงความเร็วเครื่องบินเราเองแบบ High Precision
-    ใช้ Move Ptr: 0x0D10 | Vel Offset: 0x0068 | Type: DOUBLE
+    [MY UNIT ONLY] ดึงความเร็วเครื่องบินเราเองแบบ High Precision (48-60Hz)
+    ใช้ Move Ptr: 0x0D48 / 0x0D50 | Vel Offset: 0x0068 | Type: DOUBLE
     """
     try:
-        # 1. อ่าน Move Pointer (0x0D10)
-        move_raw = scanner.read_mem(my_unit_ptr + OFF_MY_AIR_MOVEMENT, 8)
-        if move_raw:
+        for off_mov in (OFF_MY_AIR_MOVEMENT, 0x0D50, 0x0D28, 0x0D10):
+            move_raw = scanner.read_mem(my_unit_ptr + off_mov, 8)
+            if not move_raw:
+                continue
             move_ptr = struct.unpack("<Q", move_raw)[0]
-            if move_ptr > 0x10000:
-                
-                # 2. อ่าน Velocity แบบ DOUBLE (อ่าน 24 Bytes)
+            if is_valid_ptr(move_ptr):
                 vel_raw = scanner.read_mem(move_ptr + OFF_MY_AIR_VEL, 24)
-                if vel_raw:
-                    # 3. ถอดรหัสเป็นทศนิยม Double (<ddd)
+                if vel_raw and len(vel_raw) == 24:
                     vx, vy, vz = struct.unpack("<ddd", vel_raw)
-                    
-                    # กรองค่าขยะ
                     if any(abs(v) > 0.01 for v in (vx, vy, vz)) and all(abs(v) < 2000.0 for v in (vx, vy, vz)):
                         return (vx, vy, vz)
-                        
         return (0.0, 0.0, 0.0)
     except Exception as e:
         return (0.0, 0.0, 0.0)
@@ -1729,23 +1713,58 @@ def get_ground_velocity(scanner, u_ptr):
 
 
 # ==========================================
-# Omega Helpers
+# Omega Helpers (Angular Velocity)
 # ==========================================
 def get_air_omega(scanner, unit_ptr):
+    """
+    ดึงเวกเตอร์ความเร็วเชิงมุม 3 มิติ (rad/s) ของเครื่องบิน (ศัตรู/ทั่วไป)
+    อ่านจาก OFF_AIR_MOVEMENT (0x0018) -> OFF_AIR_OMEGA (0x0550) แบบ Float (<fff)
+    """
     try:
         mov_ptr_raw = scanner.read_mem(unit_ptr + OFF_AIR_MOVEMENT, 8)
         if not mov_ptr_raw: return (0.0, 0.0, 0.0)
         mov_ptr = struct.unpack("<Q", mov_ptr_raw)[0]
         if not is_valid_ptr(mov_ptr): return (0.0, 0.0, 0.0)
         
+        # 1. ลองอ่านจาก Offset 0x0550 ที่เพิ่งค้นพบใหม่
         omega_data = scanner.read_mem(mov_ptr + OFF_AIR_OMEGA, 12)
         if omega_data and len(omega_data) == 12:
             wx, wy, wz = struct.unpack("<fff", omega_data)
             if math.isfinite(wx) and math.isfinite(wy) and math.isfinite(wz):
                 return (wx, wy, wz)
+                
+        # 2. Fallback: ลองอ่านจาก 0x03F8 (Historic)
+        omega_data_old = scanner.read_mem(mov_ptr + 0x03F8, 12)
+        if omega_data_old and len(omega_data_old) == 12:
+            wx, wy, wz = struct.unpack("<fff", omega_data_old)
+            if math.isfinite(wx) and math.isfinite(wy) and math.isfinite(wz):
+                return (wx, wy, wz)
     except Exception as e: 
-        print("get_air_omega", e)
+        dprint(f"get_air_omega error: {e}", force=False)
     return (0.0, 0.0, 0.0)
+
+
+def get_my_air_omega(scanner, my_unit_ptr):
+    """
+    [MY UNIT ONLY] ดึงความเร็วเชิงมุมเครื่องบินเราเองแบบ High-Tick (~50Hz)
+    อ่านจาก OFF_MY_AIR_MOVEMENT (0x0D48 / 0x0D50) -> OFF_MY_AIR_OMEGA (0x0098) แบบ Double (<ddd)
+    """
+    try:
+        for off_mov in (OFF_MY_AIR_MOVEMENT, 0x0D50, 0x0D28, 0x0D10):
+            move_raw = scanner.read_mem(my_unit_ptr + off_mov, 8)
+            if not move_raw:
+                continue
+            move_ptr = struct.unpack("<Q", move_raw)[0]
+            if is_valid_ptr(move_ptr):
+                omega_raw = scanner.read_mem(move_ptr + OFF_MY_AIR_OMEGA, 24)
+                if omega_raw and len(omega_raw) == 24:
+                    wx, wy, wz = struct.unpack("<ddd", omega_raw)
+                    if all(math.isfinite(v) for v in (wx, wy, wz)):
+                        return (wx, wy, wz)
+        return (0.0, 0.0, 0.0)
+    except Exception as e:
+        dprint(f"get_my_air_omega error: {e}", force=False)
+        return (0.0, 0.0, 0.0)
 
 
 def get_ground_omega(scanner, unit_ptr):

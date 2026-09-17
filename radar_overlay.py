@@ -491,7 +491,7 @@ XRAY_SHOW_BREECH            = True     # แสดงท้ายรังเพ
 DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
-SHOW_MY_UNIT_BOX = True                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
+SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
 SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
@@ -3831,8 +3831,9 @@ class ESPOverlay(QOpenGLWidget):
 
         if is_air:
             # ✈️ AIR & HELI: ใช้ความเร็วจาก Physics ของเกม (raw_vel) 100% เสมอหากอ่านค่าได้
-            # เพื่อให้ตรงกับการลอยลำ (Hover / Slow Flight 0-35 m/s) ของเฮลิคอปเตอร์
-            if raw_vel and any(abs(v) > 0.0001 for v in raw_vel):
+            # ตรวจสอบความสมเหตุสมผล: ป้องกันกรณีได้ค่าหลอกขนาดเล็ก (< 2 m/s) ทั้งที่เครื่องบินกำลังบินเร็ว (> 25 m/s)
+            raw_is_abnormal_low = bool(pos_vel and pos_mag > 25.0 and raw_mag < 2.0)
+            if raw_vel and raw_mag > 0.0001 and not raw_is_abnormal_low:
                 chosen_vel = raw_vel
                 source = "raw_air_trusted"
             elif pos_vel:
