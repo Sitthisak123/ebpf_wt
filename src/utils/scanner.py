@@ -703,7 +703,10 @@ def _looks_like_view_matrix(matrix_data):
     if any(abs(v) > 1e6 for v in values):
         return False
     non_zero = sum(1 for v in values if abs(v) > 1e-6)
-    return non_zero >= 6
+    if non_zero < 8:
+        return False
+    dir_len_sq = values[3]**2 + values[7]**2 + values[11]**2
+    return 0.5 < dir_len_sq < 2.0
 
 def _handle_fallback(name, current_val):
     if current_val == 0:
@@ -859,7 +862,7 @@ def init_dynamic_offsets(scanner, base_address):
     if not has_status_persistence or mul.OFF_UNIT_INFO == 0:
         info_cands = []
         for p in PAT_UNIT_INFO: info_cands.extend(scanner.find_all_struct_offsets(p, 3))
-        valid_info = [v for v in info_cands if 0xF00 <= v <= 0x1000]
+        valid_info = [v for v in info_cands if 0xF00 <= v <= 0x1100]
         if valid_info:
             top_info, votes = Counter(valid_info).most_common(1)[0]
             mul.OFF_UNIT_INFO = top_info
@@ -870,7 +873,7 @@ def init_dynamic_offsets(scanner, base_address):
     if not has_status_persistence or mul.OFF_UNIT_TEAM == 0:
         team_cands = []
         for p in PAT_UNIT_TEAM: team_cands.extend(scanner.find_all_struct_offsets(p, 3))
-        valid_team = [v for v in team_cands if 0xF00 <= v <= 0x1000]
+        valid_team = [v for v in team_cands if 0xF00 <= v <= 0x1100]
         if valid_team:
             top_team, votes = Counter(valid_team).most_common(1)[0]
             mul.OFF_UNIT_TEAM = top_team
@@ -881,7 +884,7 @@ def init_dynamic_offsets(scanner, base_address):
     if not has_status_persistence or mul.OFF_UNIT_STATE == 0:
         state_cands = []
         for p in PAT_UNIT_STATE: state_cands.extend(scanner.find_all_struct_offsets(p, 2))
-        valid_state = [v for v in state_cands if 0xF00 <= v <= 0x1000]
+        valid_state = [v for v in state_cands if 0xF00 <= v <= 0x1100]
         if valid_state:
             top_state, votes = Counter(valid_state).most_common(1)[0]
             mul.OFF_UNIT_STATE = top_state
@@ -997,6 +1000,11 @@ def init_dynamic_offsets(scanner, base_address):
     
     # 🎯 DNA ลายเซ็นต์ดิจิทัลของระบบกล้อง (สกัดจาก Snippet 01642041)
     # บรรทัด 1: 89 8A EC 06 00 00 (MOV [RDX+6EC], ECX)
+    # ---------------------------------------------------------
+    # 🎯 Phase 5: ค้นหา Visual System (Camera & View Matrix)
+    # ---------------------------------------------------------
+    print("[*] 🔍 8/8 ค้นหา Visual System (Triple-Chain DNA)...")
+    
     # บรรทัด 2: 48 8B 88 70 06 00 00 (MOV RCX, [RAX+670]) <-- เป้าหมาย
     # บรรทัด 3: 0F 11 92 D4 06 00 00 (MOVUPS [RDX+6D4], XMM2)
     visual_dna = "89 8A ?? ?? 00 00 48 8B 88 ?? ?? 00 00 0F 11 92 ?? ?? 00 00"
@@ -1005,38 +1013,81 @@ def init_dynamic_offsets(scanner, base_address):
     
     if cam_candidates:
         top_cam = Counter(cam_candidates).most_common(1)[0][0]
-        mul.OFF_CAMERA_PTR = 0x670
-        print(f"  [+] ✅ DNA MATCH! CAMERA_PTR = {hex(mul.OFF_CAMERA_PTR)}")
+        if 0x600 <= top_cam <= 0x1000:
+            mul.OFF_CAMERA_PTR = top_cam
+            print(f"  [+] ✅ DNA MATCH! CAMERA_PTR = {hex(mul.OFF_CAMERA_PTR)}")
+        else:
+            mul.OFF_CAMERA_PTR = 0x660
+            print(f"  [+] ✅ DNA FOUND: {hex(top_cam)} | Fallback CAMERA_PTR = {hex(mul.OFF_CAMERA_PTR)}")
     else:
-        mul.OFF_CAMERA_PTR = 0x670
-        print(f"  [!] ⚠️ DNA ไม่ตรง! ใช้ค่า Persistence: 0x670")
+        mul.OFF_CAMERA_PTR = 0x660
+        print(f"  [!] ⚠️ DNA ไม่ตรง! ใช้ค่า Fallback: 0x660")
     
-    # print("[*] 🔍 5.2/5 ค้นหา Visual System (Persistent Chain)...")
-    # 🎯 ใช้ DNA ที่ท่านนายพลสกัดมา: MOV byte ptr [R12+RDX*1 + 1C0], SIL
-    # เราจะสแกนหา 0x1C0 และ 0x1E0 ที่อยู่คู่กัน
     dna_pattern = "41 88 B4 14 ?? ?? ?? ?? 41 88 B4 14 ?? ?? ?? ??"
     chains = scanner.find_matrix_chain(dna_pattern)
     
     if chains:
-        # เลือกเอาคู่ที่พบบ่อยที่สุด (ปกติจะมีแค่ที่เดียวในฟังก์ชันตั้งค่ากล้อง)
         top_pair = Counter(chains).most_common(1)[0][0]
-        mul.OFF_VIEW_MATRIX = 0x1D8 # ตัวแรกคือ 0x1C0
+        mul.OFF_VIEW_MATRIX = 0x1D8
         print(f"  [+] ✅ DNA MATCH! Found Chain: {hex(top_pair[0])} -> {hex(top_pair[1])}")
         print(f"  [+] ✅ BINGO! VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)}")
     else:
         mul.OFF_VIEW_MATRIX = 0x1D8
         print("  [!] Persistence warning: view matrix scanner fell back to default offset")
-        print("  [!] ⚠️ Chain Match ล้มเหลว! ใช้ค่า Fallback: 0x1C0")
+        print("  [!] ⚠️ Chain Match ล้มเหลว! ใช้ค่า Fallback: 0x1D8")
 
     view_persistence = _load_view_matrix_persistence()
     if view_persistence:
-        mul.OFF_CAMERA_PTR = 0x670
+        mul.OFF_CAMERA_PTR = view_persistence["camera_off"]
         mul.OFF_VIEW_MATRIX = view_persistence["matrix_off"]
         print(
             f"  [+] ✅ OVERRIDE! CAMERA_PTR = {hex(mul.OFF_CAMERA_PTR)} "
             f"VIEW_MATRIX = {hex(mul.OFF_VIEW_MATRIX)} (persistence:{view_persistence['source']}"
             f" tool:{view_persistence['updated_by_tool']} conf:{view_persistence['confidence']:.2f})"
         )
+
+    # 🎯 Dynamic Visual Validation & Auto-Discovery
+    # ตรวจสอบกับ CGame candidate ก่อน เพื่อให้มั่นใจ 100% ว่า Camera และ View Matrix ใช้งานได้จริง
+    target_cgame_ptr = None
+    if manager_candidates:
+        best_cand = max(manager_candidates, key=lambda c: (c["live_units"], c["votes"]))
+        target_cgame_ptr = best_cand["cgame_ptr"]
+
+    visual_valid = False
+    if target_cgame_ptr:
+        raw_cam = scanner.read_mem(target_cgame_ptr + mul.OFF_CAMERA_PTR, 8)
+        if raw_cam and len(raw_cam) >= 8:
+            cam_ptr = struct.unpack("<Q", raw_cam)[0]
+            if mul.is_valid_ptr(cam_ptr):
+                mat_raw = scanner.read_mem(cam_ptr + mul.OFF_VIEW_MATRIX, 64)
+                if _looks_like_view_matrix(mat_raw):
+                    visual_valid = True
+
+    if not visual_valid and target_cgame_ptr:
+        # Dynamic Auto-Scan: ค้นหากล้องและเมทริกซ์จาก CGame candidate
+        cam_offsets_to_try = [0x660, 0x670, 0x668, 0x6f8, 0x708, 0x640, 0x648, 0x698, 0x6b8, 0x6c0, 0x5d8]
+        mat_offsets_to_try = [0x1d8, 0x1c0, 0x1a0, 0x120, 0x198, 0x118, 0x228]
+        found_visual = False
+        for c_off in cam_offsets_to_try:
+            raw_cam = scanner.read_mem(target_cgame_ptr + c_off, 8)
+            if not raw_cam or len(raw_cam) < 8:
+                continue
+            c_ptr = struct.unpack("<Q", raw_cam)[0]
+            if not mul.is_valid_ptr(c_ptr):
+                continue
+            for m_off in mat_offsets_to_try:
+                m_raw = scanner.read_mem(c_ptr + m_off, 64)
+                if _looks_like_view_matrix(m_raw):
+                    mul.OFF_CAMERA_PTR = c_off
+                    mul.OFF_VIEW_MATRIX = m_off
+                    found_visual = True
+                    visual_valid = True
+                    print(f"  [+] 🎯 DYNAMIC BINGO! CAMERA_PTR = {hex(c_off)} VIEW_MATRIX = {hex(m_off)}")
+                    _write_view_matrix_persistence(c_off, m_off, "scanner_dynamic_discovery", "scanner", 0.98)
+                    break
+            if found_visual:
+                break
+
     if _needs_view_persistence_update(mul.OFF_CAMERA_PTR, mul.OFF_VIEW_MATRIX):
         saved = _write_view_matrix_persistence(
             mul.OFF_CAMERA_PTR,
@@ -1098,7 +1149,14 @@ def init_dynamic_offsets(scanner, base_address):
             mul.MANAGER_OFFSET = best_valid["dynamic_offset"]
             manager_ok = True
     else:
-        print("  [!] ⚠️ ยังไม่พบ manager candidate ที่อ่าน View Matrix ได้แน่ชัด")
+        # Fallback: ใช้ best_manager จาก Phase 1 หาก visual validation ไม่พบ candidate ที่สมบูรณ์
+        if manager_candidates:
+            best_cand = max(manager_candidates, key=lambda c: (c["live_units"], c["votes"]))
+            mul.MANAGER_OFFSET = best_cand["dynamic_offset"]
+            print(f"  [+] ✅ FALLBACK! CGame = {hex(mul.MANAGER_OFFSET)} (live={best_cand['live_units']}, votes={best_cand['votes']})")
+            manager_ok = True
+        else:
+            print("  [!] ⚠️ ยังไม่พบ manager candidate ที่อ่าน View Matrix ได้แน่ชัด")
 
     # Offsets were refreshed; flush per-unit caches to avoid stale class/filter state.
     mul.reset_runtime_caches(clear_view=True)

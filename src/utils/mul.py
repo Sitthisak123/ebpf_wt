@@ -14,15 +14,15 @@ except Exception:
 # 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
 # ===================================================
 GHIDRA_BASE         = 0x400000
-DAT_MANAGER         = 0x941b280
+DAT_MANAGER         = 0xb028160
 MANAGER_OFFSET      = DAT_MANAGER - GHIDRA_BASE
 MANAGER_CANDIDATE_OFFSETS = []
-DAT_CONTROLLED_UNIT = 0x981dfc8
+DAT_CONTROLLED_UNIT = 0xb02a4a8
 
-OFF_CAMERA_PTR      = 0x670
+OFF_CAMERA_PTR      = 0x660
 OFF_VIEW_MATRIX     = 0x1D8
 
-OFF_UNIT_X          = 0x0D00
+OFF_UNIT_X          = 0x0D38
 OFF_UNIT_ROTATION   = OFF_UNIT_X - 0x24
 OFF_UNIT_BBMIN      = 0x0258
 OFF_UNIT_BBMAX      = 0x0264
@@ -30,9 +30,10 @@ _BBOX_FALLBACK_LOGGED = set()
 
 # 🟢 สถานะและข้อมูลของยูนิต (เพิ่งอัปเดตใหม่)
 OFF_UNIT_ID         = 0x08      # Session Unit ID (u16) ตรงกับ target_id ของขีปนาวุธ
-OFF_UNIT_STATE      = 0         # สถานะรถถัง (เป็น/ตาย)
-OFF_UNIT_TEAM       = 0         # ทีม (มิตร/ศัตรู)
-OFF_UNIT_INFO       = 0xfc0        # 🎯 ฐานข้อมูล Unit Info
+OFF_UNIT_STATE      = 0x0F90    # สถานะรถถัง (เป็น/ตาย: 0=alive, 1=burning, >=2 dead)
+OFF_UNIT_TEAM       = 0x1010    # ทีม (มิตร/ศัตรู: 1=friendly, 2=enemy)
+OFF_UNIT_INFO       = 0x1020    # 🎯 ฐานข้อมูล Unit Info
+OFF_PLAYER_INFO     = 0x0F98    # 👤 Pointer ไปยัง PlayerInfo (Human Player)
 OFF_INFO_NAME_KEY   = 0x40         # 📛 Key สำหรับชื่อจริง (Localized)
 OFF_INFO_SHORT_NAME = 0x28         # 🏷️ ชื่อย่อยูนิต (เช่น T-34-85)
 OFF_INFO_FAMILY     = 0x38         # 📂 ตระกูลยูนิต (เช่น exp_tank)
@@ -43,16 +44,16 @@ OFF_UNIT_TYPE       = 0x80         # ✈️ Unit Type discriminator (0x80=1, 0x8
 OFF_UNIT_CLASS_PTR  = 0      # 🎯 Pointer ไปหาประเภทรถ (เช่น Light tank, Medium tank)
 
 OFF_UNIT_TYPE_PTR   = 0      # 🎯 Pointer ไปหาชนิด (เช่น exp_tank)
-OFF_UNIT_NAME_PTR   = 0      # 🎯 Pointer ไปหาชื่อย่อ (เช่น ussr_2s38)
+OFF_UNIT_NAME_PTR   = 0x28   # 🎯 Pointer ไปหาชื่อย่อ (เช่น ussr_2s38)
 OFF_UNIT_RELOADING  = 0
 OFF_UNIT_RELOAD     = 0
 
-OFF_ACTIVE_UNITS    = (0x310, False, 0x14)  # Air/clean subset.
+OFF_ACTIVE_UNITS    = (0x310, True, 0x10)   # Air units (active count at +0x10)
 OFF_ACTIVE_EXTRA_UNIT_LISTS = (
-    (0x328, False, 0x10),  # Ground-ish subset; combined with 0x310 covers more units than either alone.
+    (0x328, False, 0x10),  # Ground units (active count at +0x10)
 )
-ENABLE_WORLD_UNIT_LIST_FALLBACK = False
-OFF_AIR_UNITS       = (0x340, True)
+ENABLE_WORLD_UNIT_LIST_FALLBACK = True
+OFF_AIR_UNITS       = (0x310, True)
 OFF_AIR_MOVEMENT    = 0x0018      # 🎯 Air-specific movement ptr from air kinematics dumpers
 OFF_AIR_VEL         = 0x0318      # 🎯 Velocity (FLOAT Vector 12-byte)
 OFF_AIR_OMEGA       = 0x3F8       # 🌪️ Angular Velocity (ยังคงเป็นค่านี้)
@@ -76,7 +77,7 @@ OFF_GUID_LOCKED     = 0x50        # guidance + this → isLocked byte
 OFF_GUID_TRACKING   = 0x51        # guidance + this → isTracking byte
 OFF_GUID_TARGET_ID  = 0x8C        # guidance + this → target unit id (i16)
 
-OFF_GROUND_UNITS    = (0x358, False)
+OFF_GROUND_UNITS    = (0x328, False)
 OFF_GROUND_MOVEMENT = 0x0D30
 OFF_GROUND_VEL      = 0x0068
 OFF_GROUND_OMEGA    = 0
@@ -711,7 +712,7 @@ def _score_cgame_live(scanner, cgame_ptr):
     total_units = 0
     score = 0
 
-    for unit_off, _ in (OFF_AIR_UNITS, OFF_GROUND_UNITS):
+    for unit_off, _ in (OFF_AIR_UNITS, OFF_GROUND_UNITS, (0x340, False)):
         raw_array_ptr = scanner.read_mem(cgame_ptr + unit_off, 8)
         raw_count = scanner.read_mem(cgame_ptr + unit_off + 16, 4)
         if not raw_array_ptr or len(raw_array_ptr) < 8 or not raw_count or len(raw_count) < 4:
@@ -720,25 +721,20 @@ def _score_cgame_live(scanner, cgame_ptr):
         array_ptr = struct.unpack("<Q", raw_array_ptr)[0]
         count = struct.unpack("<I", raw_count)[0]
 
-        if 0 <= count <= 2048:
-            score += 1
-        if count > 0 and count < 2048 and is_valid_ptr(array_ptr):
-            score += 2
-            total_units += count
-
-            sample_n = min(count, 48)
+        if 0 < count <= 256 and is_valid_ptr(array_ptr):
+            sample_n = min(count, 16)
             ptr_data = scanner.read_mem(array_ptr, sample_n * 8)
             if ptr_data and len(ptr_data) >= sample_n * 8:
                 valid_units = 0
                 for i in range(sample_n):
                     u_ptr = struct.unpack_from("<Q", ptr_data, i * 8)[0]
                     if is_valid_ptr(u_ptr):
-                        valid_units += 1
+                        pos = get_unit_pos(scanner, u_ptr)
+                        if pos and not _is_zero_unit_pos(scanner, u_ptr):
+                            valid_units += 1
                 if valid_units:
-                    score += min(valid_units, 10)
-
-    if total_units > 0:
-        score += min(total_units, 80) // 8
+                    total_units += valid_units
+                    score += valid_units * 10
 
     return score, total_units
 
@@ -776,11 +772,13 @@ def get_cgame_base(scanner, base_addr):
         live_score, total_units = _score_cgame_live(scanner, cgame_ptr)
         matrix_ok = False
         cam_offsets = [OFF_CAMERA_PTR]
-        if 0x670 not in cam_offsets:
-            cam_offsets.append(0x670)
+        for c_off in (0x660, 0x670, 0x668, 0x6f8, 0x708):
+            if c_off not in cam_offsets:
+                cam_offsets.append(c_off)
         matrix_offsets = [OFF_VIEW_MATRIX]
-        if 0x1C0 not in matrix_offsets:
-            matrix_offsets.append(0x1C0)
+        for m_off in (0x1D8, 0x1C0, 0x1a0, 0x120, 0x198, 0x118):
+            if m_off not in matrix_offsets:
+                matrix_offsets.append(m_off)
 
         for cam_off in cam_offsets:
             cam_ptr = _read_ptr(scanner, cgame_ptr + cam_off)
@@ -799,7 +797,8 @@ def get_cgame_base(scanner, base_addr):
                         continue
                     values = struct.unpack("<16f", matrix_data[:64])
                     non_zero = sum(1 for v in values if math.isfinite(v) and abs(v) > 1e-6)
-                    if non_zero >= 6 and all(math.isfinite(v) and abs(v) <= 1e6 for v in values):
+                    dir_sq = values[3]**2 + values[7]**2 + values[11]**2
+                    if non_zero >= 8 and 0.5 < dir_sq < 2.0 and all(math.isfinite(v) and abs(v) <= 1e6 for v in values):
                         matrix_ok = True
                         break
                 if matrix_ok:
@@ -842,7 +841,10 @@ def get_view_matrix(scanner, cgame_base):
         if any(abs(v) > 1e6 for v in values):
             return False
         non_zero = sum(1 for v in values if abs(v) > 1e-6)
-        return non_zero >= 6
+        if non_zero < 8:
+            return False
+        dir_sq = values[3]**2 + values[7]**2 + values[11]**2
+        return 0.5 < dir_sq < 2.0
 
     if FORCED_VIEW_PROFILE:
         camera_ptr = _read_ptr(scanner, cgame_base + FORCED_VIEW_PROFILE["camera_off"])
@@ -856,12 +858,14 @@ def get_view_matrix(scanner, cgame_base):
                     return values
 
     cam_offsets = [OFF_CAMERA_PTR]
-    if 0x670 not in cam_offsets:
-        cam_offsets.append(0x670)
+    for c_off in (0x660, 0x670, 0x668, 0x6f8, 0x708):
+        if c_off not in cam_offsets:
+            cam_offsets.append(c_off)
 
     matrix_offsets = [OFF_VIEW_MATRIX]
-    if 0x1C0 not in matrix_offsets:
-        matrix_offsets.append(0x1C0)
+    for m_off in (0x1D8, 0x1C0, 0x1a0, 0x120, 0x198, 0x118):
+        if m_off not in matrix_offsets:
+            matrix_offsets.append(m_off)
 
     for cam_off in cam_offsets:
         camera_ptr = _read_ptr(scanner, cgame_base + cam_off)
@@ -934,8 +938,6 @@ def get_all_units(scanner, cgame_base):
             is_air = True
         elif kind == "ground":
             is_air = False
-        else:
-            continue
         if FILTER_ZERO_POS_UNITS and _is_zero_unit_pos(scanner, u_ptr):
             continue
         refined.append((u_ptr, is_air))
@@ -1541,14 +1543,18 @@ def get_unit_status(scanner, u_ptr, read_name=True):
             if info_raw:
                 info_ptr = struct.unpack("<Q", info_raw)[0]
                 if is_valid_ptr(info_ptr):
-                    name_ptr_raw = scanner.read_mem(info_ptr + OFF_UNIT_NAME_PTR, 8) 
-                    if name_ptr_raw:
-                        name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
-                        if is_valid_ptr(name_ptr):
-                            str_data = scanner.read_mem(name_ptr, 64)
-                            if str_data:
-                                raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
-                                unit_name = "".join([c for c in raw_str if c.isalnum() or c in '-_'])
+                    for name_off in (OFF_INFO_SHORT_NAME, 0x28, 0x20, 0x10, 0x08):
+                        name_ptr_raw = scanner.read_mem(info_ptr + name_off, 8) 
+                        if name_ptr_raw:
+                            name_ptr = struct.unpack("<Q", name_ptr_raw)[0]
+                            if is_valid_ptr(name_ptr):
+                                str_data = scanner.read_mem(name_ptr, 64)
+                                if str_data:
+                                    raw_str = str_data.split(b'\x00')[0].decode('utf-8', errors='ignore')
+                                    clean_name = "".join([c for c in raw_str if c.isalnum() or c in '-_ ']).strip()
+                                    if clean_name:
+                                        unit_name = clean_name
+                                        break
                                 
         # 🎯 ดึงสถานะ Reload (ตอนนี้เป็น 1 ไบต์: 0-16)
         reload_raw = scanner.read_mem(u_ptr + OFF_UNIT_RELOAD, 1)

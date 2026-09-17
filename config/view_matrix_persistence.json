@@ -1,13 +1,13 @@
 {
-  "updated_at": "2026-07-30T18:41:34.284400",
-  "camera_off": 1648,
+  "updated_at": "2026-09-17T13:12:00.000000",
+  "camera_off": 1632,
   "matrix_off": 472,
-  "source": "scanner_auto_view_matrix",
+  "source": "scanner_dynamic_discovery",
   "updated_by_tool": "scanner",
-  "confidence": 0.78,
+  "confidence": 0.98,
   "build_fingerprint": {
     "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
-    "size": 163474592,
-    "mtime_ns": 1785320254000000000
+    "size": 180135232,
+    "mtime_ns": 1789543402000000000
   }
 }
