@@ -87,13 +87,13 @@ OFF_GROUND_MOVEMENT = 0x0D30
 OFF_GROUND_VEL      = 0x0068
 OFF_GROUND_OMEGA    = 0
 FILTER_ZERO_POS_UNITS = True
-# 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตจาก layout_old_guess Persistence ล่าสุด)
+# 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตโครงสร้าง 2.59+ เลื่อน +0x20)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
-OFF_CCIP_IMPACT     = 0x1C9C       # 🎯 vec3_t (x, y, z) CCIP Impact Point จาก Dagor Engine
-OFF_BULLET_SPEED    = 0x20E8       # 🎯 ความเร็วต้น (Muzzle Velocity)
-OFF_BULLET_MASS     = 0x20F4       # ⚖️ มวลกระสุน
-OFF_BULLET_CALIBER  = 0x20F8       # 📏 Caliber (เมตร)
-OFF_BULLET_CD       = 0x20FC       # 💨 Drag Coeff
+OFF_CCIP_IMPACT     = 0x1CBC       # 🎯 vec3_t (x, y, z) CCIP Impact Point จาก Dagor Engine (เดิม 0x1C9C)
+OFF_BULLET_SPEED    = 0x2108       # 🎯 ความเร็วต้น (Muzzle Velocity - เดิม 0x20E8)
+OFF_BULLET_MASS     = 0x2114       # ⚖️ มวลกระสุน (เดิม 0x20F4)
+OFF_BULLET_CALIBER  = 0x2118       # 📏 Caliber เมตร (เดิม 0x20F8)
+OFF_BULLET_CD       = 0x211C       # 💨 Drag Coeff (เดิม 0x20FC)
 
 OFF_INVUL_TIMER     = 0x0E6C       # 🛡️ นับถอยหลังอมตะเกิดใหม่ (วินาที)
 OFF_INVULNERABLE    = 0x0E90       # 🛡️ แฟล็กอมตะเกิดใหม่ (bool)
@@ -2066,8 +2066,8 @@ _LAST_SPEED_GOOD_TIME = 0.0
 
 def get_direct_bomb_impact(scanner, cgame_base, unit_ptr=0, my_pos=None):
     """
-    อ่านจุดตกกระทบของระเบิด/จรวดที่ Dagor Engine คำนวณไว้ในหน่วยความจำโดยตรง (+ 0x1C9C)
-    พร้อมระบบตรวจจับ Freeze Vector เมื่อระเบิดหมด / หยุดคำนวณ
+    อ่านจุดตกกระทบของระเบิด/จรวดที่ Dagor Engine คำนวณไว้ในหน่วยความจำโดยตรง (+ 0x1CBC)
+    พร้อมระบบตรวจจับ Candidate offsets และตรวจจับจุดตกค้าง (Freeze Vector)
     """
     global _LAST_IMPACT_RAW, _LAST_IMPACT_CHANGE_TIME, _LAST_MY_POS_FOR_CCIP
     if cgame_base == 0:
@@ -2093,32 +2093,52 @@ def get_direct_bomb_impact(scanner, cgame_base, unit_ptr=0, my_pos=None):
         if not is_valid_ptr(weapon_ptr):
             return None
 
-        # 1. อ่าน 3D Vector จุดตกกระทบจาก Memory (+ 0x1C9C)
-        raw_impact = scanner.read_mem(weapon_ptr + OFF_CCIP_IMPACT, 12)
-        if not raw_impact or len(raw_impact) < 12:
+        # 1. ตรวจสอบ OFF_CCIP_IMPACT (0x1CBC) และ Fallback pylon offsets (0x117C, 0x114C, 0x111C, 0x10EC, 0x1C9C)
+        offsets_to_try = [
+            OFF_CCIP_IMPACT,
+            0x1CBC,
+            0x117C,
+            0x114C,
+            0x111C,
+            0x10EC,
+            0x1C9C,
+        ]
+
+        impact_cand = None
+        for off in offsets_to_try:
+            raw_impact = scanner.read_mem(weapon_ptr + off, 12)
+            if not raw_impact or len(raw_impact) < 12:
+                continue
+
+            ix, iy, iz = struct.unpack("<fff", raw_impact)
+            if not (math.isfinite(ix) and math.isfinite(iy) and math.isfinite(iz)):
+                continue
+
+            if abs(ix) >= 100000.0 or abs(iy) >= 100000.0 or abs(iz) >= 100000.0:
+                continue
+
+            if ix == 0.0 and iy == 0.0 and iz == 0.0:
+                continue
+
+            if my_pos:
+                dx = ix - my_pos[0]
+                dy = iy - my_pos[1]
+                dz = iz - my_pos[2]
+                dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if dist <= 5.0 or dist >= 50000.0:
+                    continue
+
+            impact_cand = (ix, iy, iz)
+            break
+
+        if not impact_cand:
             return None
 
-        ix, iy, iz = struct.unpack("<fff", raw_impact)
-        if not (math.isfinite(ix) and math.isfinite(iy) and math.isfinite(iz)):
-            return None
-
-        if abs(ix) >= 50000.0 or abs(iy) >= 50000.0 or abs(iz) >= 50000.0:
-            return None
-
-        if ix == 0.0 and iy == 0.0 and iz == 0.0:
-            return None
-
-        if my_pos:
-            dx = ix - my_pos[0]
-            dy = iy - my_pos[1]
-            dz = iz - my_pos[2]
-            dist = math.sqrt(dx * dx + dy * dy + dz * dz)
-            if dist <= 2.0 or dist >= 50000.0:
-                return None
+        ix, iy, iz = impact_cand
 
         # 2. ระบบตรวจจับ Freeze / Stale Memory Vector
         # เมื่อเครื่องบินกำลังบินอยู่ ค่าจุดตกกระทบใน World Space ต้องมีการขยับอัปเดตเสมอ
-        # หากพิกัดค้างเท่าเดิมแบบ 100% ขณะเครื่องบินบินผ่านระยะทาง > 3 เมตร ให้ถือว่าจุดตกค้าง (ระเบิดหมด)
+        # หากพิกัดค้างเท่าเดิมแบบ 100% ขณะเครื่องบินบินผ่านระยะทาง > 50 เมตร นานเกิน 2.5 วินาที ให้ถือว่าจุดตกค้าง (ระเบิดหมด)
         now_time = time.time()
         current_impact_tuple = (ix, iy, iz)
         if _LAST_IMPACT_RAW != current_impact_tuple:
@@ -2132,7 +2152,7 @@ def get_direct_bomb_impact(scanner, cgame_base, unit_ptr=0, my_pos=None):
                 m_dy = my_pos[1] - _LAST_MY_POS_FOR_CCIP[1]
                 m_dz = my_pos[2] - _LAST_MY_POS_FOR_CCIP[2]
                 my_moved_dist = math.sqrt(m_dx * m_dx + m_dy * m_dy + m_dz * m_dz)
-                if my_moved_dist > 3.0 and (now_time - _LAST_IMPACT_CHANGE_TIME) > 0.35:
+                if my_moved_dist > 50.0 and (now_time - _LAST_IMPACT_CHANGE_TIME) > 2.5:
                     return None
 
         return (ix, iy, iz)
