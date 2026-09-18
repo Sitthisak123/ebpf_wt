@@ -6302,7 +6302,10 @@ class ESPOverlay(QOpenGLWidget):
                         painter.drawEllipse(b_sx - 2, b_sy - 2, 4, 4)
                         if my_pos:
                             b_dist = math.sqrt((draw_bomb_pos[0]-my_pos[0])**2 + (draw_bomb_pos[1]-my_pos[1])**2 + (draw_bomb_pos[2]-my_pos[2])**2)
-                            painter.setFont(self.font_small)
+                            f = painter.font()
+                            f.setPixelSize(11)
+                            f.setBold(True)
+                            painter.setFont(f)
                             painter.drawText(b_sx - 60, b_sy + radius + 4, 120, 18, Qt.AlignCenter, f"CCIP [{int(b_dist)}m]")
                 else:
                     self.last_bomb_impact_pos = None
