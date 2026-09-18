@@ -54,13 +54,15 @@ def main():
     print("📊 TEST 1: dumper brute-force scan (reference)")
     print("=" * 70)
     from src.utils.missile import MissileScanner
-    from tools.missile_starned_dumper import OFF_ECS_MANAGER, OFF_ECS_NODE_TABLE
-    mgr = rp(scanner, base + OFF_ECS_MANAGER)
-    node_t = rp(scanner, mgr + OFF_ECS_NODE_TABLE) if mgr else 0
+    import src.utils.mul as mul
+    ecs_mgr_off = getattr(mul, 'OFF_ECS_MANAGER', 0xb0e29b8)
+    ecs_node_off = getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178)
+    mgr = rp(scanner, base + ecs_mgr_off)
+    node_t = rp(scanner, mgr + ecs_node_off) if mgr else 0
     
     dumper_rockets = []
-    if node_t:
-        dumper_rockets = dumper_brute_force(scanner, node_t, max_entries=5000)
+    if node_t or base:
+        dumper_rockets = dumper_brute_force(scanner, node_t, max_entries=5000, base=base)
     print(f"👉 Dumper found: {len(dumper_rockets)} rockets")
     for idx, r in enumerate(dumper_rockets):
         print(f"   [{idx}] ptr={hex(r['ptr'])} pos={r['pos']} vel={r['vel']} spd={r['speed']:.1f}m/s entry={r.get('entry')} layout={r.get('layout')}")

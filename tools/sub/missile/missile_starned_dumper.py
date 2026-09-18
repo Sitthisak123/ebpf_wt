@@ -18,12 +18,22 @@ if PROJECT_ROOT not in sys.path:
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 import src.utils.mul as mul
 
-OFF_ECS_MANAGER    = getattr(mul, 'OFF_ECS_MANAGER', 0x8226ba0)
+OFF_ECS_MANAGER    = getattr(mul, 'OFF_ECS_MANAGER', 0xb0e29b8)
 OFF_ECS_NODE_TABLE = getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178)
 OFF_ECS_CLASS_TABLE= getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8)
+OFF_PROJ_LIST      = getattr(mul, 'OFF_PROJ_LIST', 0xac02ab8)
 
 OFFSET_SETS = [
-    ("starned", 0x23c, 0x258, 0x40, 0x94, 0x638, 0x30, 0x6c8),
+    (
+        "starned",
+        getattr(mul, 'OFF_RKT_POS', 0x23c),
+        getattr(mul, 'OFF_RKT_VEL', 0x258),
+        getattr(mul, 'OFF_RKT_OWNER', 0x50),
+        getattr(mul, 'OFF_RKT_STATE', 0x94),
+        getattr(mul, 'OFF_RKT_GUIDANCE', 0x670),
+        getattr(mul, 'OFF_RKT_ENTITY_ID', 0x40),
+        getattr(mul, 'OFF_RKT_PROPS', 0x700),
+    ),
 ]
 
 
@@ -82,25 +92,28 @@ def check_ptr_is_rocket(sc, ptr):
         if not header or len(header) < 0x2c0:
             return None
         
-        # 1. ตรวจสอบชื่อ Blk ของอาวุธจาก Props pointers (+0x6c8 -> +0x50)
+        # 1. ตรวจสอบชื่อ Blk ของอาวุธจาก Props pointers (+0x700 / +0x6c8 -> +0x50, +0x28, +0x58)
         found_wep = ""
-        for off in [0x6c8, 0x690, 0x6a0, 0x620]:
+        for off in [0x700, 0x6c8, 0x690, 0x6a0, 0x620]:
             if len(header) >= off + 8:
                 prp = struct.unpack_from("<Q", header, off)[0]
                 if is_valid_ptr(prp):
-                    raw_np = sc.read_mem(prp + 0x50, 8)
-                    if raw_np and len(raw_np) == 8:
-                        np = struct.unpack("<Q", raw_np)[0]
-                        if is_valid_ptr(np):
-                            s = sc.read_mem(np, 64)
-                            if s:
-                                raw_str = s.split(b"\x00")[0].decode("utf-8", errors="ignore").strip()
-                                # 🚫 ตรวจพบว่าเป็น Flare / Chaff ให้คัดทิ้งทันที
-                                if any(ign in raw_str.lower() for ign in ("flare", "chaff")):
-                                    return None
-                                if raw_str and (b".blk" in s or any(k in s.lower() for k in (b"missile", b"rocket", b"aim", b"sam"))):
-                                    found_wep = raw_str
-                                    break
+                    for poff in (0x28, 0x50, 0x58):
+                        raw_np = sc.read_mem(prp + poff, 8)
+                        if raw_np and len(raw_np) == 8:
+                            np = struct.unpack("<Q", raw_np)[0]
+                            if is_valid_ptr(np):
+                                s = sc.read_mem(np, 64)
+                                if s:
+                                    raw_str = s.split(b"\x00")[0].decode("utf-8", errors="ignore").strip()
+                                    # 🚫 ตรวจพบว่าเป็น Flare / Chaff ให้คัดทิ้งทันที
+                                    if any(ign in raw_str.lower() for ign in ("flare", "chaff")):
+                                        return None
+                                    if raw_str and (".blk" in raw_str.lower() or any(k in raw_str.lower() for k in ("missile", "rocket", "aim", "sam", "agm", "r_", "aam"))):
+                                        found_wep = raw_str.split("/")[-1].split("\\")[-1]
+                                        break
+                    if found_wep:
+                        break
         
         # ตรวจสอบ Component Weapon pointers (+0x420, +0x440)
         if not found_wep:
@@ -140,8 +153,8 @@ def check_ptr_is_rocket(sc, ptr):
             
             # กรองซากจรวดที่ระเบิดแล้วบนพื้นสำหรับ starned
             if set_name == "starned":
-                phase = struct.unpack_from("<I", header, 0x498)[0] if len(header) >= 0x498 + 4 else 0
-                detonated = struct.unpack_from("<Q", header, 0x420)[0] if len(header) >= 0x420 + 8 else 0
+                phase = struct.unpack_from("<I", header, getattr(mul, 'OFF_RKT_PHASE', 0x498))[0] if len(header) >= 0x498 + 4 else 0
+                detonated = struct.unpack_from("<I", header, getattr(mul, 'OFF_RKT_DETONATED', 0x420))[0] if len(header) >= 0x420 + 4 else 0
                 if phase == 6 or detonated != 0:
                     continue
             
@@ -150,41 +163,41 @@ def check_ptr_is_rocket(sc, ptr):
                 return None
             
             owner = struct.unpack_from("<Q", header, own_off)[0] if len(header) >= own_off + 8 else 0
+            if not owner and len(header) >= 0x48:
+                owner = struct.unpack_from("<Q", header, 0x40)[0]
             state = header[st_off] if len(header) > st_off else 0
             guid  = struct.unpack_from("<Q", header, guid_off)[0] if len(header) >= guid_off + 8 else 0
+            if not guid and len(header) >= 0x640:
+                guid = struct.unpack_from("<Q", header, 0x638)[0]
             eid   = struct.unpack_from("<I", header, eid_off)[0] if len(header) >= eid_off + 4 else 0
+            if not eid and len(header) >= 0x34:
+                eid = struct.unpack_from("<I", header, 0x30)[0]
 
             # 🛡️ STRICT VALIDATION: Filter out fake/garbage entities and non-rocket objects
             # 1. State: In-flight missiles only have state 0 (active), 1 (boost), or 2 (sustain).
-            # State 11 (dead) or State 95 (ASCII '_') must be rejected!
             if state > 3:
                 continue
 
             # 2. Entity ID: Active projectile IDs are normal positive integers (< 50,000,000).
-            # Rejects 0 and ASCII string garbage (e.g. 1802396020 = "tblk").
             if eid == 0 or eid > 50_000_000:
                 continue
 
-            # 3. Owner: Every projectile in War Thunder has an owner unit pointer (u_ptr | 1).
-            # An unowned entity (owner == 0) or non-pointer garbage (e.g. 0x6e65657263735f65 = "e_screen") is invalid!
+            # 3. Owner: If valid pointer, mask out tag bit (u_ptr | 1)
             owner_unit = (owner & ~1) if owner else 0
-            if not (is_valid_ptr(owner_unit) and (owner_unit & 0x7 == 0)):
-                continue
+            if owner_unit != 0 and not (is_valid_ptr(owner_unit) and (owner_unit & 0x7 == 0)):
+                owner = 0
+                owner_unit = 0
 
             # 4. Guidance: Validate pointer alignment
-            if guid != 0:
-                if not (is_valid_ptr(guid) and (guid & 0x7 == 0)):
-                    guid = 0
-                else:
-                    g_lock = r8(sc, guid + 0x50)
-                    g_trk = r8(sc, guid + 0x51)
-                    if g_lock not in (0, 1) or g_trk not in (0, 1):
-                        guid = 0
+            if guid != 0 and not (is_valid_ptr(guid) and (guid & 0x7 == 0)):
+                guid = 0
 
-            # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็น sam_missile.blk เฉพาะเมื่อมี Guidance และ Owner ที่ถูกต้อง
+            # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็น sam_missile.blk หรือ missile.blk
             if not found_wep:
-                if is_valid_ptr(guid) and is_valid_ptr(owner_unit) and state in (0, 1, 2):
+                if is_valid_ptr(guid) and state in (0, 1, 2):
                     found_wep = "sam_missile.blk"
+                elif speed > 300.0 and state in (0, 1, 2):
+                    found_wep = "missile.blk"
                 else:
                     continue
             
@@ -205,46 +218,67 @@ def check_ptr_is_rocket(sc, ptr):
     return None
 
 
-def brute_force_entries(sc, node_table, max_entries=350):
+def brute_force_entries(sc, node_table, max_entries=350, base=0):
     """
-    Pure Direct Offset 0 Window Scanner (0..350 entries)
-    สแกนตรงจาก storage offset 0 (อ่านสูงสุด 300 pointers ต่อ entry)
+    Scans active missiles from both OFF_PROJ_LIST (if base provided) and ECS node_table (0..max_entries).
     """
-    table_bytes = sc.read_mem(node_table, max_entries * 0x20)
-    if not table_bytes or len(table_bytes) < 0x20:
-        return []
-    
     all_rockets = []
     seen_ptrs = set()
-    num_entries = len(table_bytes) // 0x20
-    
-    for i in range(num_entries):
-        data = table_bytes[i * 0x20 : (i + 1) * 0x20]
-        if all(b == 0 for b in data):
-            continue
-        
-        storage = struct.unpack_from("<Q", data, 0)[0]
-        if not is_valid_ptr(storage) or (storage & 0x7 != 0):
-            continue
-        
-        count = struct.unpack_from("<I", data, 8)[0]
-        capacity = struct.unpack_from("<I", data, 0x14)[0]
-        if count == 0 or capacity == 0 or count > capacity or capacity > 8192:
-            continue
-        
-        # อ่าน storage array ครอบคลุมคอลัมน์ component ทั้งหมดสำหรับความจุ 512, 1024, 2048+
-        read_n = min(max(capacity * 8, 200), 16384)
-        bulk0 = sc.read_mem(storage, read_n * 8)
-        if bulk0 and len(bulk0) >= 8:
-            for idx in range(len(bulk0) // 8):
-                ptr = struct.unpack_from("<Q", bulk0, idx * 8)[0]
-                if is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
-                    info = check_ptr_is_rocket(sc, ptr)
-                    if info:
-                        info["layout"] = "A_direct_0"
-                        info["entry"] = i
-                        seen_ptrs.add(ptr)
-                        all_rockets.append(info)
+
+    # 1. Check OFF_PROJ_LIST if base address is provided
+    if base:
+        proj_list_off = getattr(mul, "OFF_PROJ_LIST", 0xac02ab8)
+        table_ptr = rp(sc, base + proj_list_off)
+        if is_valid_ptr(table_ptr):
+            cnt_cap = sc.read_mem(base + proj_list_off + 8, 8)
+            if cnt_cap and len(cnt_cap) == 8:
+                count, cap = struct.unpack("<II", cnt_cap)
+                if 0 < count <= 2000 and cap <= 65536:
+                    raw_entries = sc.read_mem(table_ptr + 0x20, count * 0x20)
+                    if raw_entries and len(raw_entries) >= 0x20:
+                        num_m = min(count, len(raw_entries) // 0x20)
+                        for i in range(num_m):
+                            chunk = raw_entries[i * 0x20 : (i + 1) * 0x20]
+                            ent_ptr = struct.unpack_from("<Q", chunk, 0x10)[0]
+                            if is_valid_ptr(ent_ptr) and (ent_ptr & 7 == 0) and ent_ptr not in seen_ptrs:
+                                info = check_ptr_is_rocket(sc, ent_ptr)
+                                if info:
+                                    info["layout"] = "proj_list"
+                                    info["entry"] = i
+                                    seen_ptrs.add(ent_ptr)
+                                    all_rockets.append(info)
+
+    # 2. Check ECS node_table
+    if node_table and is_valid_ptr(node_table):
+        table_bytes = sc.read_mem(node_table, max_entries * 0x20)
+        if table_bytes and len(table_bytes) >= 0x20:
+            num_entries = len(table_bytes) // 0x20
+            for i in range(num_entries):
+                data = table_bytes[i * 0x20 : (i + 1) * 0x20]
+                if all(b == 0 for b in data):
+                    continue
+                
+                storage = struct.unpack_from("<Q", data, 0)[0]
+                if not is_valid_ptr(storage) or (storage & 0x7 != 0):
+                    continue
+                
+                count = struct.unpack_from("<I", data, 8)[0]
+                capacity = struct.unpack_from("<I", data, 0x14)[0]
+                if count == 0 or capacity == 0 or count > capacity or capacity > 8192:
+                    continue
+                
+                read_n = min(max(capacity * 8, 200), 16384)
+                bulk0 = sc.read_mem(storage, read_n * 8)
+                if bulk0 and len(bulk0) >= 8:
+                    for idx in range(len(bulk0) // 8):
+                        ptr = struct.unpack_from("<Q", bulk0, idx * 8)[0]
+                        if is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
+                            info = check_ptr_is_rocket(sc, ptr)
+                            if info:
+                                info["layout"] = "A_direct_0"
+                                info["entry"] = i
+                                seen_ptrs.add(ptr)
+                                all_rockets.append(info)
     
     return all_rockets
 
@@ -265,18 +299,26 @@ def main():
     init_dynamic_offsets(sc, base)
     
     # Read ECS Manager
-    ecs_mgr_off = getattr(mul, 'OFF_ECS_MANAGER', 0x8226ba0)
+    ecs_mgr_off = getattr(mul, 'OFF_ECS_MANAGER', 0xb0e29b8)
     ecs_mgr = rp(sc, base + ecs_mgr_off)
     if not is_valid_ptr(ecs_mgr):
-        print(f"❌ อ่าน ECS Manager ล้มเหลวที่ {hex(base + ecs_mgr_off)}")
-        return
+        for alt_off in (0xb0e2b98, 0xb0e29b8, 0x8225aa0):
+            test_m = rp(sc, base + alt_off)
+            if is_valid_ptr(test_m) and is_valid_ptr(rp(sc, test_m + getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178))):
+                ecs_mgr = test_m
+                ecs_mgr_off = alt_off
+                break
     
-    node_t = rp(sc, ecs_mgr + getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178))
-    class_t = rp(sc, ecs_mgr + getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8))
-    
-    print(f"✅ ECS Manager: {hex(ecs_mgr)}")
-    print(f"   node_table:  {hex(node_t)}")
-    print(f"   class_table: {hex(class_t)}")
+    if not is_valid_ptr(ecs_mgr):
+        print(f"⚠️ อ่าน ECS Manager ล้มเหลวที่ {hex(base + ecs_mgr_off)}, จะสแกนผ่าน Projectile Table เป็นหลัก")
+        node_t = 0
+        class_t = 0
+    else:
+        node_t = rp(sc, ecs_mgr + getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178))
+        class_t = rp(sc, ecs_mgr + getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8))
+        print(f"✅ ECS Manager: {hex(ecs_mgr)}")
+        print(f"   node_table:  {hex(node_t)}")
+        print(f"   class_table: {hex(class_t)}")
     
     # Build unit_map to resolve target_id and owner
     unit_map = {}
@@ -300,7 +342,7 @@ def main():
 
     # Run Pure Direct Offset 0 Batch Entry Scanner
     t0 = time.time()
-    unique = brute_force_entries(sc, node_t, 350)
+    unique = brute_force_entries(sc, node_t, 350, base=base)
     t_elapsed = (time.time() - t0) * 1000
     
     # Sort by speed (highest first)
@@ -322,9 +364,9 @@ def main():
             owner_str = f"{hex(r['owner'])} ✅{owner_info}" if 0 < r['owner'] <= 0xFFFFFFFFFFFFFFFF else f"{hex(r['owner'])} ❌"
             guid_str = f"{hex(r['guid'])}" if r['guid'] != 0 else "none (unguided)"
             if r['guid'] != 0 and is_valid_ptr(r['guid']):
-                g_lock = r8(sc, r['guid'] + 0x50)
-                g_trk = r8(sc, r['guid'] + 0x51)
-                g_tgt_raw = sc.read_mem(r['guid'] + 0x8c, 2)
+                g_lock = r8(sc, r['guid'] + getattr(mul, 'OFF_GUID_LOCKED', 0x4C))
+                g_trk = r8(sc, r['guid'] + getattr(mul, 'OFF_GUID_TRACKING', 0x4D))
+                g_tgt_raw = sc.read_mem(r['guid'] + getattr(mul, 'OFF_GUID_TARGET_ID', 0x84), 2)
                 g_tgt = struct.unpack("<H", g_tgt_raw)[0] if g_tgt_raw and len(g_tgt_raw) == 2 else 0
                 if g_tgt == 0xFFFF:
                     g_tgt = 0
@@ -356,7 +398,7 @@ def main():
     try:
         while True:
             time.sleep(0.2)
-            fresh = brute_force_entries(sc, node_t, 350)
+            fresh = brute_force_entries(sc, node_t, 350, base=base)
             if fresh:
                 parts = []
                 for r in fresh[:10]:

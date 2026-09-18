@@ -21,15 +21,16 @@ if PROJECT_ROOT not in sys.path:
 
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address
 from src.utils.mul import is_valid_ptr, GHIDRA_BASE
+import src.utils.mul as mul
 
 # ====================================================================
 # Configuration
 # ====================================================================
 BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
 
-# Known offsets INSIDE the ECS manager (stable across versions)
-ECS_NODE_TABLE_OFF  = 0x178   # dataTable
-ECS_CLASS_TABLE_OFF = 0x5E8   # indexTable
+# Known offsets INSIDE the ECS manager (bound to mul.py)
+ECS_NODE_TABLE_OFF  = getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178)   # dataTable
+ECS_CLASS_TABLE_OFF = getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8)   # indexTable
 
 # Scan range inside the binary's .bss / .data sections 
 # (global pointers are typically at high offsets from base)
@@ -82,10 +83,28 @@ def scan_for_alllistdata(scanner, base_addr):
     print("=" * 70)
     
     candidates = []
+    
+    # 0. Check known offset from mul.py first
+    known_off = getattr(mul, 'OFF_ECS_MANAGER', 0xb0e29b8)
+    if known_off:
+        ptr = read_ptr(scanner, base_addr + known_off)
+        if is_valid_ptr(ptr):
+            node_table = read_ptr(scanner, ptr + ECS_NODE_TABLE_OFF)
+            class_table = read_ptr(scanner, ptr + ECS_CLASS_TABLE_OFF)
+            if is_valid_ptr(node_table) and is_valid_ptr(class_table) and node_table != class_table:
+                ghidra_addr = known_off + GHIDRA_BASE
+                print(f"\n  🎯 Known mul.OFF_ECS_MANAGER Verified: base+{hex(known_off)} (Ghidra: {hex(ghidra_addr)})")
+                print(f"     Manager ptr:   {hex(ptr)}")
+                print(f"     node_table:    {hex(node_table)}")
+                print(f"     class_table:   {hex(class_table)}")
+                candidates.append((known_off, ptr, node_table, class_table))
+
     total = (SCAN_RANGE_END - SCAN_RANGE_START) // SCAN_STEP
     checked = 0
     
     for off in range(SCAN_RANGE_START, SCAN_RANGE_END, SCAN_STEP):
+        if any(c[0] == off for c in candidates):
+            continue
         checked += 1
         if checked % 100000 == 0:
             pct = (checked / total) * 100

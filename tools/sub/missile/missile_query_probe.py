@@ -25,6 +25,7 @@ if PROJECT_ROOT not in sys.path:
 
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address
 from src.utils.mul import is_valid_ptr, GHIDRA_BASE
+import src.utils.mul as mul
 
 # ====================================================================
 # Helpers
@@ -64,19 +65,21 @@ def read_string(scanner, addr, max_len=64):
         return data.decode("utf-8", errors="replace")
 
 # ====================================================================
-# Known ECS Manager from scan
+# Known ECS Manager from mul / scan
 # ====================================================================
-ALLLISTDATA_OFFSET = 0x8225aa0  # base + this = pointer to ECS manager
+ALLLISTDATA_OFFSET = getattr(mul, 'OFF_ECS_MANAGER', 0xb0e29b8)
+OFF_ECS_NODE_TABLE = getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178)
+OFF_ECS_CLASS_TABLE = getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8)
 
 # Known candidate selectors that produced sublists=35, req=3
 ROCKET_SELECTORS_TO_TRY = [128, 257, 258, 229, 1079, 1090, 1120, 1263, 1344, 1345]
 
-# Starned's rocket offsets (Linux) - try these first
-ROCKET_POS_CANDIDATES   = [0x23c, 0x298, 0x2C8, 0x190, 0x1D0]
-ROCKET_VEL_CANDIDATES   = [0x258, 0x2B4, 0x2E4, 0x1AC, 0x1EC]
-ROCKET_OWNER_CANDIDATES = [0x40, 0x48, 0x480]
-ROCKET_STATE_CANDIDATES = [0x94]
-ROCKET_GUID_CANDIDATES  = [0x638, 0x648, 0x6C8, 0x698]
+# Rocket offsets bound with mul.py
+ROCKET_POS_CANDIDATES   = [getattr(mul, 'OFF_RKT_POS', 0x23c), 0x298, 0x2C8, 0x190, 0x1D0]
+ROCKET_VEL_CANDIDATES   = [getattr(mul, 'OFF_RKT_VEL', 0x258), 0x2B4, 0x2E4, 0x1AC, 0x1EC]
+ROCKET_OWNER_CANDIDATES = [getattr(mul, 'OFF_RKT_OWNER', 0x50), 0x40, 0x48, 0x480]
+ROCKET_STATE_CANDIDATES = [getattr(mul, 'OFF_RKT_STATE', 0x94)]
+ROCKET_GUID_CANDIDATES  = [getattr(mul, 'OFF_RKT_GUIDANCE', 0x670), 0x638, 0x648, 0x6C8, 0x698]
 
 
 def dump_ecs_query(scanner, class_table, node_table, selector, verbose=True):
@@ -269,9 +272,9 @@ def probe_rocket_offsets(scanner, entities):
             if sample_guid:
                 print(f"     Sample: {hex(sample_guid)}")
                 # Try reading guidance struct
-                is_locked = read_u8(scanner, sample_guid + 0x50)
-                is_tracking = read_u8(scanner, sample_guid + 0x51)
-                target_id = read_u16(scanner, sample_guid + 0x8C)
+                is_locked = read_u8(scanner, sample_guid + getattr(mul, 'OFF_GUID_LOCKED', 0x4C))
+                is_tracking = read_u8(scanner, sample_guid + getattr(mul, 'OFF_GUID_TRACKING', 0x4D))
+                target_id = read_u16(scanner, sample_guid + getattr(mul, 'OFF_GUID_TARGET_ID', 0x84))
                 print(f"     isLocked={is_locked} isTracking={is_tracking} targetId={target_id}")
     
     # State byte  
@@ -286,12 +289,13 @@ def probe_rocket_offsets(scanner, entities):
     
     # Brute-force scan for entity name (string pointer)
     print("\n  🔍 Scanning for name pointers...")
+    props_candidates = [getattr(mul, 'OFF_RKT_PROPS', 0x700), 0x6c8] + list(range(0x600, 0x750, 8))
     for e in alive_entities[:3]:
-        for off in range(0x600, 0x750, 8):
+        for off in props_candidates:
             name_cont = read_ptr(scanner, e["ptr"] + off)
             if is_valid_ptr(name_cont):
-                # Try reading string at name_cont + 0x50 (missile name)
-                for str_off in [0x0, 0x10, 0x50]:
+                # Try reading string at name_cont + 0x50, 0x28, 0x58 (missile name)
+                for str_off in [0x50, 0x28, 0x58, 0x0, 0x10]:
                     name_ptr = read_ptr(scanner, name_cont + str_off)
                     if is_valid_ptr(name_ptr):
                         name = read_string(scanner, name_ptr)
@@ -316,12 +320,19 @@ def main():
     # Step 1: Read ECS Manager
     manager_ptr = read_ptr(scanner, base_addr + ALLLISTDATA_OFFSET)
     if not is_valid_ptr(manager_ptr):
+        for alt_off in (0xb0e29b8, 0xb0e2b98, 0x8225aa0):
+            test_m = read_ptr(scanner, base_addr + alt_off)
+            if is_valid_ptr(test_m) and is_valid_ptr(read_ptr(scanner, test_m + OFF_ECS_NODE_TABLE)):
+                manager_ptr = test_m
+                break
+    
+    if not is_valid_ptr(manager_ptr):
         print(f"❌ AllListData at base+{hex(ALLLISTDATA_OFFSET)} = {hex(manager_ptr)} - INVALID!")
         print("   This offset may have changed. Re-run missile_global_scanner.py")
         return
     
-    node_table = read_ptr(scanner, manager_ptr + 0x178)
-    class_table = read_ptr(scanner, manager_ptr + 0x5E8)
+    node_table = read_ptr(scanner, manager_ptr + OFF_ECS_NODE_TABLE)
+    class_table = read_ptr(scanner, manager_ptr + OFF_ECS_CLASS_TABLE)
     
     print(f"\n✅ ECS Manager: {hex(manager_ptr)}")
     print(f"   node_table:  {hex(node_table)}")
