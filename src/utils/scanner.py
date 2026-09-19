@@ -302,7 +302,7 @@ class MemoryScanner:
         if self.closed:
             self.last_error = "scanner_closed"
             return None
-        if address is None or address <= 0x10000:
+        if address is None or not isinstance(address, int) or address <= 0x10000 or address > 0x7FFFFFFFFFFF:
             return None
         try:
             return os.pread(self.mem_fd, size, address)
@@ -310,6 +310,9 @@ class MemoryScanner:
             self.last_error = f"{e.__class__.__name__}: errno={getattr(e, 'errno', '?')} msg={e}"
             if getattr(e, "errno", None) in (errno.ESRCH, errno.EBADF):
                 self.close()
+            return None
+        except OverflowError as e:
+            self.last_error = f"OverflowError: {e}"
             return None
         except Exception as e:
             self.last_error = f"{e.__class__.__name__}: {e}"

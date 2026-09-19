@@ -151,12 +151,10 @@ def check_ptr_is_rocket(sc, ptr):
             if not is_ok:
                 continue
             
-            # กรองซากจรวดที่ระเบิดแล้วบนพื้นสำหรับ starned
+            # Note: 0x420 is flight timer/component pointer, NOT a detonation boolean flag.
             if set_name == "starned":
                 phase = struct.unpack_from("<I", header, getattr(mul, 'OFF_RKT_PHASE', 0x498))[0] if len(header) >= 0x498 + 4 else 0
                 detonated = struct.unpack_from("<I", header, getattr(mul, 'OFF_RKT_DETONATED', 0x420))[0] if len(header) >= 0x420 + 4 else 0
-                if phase == 6 or detonated != 0:
-                    continue
             
             # กรอง flares / chaff
             if found_wep and any(ign in found_wep.lower() for ign in ["flare", "chaff"]):

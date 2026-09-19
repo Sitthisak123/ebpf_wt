@@ -309,11 +309,10 @@ class MissileScanner:
         if not is_ok:
             return None
         
-        # Filter out dead/impacted rockets pooled on ground
-        phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0]
-        detonated = struct.unpack_from("<I", header, OFF_RKT_DETONATED)[0]
-        if phase == 6 or detonated != 0:
-            return None
+        # Note: 0x420 is a flight timer/component pointer (float/ptr), NOT a detonation boolean flag.
+        # Dead/stationary rockets are already filtered by _is_valid_missile_motion (speed >= 10.0 m/s).
+        phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0] if len(header) >= OFF_RKT_PHASE + 4 else 0
+        detonated = struct.unpack_from("<I", header, OFF_RKT_DETONATED)[0] if len(header) >= OFF_RKT_DETONATED + 4 else 0
         
         # Header metadata with fallback support
         owner = struct.unpack_from("<Q", header, OFF_RKT_OWNER)[0] if len(header) >= OFF_RKT_OWNER + 8 else 0

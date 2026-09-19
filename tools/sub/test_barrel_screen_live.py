@@ -1,5 +1,7 @@
 import sys, os, struct, math, time
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 from src.utils.mul import get_weapon_barrel, is_valid_ptr, get_unit_3d_box_data, world_to_screen, get_view_matrix, get_all_units, get_cgame_base
 from src.utils import mul
@@ -17,7 +19,7 @@ def main():
         print(f"Failed to read view_matrix (cgame_base={hex(cgame_base)})!")
         return
 
-    units = get_all_units(scanner, base_addr)
+    units = get_all_units(scanner, cgame_base)
     print(f"Found {len(units)} total units.")
     
     for u_data in units:

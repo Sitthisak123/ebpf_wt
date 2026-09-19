@@ -39,6 +39,7 @@ from src.utils.debug import *
 from src.utils.kalman import KinematicKalmanFilter
 from src.utils.ammo_family import resolve_ammo_family, classify_weapon_caliber
 from src.utils.missile import MissileScanner, get_all_missiles
+from src.utils.missile_telemetry import MissileTelemetryBridge
 from src.worker.data_pump import DataPumpWorker, FrameSnapshot, TargetSnapshot
 
 
@@ -492,7 +493,7 @@ XRAY_SHOW_BREECH            = True     # แสดงท้ายรังเพ
 DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
-SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
+SHOW_MY_UNIT_BOX = True                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
 SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
@@ -1516,7 +1517,7 @@ def _is_boat_like(family_name, profile_tag, profile_path, unit_key="", name_key=
     ))
 
 
-GROUND_SUBCLASS_ENUM_OFF = 0xF48
+GROUND_SUBCLASS_ENUM_OFF = 0xF68
 GROUND_SUBCLASS_ENUM_MASK = 0x1F00
 
 GROUND_SUBCLASS_ENUM_MAP = {
@@ -3138,6 +3139,10 @@ class ESPOverlay(QOpenGLWidget):
         self.my_unit_id = -1
         self.my_name = ""
 
+        # 🚀 MISSILE TELEMETRY BRIDGE (Live Sync with Dumper & Analyzer)
+        self.telemetry_bridge = MissileTelemetryBridge(is_publisher=True)
+        self._last_telemetry_publish_t = 0.0
+
         # 🛡️ AUTO COUNTERMEASURE (FLARE / CHAFF) STATE
         self.auto_cm_last_trigger_t = 0.0
         self.auto_cm_active_stage = 0     # 0 = none, 1 = stage 1, 2 = stage 2
@@ -3221,6 +3226,46 @@ class ESPOverlay(QOpenGLWidget):
         # 🚀 Hybrid Lockstep: เริ่ม Background Worker เพื่อประมวลผลงานหนัก (Missile, BBox, Barrels, Profiles)
         self._data_pump.start()
 
+
+    def _clear_match_state(self):
+        """ล้างข้อมูลและสถานะของแมตช์เก่าออกทั้งหมดเมื่อเปลี่ยนแมตช์/โหลดฉากใหม่"""
+        if hasattr(self, 'missile_cache'):
+            self.missile_cache.clear()
+        if hasattr(self, 'missile_tracks'):
+            self.missile_tracks.clear()
+        self.missile_warning_active = False
+        if hasattr(self, 'unit_id_to_name'):
+            self.unit_id_to_name.clear()
+        if hasattr(self, 'unit_id_to_ptr'):
+            self.unit_id_to_ptr.clear()
+        if hasattr(self, 'unit_id_neg_cache'):
+            self.unit_id_neg_cache.clear()
+        if hasattr(self, 'unit_ptr_neg_cache'):
+            self.unit_ptr_neg_cache.clear()
+        if hasattr(self, 'vel_window'):
+            self.vel_window.clear()
+        if hasattr(self, 'profile_cache'):
+            self.profile_cache.clear()
+        if hasattr(self, 'air_alert_seen'):
+            self.air_alert_seen.clear()
+        if hasattr(self, 'recon_spawn_watch'):
+            self.recon_spawn_watch.clear()
+        if hasattr(self, 'offscreen_indicator_alpha'):
+            self.offscreen_indicator_alpha.clear()
+        if hasattr(self, 'offscreen_indicator_state'):
+            self.offscreen_indicator_state.clear()
+        self.last_rkt_path_pts = None
+        self.last_bomb_impact_pos = None
+        self.my_unit_id = -1
+        self.my_name = ""
+        if hasattr(self, '_data_pump') and self._data_pump:
+            self._data_pump.clear_missile_cache()
+            self._data_pump.profile_cache.clear()
+            self._data_pump.active_targets.clear()
+            self._data_pump.unit_id_cache.clear()
+            self._data_pump.last_my_unit = 0
+            self._data_pump.last_cgame_base = 0
+        reset_runtime_caches(clear_view=True)
 
     def _fatal_shutdown(self, reason, detail=""):
         if self.shutdown_requested:
@@ -4032,52 +4077,36 @@ class ESPOverlay(QOpenGLWidget):
                 )
                 return
 
-            in_startup_grace = (curr_t - self.startup_time) < STARTUP_LOADING_GRACE_SECONDS
-
             painter.setFont(QFont("Arial", 12, QFont.Bold))
             cgame_base = get_cgame_base(self.scanner, self.base_address)
             self.cgame_base = cgame_base
             
-            # 🐞 แทรก Debug: เช็ค CGame
+            # 🔄 ตรวจสอบการเปลี่ยนแมตช์ (CGame Base กลายเป็น 0 หรือเปลี่ยน Address)
             if cgame_base == 0: 
-                dprint("CGame Base is 0! ข้ามการวาดรูป", force=False)
-                if in_startup_grace:
-                    return
-                self.invalid_runtime_frames += 1
-                if self.invalid_runtime_frames >= INVALID_RUNTIME_FRAME_LIMIT:
-                    self._fatal_shutdown(
-                        "invalid_runtime_state_cgame_base_zero",
-                        (
-                            f"CGame stayed 0 for {self.invalid_runtime_frames} frames.\n"
-                            f"BaseAddr={hex(self.base_address)} "
-                            f"ManagerOff={hex(MANAGER_OFFSET)} "
-                            f"ScannerErr={getattr(self.scanner, 'last_error', '')}"
-                        ),
-                    )
+                if self.last_cgame_base != 0:
+                    dprint(f"🔄 แมตช์สิ้นสุด / รอเข้าห้องใหม่ (CGame กลายเป็น 0x0 จาก {hex(self.last_cgame_base)})", force=True)
+                    self._clear_match_state()
+                    self.last_cgame_base = 0
+                painter.setPen(QColor(255, 200, 50, 220))
+                painter.setFont(QFont("Arial", 11, QFont.Bold))
+                painter.drawText(20, 50, "⏳ [STANDBY: WAITING FOR MATCH / CGAME=0]")
                 return
 
             if cgame_base != self.last_cgame_base:
-                reset_runtime_caches(clear_view=True)
+                dprint(f"🔄 เริ่มแมตช์ใหม่! (CGame เปลี่ยนเป็น {hex(cgame_base)} จาก {hex(self.last_cgame_base)})", force=True)
+                self._clear_match_state()
                 self.last_cgame_base = cgame_base
                 
             view_matrix = get_view_matrix(self.scanner, cgame_base)
             
-            # 🐞 แทรก Debug: เช็ค View Matrix
+            # 🐞 เช็ค View Matrix ขณะกำลังโหลดฉากหรือยังไม่พร้อมเรนเดอร์
             if not view_matrix: 
-                dprint("อ่าน View Matrix ไม่ได้! ข้ามการวาดรูป", force=False)
-                if in_startup_grace:
-                    return
-                self.invalid_runtime_frames += 1
-                if self.invalid_runtime_frames >= INVALID_RUNTIME_FRAME_LIMIT:
-                    self._fatal_shutdown(
-                        "invalid_runtime_state_view_matrix_unreadable",
-                        (
-                            f"View matrix unreadable for {self.invalid_runtime_frames} frames.\n"
-                            f"CGame={hex(cgame_base)} CAM={hex(OFF_CAMERA_PTR)} VM={hex(OFF_VIEW_MATRIX)} "
-                            f"ScannerErr={getattr(self.scanner, 'last_error', '')}"
-                        ),
-                    )
+                dprint("อ่าน View Matrix ไม่ได้! กำลังโหลดฉาก/กล้องยังไม่พร้อม", force=False)
+                painter.setPen(QColor(255, 200, 50, 220))
+                painter.setFont(QFont("Arial", 11, QFont.Bold))
+                painter.drawText(20, 50, "⏳ [LOADING BATTLE: WAITING FOR VIEW MATRIX...]")
                 return
+
             self.invalid_runtime_frames = 0
 
             snapshot = self._data_pump.get_latest_snapshot() if hasattr(self, '_data_pump') and self._data_pump else self._latest_snapshot
@@ -7690,6 +7719,63 @@ class ESPOverlay(QOpenGLWidget):
                             self.auto_cm_active_stage = 0
                             self.auto_cm_trigger_count = 0
                             self.auto_cm_next_trigger_t = max(self.auto_cm_next_trigger_t, curr_t)
+
+                    # 🚀 Publish Real-Time Missile Telemetry to IPC Bridge (/dev/shm)
+                    if hasattr(self, 'telemetry_bridge'):
+                        tracks_payload = []
+                        if 'active_missile_entries' in locals() and active_missile_entries:
+                            inc_set = incoming_ptrs if 'incoming_ptrs' in locals() else set()
+                            inc_guid_set = incoming_guided_ptrs if 'incoming_guided_ptrs' in locals() else set()
+                            for m, smooth_pos, vel, speed, dist, tr in active_missile_entries:
+                                w2s = world_to_screen(
+                                    view_matrix,
+                                    smooth_pos[0], smooth_pos[1], smooth_pos[2],
+                                    self.screen_width, self.screen_height
+                                ) if view_matrix else None
+                                on_scr = bool(w2s and (0 <= w2s[0] <= self.screen_width and 0 <= w2s[1] <= self.screen_height))
+
+                                is_inc = m.ptr in inc_set
+                                is_m = bool(tr.get('is_my_missile') or tr.get('is_owner_me_verified'))
+                                is_fr = False if is_m else bool(tr.get('is_friendly_missile') and not is_inc)
+                                is_ex_lock = False if (is_m or is_fr) else bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
+                                is_guid_me = False if (is_m or is_fr) else (is_ex_lock or (m.ptr in inc_guid_set))
+
+                                t_level = "CRITICAL" if is_ex_lock else ("HIGH" if is_guid_me else ("WARNING" if is_inc else "NORMAL"))
+
+                                tracks_payload.append({
+                                    "ptr": m.ptr,
+                                    "name": m.name or "",
+                                    "pos": [round(smooth_pos[0], 2), round(smooth_pos[1], 2), round(smooth_pos[2], 2)],
+                                    "vel": [round(vel[0], 2), round(vel[1], 2), round(vel[2], 2)],
+                                    "speed": round(speed, 1),
+                                    "dist": round(dist, 1),
+                                    "is_my": is_m,
+                                    "is_friendly": is_fr,
+                                    "is_guided_me": is_guid_me,
+                                    "is_sam": any(k in (m.name or "").lower() for k in ("sam", "mim146", "mim-146", "roland", "vt1", "vt-1", "pantsir", "9m311", "9m331", "tor", "strela", "tunguska", "adats")),
+                                    "is_incoming": is_inc,
+                                    "w2s": [round(w2s[0], 1), round(w2s[1], 1)] if on_scr else None,
+                                    "on_screen": on_scr,
+                                    "target_id": m.target_id,
+                                    "threat_level": t_level,
+                                    "shooter_name": tr.get('shooter_name', ''),
+                                    "target_name": tr.get('tracked_tgt_name', ''),
+                                })
+
+                        # Throttle publish to ~30Hz (every 33ms) or publish immediately if tracks present
+                        if (curr_t - getattr(self, '_last_telemetry_publish_t', 0.0) >= 0.033) or tracks_payload:
+                            self._last_telemetry_publish_t = curr_t
+                            self.telemetry_bridge.publish({
+                                "frame": getattr(self, 'frame_count', 0),
+                                "timestamp": curr_t,
+                                "my_unit": hex(my_unit) if my_unit else "0x0",
+                                "my_unit_id": my_unit_id,
+                                "my_pos": [round(my_pos[0], 2), round(my_pos[1], 2), round(my_pos[2], 2)] if my_pos else [0.0, 0.0, 0.0],
+                                "aircraft_name": getattr(self, 'my_name', '') or getattr(self, 'player_plane', ''),
+                                "warning_active": bool(self.missile_warning_active),
+                                "auto_cm_stage": getattr(self, 'auto_cm_active_stage', 0),
+                                "tracks": tracks_payload,
+                            })
                 except Exception as e:
                     dprint(f"Missile warning error: {e}", force=True)
 

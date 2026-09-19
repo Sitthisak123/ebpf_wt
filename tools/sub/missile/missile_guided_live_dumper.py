@@ -1,34 +1,46 @@
 #!/usr/bin/env python3
 """
-🎯 WT Guided Missile Live Dumper & Telemetry Analyzer (v3.0)
+🎯 WT Guided Missile Live Dumper & Telemetry Analyzer (v4.0)
 ======================================================================
 เครื่องมือดักจับ Struct และบันทึก Telemetry ของ Guided Missile แบบ Real-Time
-พร้อมระบบวิเคราะห์อัตโนมัติ (CSV Track ต่อลูก, Summary Markdown, CLI Dashboard)
+ผูก (Bind) เข้ากับ ESP Overlay แบบ Real-time พร้อมเก็บ Raw ECS แบบ 100% Unfiltered:
 
 Features:
-  1. 📊 Ez-to-Analyze Output:
-     - `tracks/track_XX_<weapon>.csv`: ไฟล์ CSV รายลูก เปิดใน Excel/Plotly กราฟดูวิถีและความเร็วได้ทันที
-     - `summary.md` & `summary.json`: รายงานสรุปภาพรวมของทุกขีปนาวุธในรอบนั้น
-     - `events.jsonl`: บันทึกเหตุการณ์และ Raw Memory Snapshots รวมในไฟล์เดียว
-  2. 📡 More Data & Rich Telemetry:
-     - Shooter info (ชื่อเครื่อง, ทีม YOU/FRIENDLY/ENEMY, พิกัด, ระยะยิงตอนปล่อย)
-     - Target info (ชื่อเป้าหมาย, ทีม, ระยะประชิด, Closure Rate)
-     - Seeker details (ชนิด Seeker: IR/SARH/ARH/SACLOS, Lock/Track flag, Lock duration)
-     - Aerodynamics (Mach number ตามความสูง ISA, G-Force, Heading/Pitch, Flight distance)
-     - Termination Cause (💥 ระเบิด, 🎯 โดนเป้า, ⛰️ ชนพื้น, 💨 หลุดจาก Slot)
-  3. 🖥️ Live Terminal Dashboard:
-     - แสดงตารางข้อมูลสถานะจรวดที่กำลังบินอยู่แบบ Real-time
-     - มีเสียงและข้อความเตือนพิเศษเมื่อมีจรวดเล็งมาที่ตัวคุณ (🚨 TARGETING YOU!)
-  4. 🔍 Built-in Analyzer Mode:
-     - รัน `python3 missile_guided_live_dumper.py --analyze [dir]` เพื่อเปิดดูรายงานย้อนหลัง
+  1. 🔗 ESP Overlay IPC Binding:
+     - เชื่อมต่อผ่าน RAM (/dev/shm) ความเร็วสูงระดับไมโครวินาที (< 0.02ms)
+     - แสดงผลสถานะความปลอดภัย, พิกัดบนจอ (w2s X, Y), และระดับภัยคุกคาม (Threat Level) ที่ ESP คำนวณได้
+  2. 🔬 100% Complete Unfiltered Raw ECS Capture:
+     - สแกน OFF_PROJ_LIST (1024 slots) และ OFF_ECS_NODE_TABLE (0..500 entries) ดิบทั้งหมด
+     - ไม่ตัดตัวกรองใดๆ ทิ้งแม้แต่น้อย (เก็บแม้จะเป็น Flare/Chaff, Phase 6, Detonated, หรือ Speed ต่ำ)
+     - ระบบ Diagnostic Filter Evaluator ระบุสาเหตุที่ ESP ปฏิเสธ (reject_reason) รายตัว
+  3. 🗄️ Dual-Store High Performance Recording:
+     - SQLite Database (`telemetry.db`): รองรับการรันคำสั่ง SQL Query วิเคราะห์ข้อมูลย้อนหลังทันที
+     - Raw ECS Stream (`raw_ecs_stream.jsonl`): สแน็ปช็อตข้อมูลดิบและ Hex Preview ทุกเฟรม
+     - ESP Track Stream (`esp_stream.jsonl`): ข้อมูลขีปนาวุธที่ผ่านตัวกรองของ ESP
+     - CSV Trajectories (`tracks/track_*.csv`): พิกัดวิถีและความเร็วรายลูก สำหรับ Excel / Pandas
+     - Comprehensive Summary (`summary.md` / `summary.json`): รายงานสรุปผลเมื่อจบ Session
+  4. 🖥️ Live Terminal Dashboard (Dual Table):
+     - ตารางบน: ESP DETECTED MISSILES (แสดงสถานะขีปนาวุธที่ ESP ตรวจจับและแจ้งเตือนบนจอ)
+     - ตารางล่าง: RAW UNFILTERED ECS ENTITIES (แสดง Entity ทั้งหมดใน Memory พร้อมคำวินิจฉัย Verdict)
+  5. 🔍 Built-in Analyzer & SQL Query Mode:
+     - `python3 missile_guided_live_dumper.py --analyze [dir]`
+     - `python3 missile_guided_live_dumper.py --sql "SELECT ..."`
 
 Usage:
-  - บันทึกสด:   echo awd25125 | sudo -S python3 tools/sub/missile/missile_guided_live_dumper.py
+  - บันทึกสด:   echo awd25125 | sudo -S .venv/bin/python3 tools/sub/missile/missile_guided_live_dumper.py
   - วิเคราะห์:   python3 tools/sub/missile/missile_guided_live_dumper.py --analyze
+  - รันคำสั่ง SQL: python3 tools/sub/missile/missile_guided_live_dumper.py --sql "SELECT ptr, name, speed, esp_verdict, reject_reason FROM raw_ecs_samples WHERE esp_verdict != 'ACCEPTED' LIMIT 10"
 """
 
-import sys, os, struct, math, time, json, hashlib, csv, argparse
-from collections import defaultdict
+import sys
+import os
+import struct
+import math
+import time
+import json
+import sqlite3
+import argparse
+from typing import Dict, List, Any, Optional, Tuple
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 if PROJECT_ROOT not in sys.path:
@@ -36,330 +48,20 @@ if PROJECT_ROOT not in sys.path:
 
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 import src.utils.mul as mul
-
-
-# ====================================================================
-# Configuration & Offsets
-# ====================================================================
-OFF_ECS_MANAGER    = getattr(mul, 'OFF_ECS_MANAGER', 0xb0e29b8)
-OFF_ECS_NODE_TABLE = getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178)
-OFF_ECS_CLASS_TABLE= getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8)
-OFF_PROJ_LIST      = getattr(mul, 'OFF_PROJ_LIST', 0xac02ab8)
-
-OFFSET_SETS = [
-    (
-        "starned",
-        getattr(mul, 'OFF_RKT_POS', 0x23c),
-        getattr(mul, 'OFF_RKT_VEL', 0x258),
-        getattr(mul, 'OFF_RKT_OWNER', 0x50),
-        getattr(mul, 'OFF_RKT_STATE', 0x94),
-        getattr(mul, 'OFF_RKT_GUIDANCE', 0x680),
-        getattr(mul, 'OFF_RKT_ENTITY_ID', 0x40),
-        getattr(mul, 'OFF_RKT_PROPS', 0x710),
-    ),
-]
-
-COUNTERMEASURE_KEYWORDS = (
-    "flare", "chaff", "countermeasure", "decoy", "dispenser"
+from src.utils.missile_telemetry import (
+    RawECSScanner,
+    MissileTelemetryBridge,
+    TelemetrySessionRecorder,
+    classify_seeker_type,
+    calculate_mach,
+    calculate_heading_pitch,
 )
-
-
-# ====================================================================
-# Memory & Math Helpers
-# ====================================================================
-def rp(sc, a):
-    d = sc.read_mem(a, 8)
-    return struct.unpack("<Q", d)[0] if d and len(d) >= 8 else 0
-
-def r8(sc, a):
-    d = sc.read_mem(a, 1)
-    return d[0] if d and len(d) >= 1 else 0
-
-def r16(sc, a):
-    d = sc.read_mem(a, 2)
-    return struct.unpack("<h", d)[0] if d and len(d) >= 2 else 0
-
-def is_valid_ptr(v):
-    return 0x100000 < v < 0x7FFFFFFFFFFF
-
-def vlen(v):
-    return math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
-
-def vdist(a, b):
-    return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
-
-def is_valid_vec3(v):
-    if not all(math.isfinite(x) for x in v):
-        return False
-    for x in v:
-        if x != 0.0 and abs(x) < 1e-3:
-            return False
-    return True
-
-def is_valid_missile_motion(pos, vel):
-    if not is_valid_vec3(pos) or not is_valid_vec3(vel):
-        return False, 0.0
-    if any(abs(x) > 250000.0 for x in pos):
-        return False, 0.0
-    if sum(1 for x in pos if abs(x) > 5.0) < 2:
-        return False, 0.0
-    if (pos[0]*pos[0] + pos[1]*pos[1] + pos[2]*pos[2]) < 2500.0:
-        return False, 0.0
-    spd = vlen(vel)
-    if not (25.0 < spd < 4500.0):
-        return False, 0.0
-    if sum(1 for x in vel if abs(x) > 0.05) < 2:
-        return False, 0.0
-    return True, spd
-
-def calculate_mach(speed_ms, alt_m):
-    """คำนวณ Mach number ตามโมเดลบรรยากาศมาตรฐาน (ISA)"""
-    T = max(216.65, 288.15 - 0.0065 * max(0.0, alt_m))
-    sos = math.sqrt(1.4 * 287.05 * T)
-    return speed_ms / sos if sos > 0 else 0.0
-
-def calculate_heading_pitch(vel):
-    """คำนวณมุมหัวเรือ (Heading 0-360) และมุมยก (Pitch -90 ถึง +90)"""
-    vx, vy, vz = vel
-    spd = vlen(vel)
-    if spd < 1e-2:
-        return 0.0, 0.0
-    heading = (math.degrees(math.atan2(vx, vz)) + 360.0) % 360.0
-    pitch = math.degrees(math.asin(max(-1.0, min(1.0, vy / spd))))
-    return round(heading, 1), round(pitch, 1)
-
-def classify_seeker_type(wep_name):
-    """ระบุชนิดหัวค้นหาเป้าหมายจากชื่ออาวุธ"""
-    w = wep_name.lower()
-    if any(k in w for k in ("aim_7", "r_27r", "r_27er", "r_23r", "r_24r", "super_530", "aspide", "skyflash")):
-        return "SARH (Radar Semi-Active)"
-    if any(k in w for k in ("aim_120", "r_77", "mica", "aam_4", "pl_12", "derby", "phoenix", "aim_54")):
-        return "ARH (Active Radar)"
-    if any(k in w for k in ("aim_9", "r_60", "r_73", "magic", "pl_5", "pl_7", "sraam", "strela", "mistral", "ty_90", "stinger", "igla")):
-        return "IR (Heat-Seeking)"
-    if any(k in w for k in ("roland", "adats", "9m311", "vt_1", "starstreak", "hellfire", "vikhr")):
-        return "SACLOS / Beam-Rider"
-    if any(k in w for k in ("agm_65", "kh_29", "pars", "spike")):
-        return "Optical / TV / IIR"
-    return "Guided Missile"
-
-
-# ====================================================================
-# Core Rocket Struct Parser
-# ====================================================================
-def check_ptr_is_rocket(sc, ptr):
-    """ตรวจสอบความถูกต้องของ struct ขีปนาวุธ พร้อมดึงข้อมูล Telemetry ครบถ้วน"""
-    try:
-        header = sc.read_mem(ptr, 0x750)
-        if not header or len(header) < 0x2c0:
-            return None
-
-        # 1. ค้นหาชื่อ Blk อาวุธ
-        found_wep = ""
-        for off in [getattr(mul, 'OFF_RKT_PROPS', 0x710), 0x710, 0x700, 0x6c8, 0x690, 0x6a0, 0x620]:
-            if len(header) >= off + 8:
-                prp = struct.unpack_from("<Q", header, off)[0]
-                if is_valid_ptr(prp):
-                    for poff in (0x28, 0x10, 0x50, 0x58):
-                        raw_np = sc.read_mem(prp + poff, 8)
-                        if raw_np and len(raw_np) == 8:
-                            np = struct.unpack("<Q", raw_np)[0]
-                            if is_valid_ptr(np):
-                                s = sc.read_mem(np, 64)
-                                if s:
-                                    raw_str = s.split(b"\x00")[0].decode("utf-8", errors="ignore").strip()
-                                    if any(ign in raw_str.lower() for ign in COUNTERMEASURE_KEYWORDS):
-                                        return None
-                                    if raw_str and (".blk" in raw_str.lower() or any(k in raw_str.lower() for k in ("missile", "rocket", "aim", "sam", "agm", "r_", "aam"))):
-                                        found_wep = raw_str.split("/")[-1].split("\\")[-1]
-                                        break
-                    if found_wep:
-                        break
-
-        if not found_wep:
-            for off in (0x420, 0x440):
-                if len(header) >= off + 8:
-                    comp_p = struct.unpack_from("<Q", header, off)[0]
-                    if is_valid_ptr(comp_p):
-                        s = sc.read_mem(comp_p + 0x08, 48)
-                        if s:
-                            raw_str = s.split(b"\x00")[0].split(b"*")[0].decode("utf-8", errors="ignore").strip()
-                            if any(ign in raw_str.lower() for ign in COUNTERMEASURE_KEYWORDS):
-                                return None
-                            if any(k in s for k in (b"missile", b"rocket", b"sam", b"aim", b"agm", b"r_")):
-                                if raw_str:
-                                    found_wep = raw_str + ".blk"
-                                    break
-
-        if not found_wep:
-            for off in [0x230, 0x240, 0x380]:
-                if len(header) >= off + 40:
-                    s = header[off:off+40]
-                    if b"aim_" in s or b"rocket" in s or b"missile" in s or b".blk" in s:
-                        found_wep = s.split(b"\x00")[0].decode("utf-8", errors="ignore")
-                        break
-
-        # 2. ตรวจสอบพิกัดและความเร็ว
-        for set_name, pos_off, vel_off, own_off, st_off, guid_off, eid_off, props_off in OFFSET_SETS:
-            if len(header) < pos_off + 12 or len(header) < vel_off + 12:
-                continue
-            pos = struct.unpack_from("<fff", header, pos_off)
-            vel = struct.unpack_from("<fff", header, vel_off)
-
-            is_ok, speed = is_valid_missile_motion(pos, vel)
-            if not is_ok:
-                continue
-
-            phase = struct.unpack_from("<I", header, getattr(mul, 'OFF_RKT_PHASE', 0x498))[0] if len(header) >= 0x498 + 4 else 0
-            detonated = struct.unpack_from("<I", header, getattr(mul, 'OFF_RKT_DETONATED', 0x420))[0] if len(header) >= 0x420 + 4 else 0
-            if phase == 6 or detonated != 0:
-                continue
-
-            owner = struct.unpack_from("<Q", header, own_off)[0] if len(header) >= own_off + 8 else 0
-            if not owner and len(header) >= 0x48:
-                owner = struct.unpack_from("<Q", header, 0x40)[0]
-            state = header[st_off] if len(header) > st_off else 0
-            guid  = struct.unpack_from("<Q", header, guid_off)[0] if len(header) >= guid_off + 8 else 0
-            if not guid:
-                for goff in (0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698):
-                    if len(header) >= goff + 8:
-                        g_cand = struct.unpack_from("<Q", header, goff)[0]
-                        if is_valid_ptr(g_cand) and (g_cand & 7 == 0):
-                            guid = g_cand
-                            break
-            eid   = struct.unpack_from("<I", header, eid_off)[0] if len(header) >= eid_off + 4 else 0
-            if not eid and len(header) >= 0x34:
-                eid = struct.unpack_from("<I", header, 0x30)[0]
-
-            if state > 32 or eid == 0 or eid > 50_000_000:
-                continue
-
-            owner_unit = (owner & ~1) if owner else 0
-            if owner_unit != 0 and not (is_valid_ptr(owner_unit) and (owner_unit & 0x7 == 0)):
-                owner = 0
-                owner_unit = 0
-
-            if guid != 0 and not (is_valid_ptr(guid) and (guid & 0x7 == 0)):
-                guid = 0
-
-            if not found_wep:
-                if is_valid_ptr(guid):
-                    found_wep = "sam_missile.blk"
-                elif speed > 250.0:
-                    found_wep = "missile.blk"
-                else:
-                    continue
-
-            alive = header[getattr(mul, 'OFF_RKT_ALIVE', 0x6d0)] if len(header) > 0x6d0 else 0
-
-            # Guidance internals
-            g_locked = 0
-            g_tracking = 0
-            g_target = -1
-            is_guided = False
-            if is_valid_ptr(guid):
-                g_locked = r8(sc, guid + getattr(mul, 'OFF_GUID_LOCKED', 0x4C))
-                g_tracking = r8(sc, guid + getattr(mul, 'OFF_GUID_TRACKING', 0x4D))
-                g_tgt_raw = sc.read_mem(guid + getattr(mul, 'OFF_GUID_TARGET_ID', 0x84), 2)
-                g_target = struct.unpack("<H", g_tgt_raw)[0] if g_tgt_raw and len(g_tgt_raw) == 2 else 0
-                if g_target == 0xFFFF:
-                    g_target = 0
-                if g_locked not in (0, 1):
-                    g_locked = r8(sc, guid + 0x50)
-                if g_tracking not in (0, 1):
-                    g_tracking = r8(sc, guid + 0x51)
-                if g_target <= 0:
-                    alt_tgt = sc.read_mem(guid + 0x8C, 2)
-                    if alt_tgt and len(alt_tgt) == 2:
-                        at = struct.unpack("<H", alt_tgt)[0]
-                        if 0 < at < 20000:
-                            g_target = at
-                is_guided = (g_locked == 1 or g_tracking == 1 or g_target > 0)
-
-            # Hex dump of key regions
-            hex_regions = {}
-            for r_name, start, length in [
-                ("header", 0x00, 0x60),
-                ("state", 0x90, 0x10),
-                ("pos_vel", 0x230, 0x40),
-                ("detonated", 0x418, 0x10),
-                ("phase", 0x490, 0x10),
-                ("guidance", 0x630, 0x50),
-            ]:
-                if len(header) >= start + length:
-                    hex_regions[r_name] = header[start:start+length].hex()
-
-            content_hash = hashlib.md5(header[:0x270]).hexdigest()[:12]
-            heading, pitch = calculate_heading_pitch(vel)
-            mach = calculate_mach(speed, pos[1])
-
-            return {
-                "ptr": ptr,
-                "set": set_name,
-                "pos": [round(x, 2) for x in pos],
-                "vel": [round(x, 2) for x in vel],
-                "speed": round(speed, 1),
-                "mach": round(mach, 2),
-                "alt": round(pos[1], 1),
-                "heading": heading,
-                "pitch": pitch,
-                "owner": owner,
-                "owner_unit": owner_unit,
-                "state": state,
-                "eid": eid,
-                "guid": guid,
-                "name": found_wep,
-                "seeker_type": classify_seeker_type(found_wep),
-                "phase": phase,
-                "detonated": detonated,
-                "alive": alive,
-                "g_locked": g_locked,
-                "g_tracking": g_tracking,
-                "g_target_id": g_target,
-                "is_guided": is_guided,
-                "content_hash": content_hash,
-                "hex": hex_regions,
-            }
-    except Exception:
-        pass
-    return None
-
-
-# ====================================================================
-# Scanner Engine (256-Slot Proj List + Dynamic Verification)
-# ====================================================================
-def scan_projectiles_wide(sc, base, max_slots=256):
-    """สแกนขีปนาวุธจาก proj_list เต็ม Window 256 slots ป้องกัน missile ตกหล่น"""
-    all_rockets = []
-    seen_ptrs = set()
-
-    proj_list_off = getattr(mul, "OFF_PROJ_LIST", 0xac02ab8)
-    table_ptr = rp(sc, base + proj_list_off)
-    if is_valid_ptr(table_ptr):
-        cnt_cap = sc.read_mem(base + proj_list_off + 8, 8)
-        if cnt_cap and len(cnt_cap) == 8:
-            count, cap = struct.unpack("<II", cnt_cap)
-            scan_slots = min(max(cap, count, 128), max_slots)
-            raw_entries = sc.read_mem(table_ptr + 0x20, scan_slots * 0x20)
-            if raw_entries and len(raw_entries) >= 0x20:
-                num_m = len(raw_entries) // 0x20
-                for i in range(num_m):
-                    chunk = raw_entries[i * 0x20 : (i + 1) * 0x20]
-                    ent_ptr = struct.unpack_from("<Q", chunk, 0x10)[0]
-                    if is_valid_ptr(ent_ptr) and (ent_ptr & 7 == 0) and ent_ptr not in seen_ptrs:
-                        info = check_ptr_is_rocket(sc, ent_ptr)
-                        if info:
-                            info["layout"] = "proj_list"
-                            info["slot"] = i
-                            seen_ptrs.add(ent_ptr)
-                            all_rockets.append(info)
-    return all_rockets
 
 
 # ====================================================================
 # Unit & Target Resolution Helper
 # ====================================================================
-def refresh_unit_map(sc, base, my_unit_ptr=0, my_team=0):
+def refresh_unit_map(sc, base: int, my_unit_ptr: int = 0, my_team: int = 0) -> Dict[Any, Dict[str, Any]]:
     """สร้างตารางจับคู่หน่วยรบ เพื่อทราบชื่อเครื่อง, ฝ่าย (YOU/FRIENDLY/ENEMY) และพิกัด"""
     unit_map = {}
     try:
@@ -381,7 +83,7 @@ def refresh_unit_map(sc, base, my_unit_ptr=0, my_team=0):
             else:
                 relation = "ENEMY"
 
-            pos = mul.get_unit_pos(sc, u_ptr) if hasattr(mul, 'get_unit_pos') else (0.0, 0.0, 0.0)
+            pos = mul.get_unit_pos(sc, u_ptr) if hasattr(mul, "get_unit_pos") else (0.0, 0.0, 0.0)
 
             record = {
                 "ptr": u_ptr,
@@ -401,218 +103,160 @@ def refresh_unit_map(sc, base, my_unit_ptr=0, my_team=0):
 
 
 # ====================================================================
-# Terminal UI Dashboard
+# Terminal UI Dashboard (Dual-Table Display)
 # ====================================================================
-class TerminalDashboard:
+class LiveDashboardRenderer:
+    """แสดงผล Live Terminal Dashboard แบบ Dual-Table แสดงทั้ง ESP Tracks และ Raw ECS"""
+
     def __init__(self):
         self.last_render_t = 0.0
 
-    def render(self, frame_num, fps, my_plane, active_missiles, total_captured):
-        # Throttle render to ~10 FPS
+    def render(
+        self,
+        frame_num: int,
+        fps: float,
+        session_id: str,
+        my_plane: str,
+        esp_connected: bool,
+        esp_frame_info: Optional[Dict[str, Any]],
+        esp_tracks: List[Dict[str, Any]],
+        raw_candidates: List[Dict[str, Any]],
+        total_raw_captured: int,
+        unfiltered_only: bool = False,
+    ):
         now = time.time()
-        if now - self.last_render_t < 0.1:
+        if (now - self.last_render_t) < 0.09:
             return
         self.last_render_t = now
 
-        # Clear screen ANSI
         lines = []
-        lines.append("\033[2J\033[H")
-        lines.append("╔" + "═"*98 + "╗")
-        lines.append(f"║ 🎯 WT GUIDED MISSILE LIVE DUMPER v3.0 {' ':35} FPS: {fps:4.1f} ║")
-        lines.append(f"║ Local Plane: {my_plane:<25} Frame: {frame_num:<8} Total Tracked: {total_captured:<6} ║")
-        lines.append("╠" + "═"*98 + "╣")
-        lines.append("║ ID   WEAPON             SPEED     ALT     G-FORCE  SEEKER       SHOOTER ──► TARGET      STATUS    ║")
-        lines.append("╟" + "─"*98 + "╢")
+        lines.append("\033[2J\033[H")  # Clear screen ANSI
 
-        if not active_missiles:
-            lines.append(f"║ {'⏳ สแกนหาขีปนาวุธที่กำลังบินอยู่ในแมตช์... (0 Active)':^96} ║")
+        # Header Box
+        w = 118
+        lines.append("╔" + "═" * w + "╗")
+        esp_status_badge = "\033[92;1m🟢 BOUND TO ESP (Live Sync via SHM)\033[0m" if esp_connected else "\033[90m⚪ ESP STANDALONE (Overlay Not Active)\033[0m"
+        lines.append(f"║ 🎯 WT MISSILE TELEMETRY & RAW ECS ANALYZER v4.0 {' ':25} {esp_status_badge:<45} ║")
+        
+        esp_warn_text = ""
+        if esp_frame_info and esp_frame_info.get("warning_active"):
+            stage = esp_frame_info.get("auto_cm_stage", 0)
+            esp_warn_text = f"\033[91;1m🚨 ESP WARNING ACTIVE (Stage {stage})\033[0m"
         else:
-            for idx, m in enumerate(active_missiles):
-                mid = f"#{idx+1}"
-                wname = (m["name"][:18] if len(m["name"]) > 18 else m["name"])
-                spd_str = f"{m['speed']:.0f}m/s M{m['mach']:.1f}"
-                alt_str = f"{m['alt']:.0f}m"
-                g_str = f"{m.get('g_force', 0.0):.1f}G"
+            esp_warn_text = "\033[92m🛡️ ALL CLEAR\033[0m"
 
-                # Seeker badge
-                if m.get("is_guided"):
-                    if m.get("g_tracking"):
-                        seeker_str = "\033[92m🔒TRACK\033[0m"
-                    elif m.get("g_locked"):
-                        seeker_str = "\033[93m👁️LOCK\033[0m"
+        lines.append(
+            f"║ Session: \033[96m{session_id}\033[0m | Plane: \033[93m{my_plane[:22]:<22}\033[0m | Frame: {frame_num:<6} | FPS: {fps:4.1f} | Status: {esp_warn_text:<32} ║"
+        )
+        lines.append("╠" + "═" * w + "╣")
+
+        # Table 1: ESP Detected Missiles (Active on Screen)
+        if not unfiltered_only:
+            lines.append(f"║ 🖥️  TABLE 1: ESP DETECTED MISSILES (Active in ESP Radar & Screen Overlay: {len(esp_tracks)} Tracks){' ':37} ║")
+            lines.append("╟" + "─" * w + "╢")
+            lines.append(
+                f"║ {'ID':<4} {'WEAPON':<20} {'DIST':<9} {'SPEED':<11} {'SEEKER/LOCK':<13} {'SHOOTER ──► TARGET':<27} {'SCREEN POS':<14} {'THREAT':<14} ║"
+            )
+            lines.append("╟" + "─" * w + "╢")
+
+            if not esp_tracks:
+                lines.append(f"║ {'⏳ ไม่พบขีปนาวุธที่ ESP กำลังวาดบนจอ (0 Active ESP Tracks)':^{w}} ║")
+            else:
+                for idx, tr in enumerate(esp_tracks[:8]):
+                    mid = f"#{idx+1}"
+                    wname = tr.get("name", "Unknown")[:19]
+                    dist_v = tr.get("dist", 0.0)
+                    dist_s = f"{dist_v/1000.0:.1f}km" if dist_v >= 1000 else f"{dist_v:.0f}m"
+                    spd_s = f"{tr.get('speed', 0.0):.0f}m/s"
+
+                    # Seeker
+                    if tr.get("is_guided_me"):
+                        sk_str = "\033[91;1m🚨LOCKED YOU\033[0m"
+                    elif tr.get("is_sam"):
+                        sk_str = "\033[93m⚡SAM/BEAM\033[0m"
+                    elif tr.get("target_id", 0) > 0:
+                        sk_str = f"🎯#{tr.get('target_id')}"
                     else:
-                        seeker_str = "🎯GUID"
+                        sk_str = "UNGUIDED"
+
+                    sh_name = tr.get("shooter_name") or "Unknown"
+                    tg_name = tr.get("target_name") or "None"
+                    sh_tg = f"{sh_name[:11]} ─► {tg_name[:11]}"
+
+                    w2s = tr.get("w2s")
+                    if w2s:
+                        scr_s = f"\033[92m{int(w2s[0])},{int(w2s[1])}\033[0m"
+                    else:
+                        scr_s = "\033[90mOFFSCREEN\033[0m"
+
+                    th = tr.get("threat_level", "NORMAL")
+                    if th == "CRITICAL":
+                        th_str = "\033[91;1mCRITICAL\033[0m"
+                    elif th == "HIGH":
+                        th_str = "\033[93;1mHIGH\033[0m"
+                    elif th == "WARNING":
+                        th_str = "\033[93mWARNING\033[0m"
+                    else:
+                        th_str = "\033[90mNORMAL\033[0m"
+
+                    lines.append(
+                        f"║ {mid:<4} {wname:<20} {dist_s:<9} {spd_s:<11} {sk_str:<22} {sh_tg:<27} {scr_s:<23} {th_str:<23} ║"
+                    )
+
+            lines.append("╠" + "═" * w + "╣")
+
+        # Table 2: 100% Unfiltered Raw ECS Entities
+        accepted_cnt = sum(1 for c in raw_candidates if c["esp_verdict"] == "ACCEPTED")
+        rejected_cnt = len(raw_candidates) - accepted_cnt
+        lines.append(
+            f"║ 🔬 TABLE 2: RAW UNFILTERED ECS ENTITIES (100% Memory Scan: {len(raw_candidates)} Found | ✅ {accepted_cnt} Accepted | 🚫 {rejected_cnt} Filtered Out){' ':8} ║"
+        )
+        lines.append("╟" + "─" * w + "╢")
+        lines.append(
+            f"║ {'PTR':<18} {'SOURCE':<20} {'WEAPON/BLK':<20} {'SPEED':<11} {'ST/PH/DET':<11} {'GUID':<6} {'ESP VERDICT & DIAGNOSIS':<26} ║"
+        )
+        lines.append("╟" + "─" * w + "╢")
+
+        if not raw_candidates:
+            lines.append(f"║ {'🔍 กำลังสแกนหน่วยความจำ ECS Node Table และ Proj List...':^{w}} ║")
+        else:
+            # Display up to 12 raw candidates, prioritizing accepted or notable ones
+            sorted_cands = sorted(
+                raw_candidates,
+                key=lambda x: (0 if x["esp_verdict"] == "ACCEPTED" else 1, -x["speed"]),
+            )
+            for c in sorted_cands[:12]:
+                ptr_s = hex(c["ptr"])
+                src_s = c["source"][:19]
+                wname = (c["name"] or "<Unknown>")[:19]
+                spd_s = f"{c['speed']:.0f}m/s"
+                st_ph = f"{c['state']}/{c['phase']}/{c['detonated']}"
+                guid_s = "YES" if c["is_guided"] else "-"
+
+                if c["esp_verdict"] == "ACCEPTED":
+                    verdict_s = "\033[92;1m✅ ACCEPTED\033[0m"
                 else:
-                    seeker_str = "UNGU"
+                    reason_abbr = c["reject_reason"].replace("SPEED_", "SPD_").replace("COUNTERMEASURE_", "CM_")[:17]
+                    verdict_s = f"\033[91m🚫 {reason_abbr}\033[0m"
 
-                # Shooter -> Target
-                sh_name = m.get("shooter_name") or "Unknown"
-                sh_tag = f"[{m.get('shooter_rel', '?')[:3]}]"
-                tgt_name = m.get("target_name") or "None"
-                tgt_tag = f"[{m.get('target_rel', '?')[:3]}]" if tgt_name != "None" else ""
-                sh_tgt = f"{sh_name[:8]}{sh_tag}─►{tgt_name[:8]}{tgt_tag}"
+                lines.append(
+                    f"║ {ptr_s:<18} {src_s:<20} {wname:<20} {spd_s:<11} {st_ph:<11} {guid_s:<6} {verdict_s:<35} ║"
+                )
 
-                # Status
-                if m.get("target_rel") == "YOU":
-                    status_badge = "\033[91;1m🚨INCOMING!\033[0m"
-                elif m.get("is_guided"):
-                    status_badge = "\033[96mGUIDED\033[0m"
-                else:
-                    status_badge = "FLYING"
-
-                row = f"║ {mid:<4} {wname:<18} {spd_str:<9} {alt_str:<7} {g_str:<8} {seeker_str:<12} {sh_tgt:<23} {status_badge:<9} ║"
-                lines.append(row)
-
-        lines.append("╚" + "═"*98 + "╝")
-        lines.append("💡 กด Ctrl+C เมื่อจบเกม เพื่อบันทึก CSV Tracks รายลูก และสร้าง Summary รายงานสมบูรณ์แบบ")
+        lines.append("╚" + "═" * w + "╝")
+        lines.append(
+            f"💡 บันทึกอัตโนมัติ: \033[96mtelemetry.db\033[0m (SQLite) | \033[96mraw_ecs_stream.jsonl\033[0m | \033[96mtracks/*.csv\033[0m | กด \033[93mCtrl+C\033[0m เพื่อสร้างสรุป"
+        )
         print("\n".join(lines), flush=True)
 
 
 # ====================================================================
-# Track Exporter & Summary Generator
+# Offline Analyzer & SQL Query Modes
 # ====================================================================
-class SessionExporter:
-    def __init__(self, output_dir):
-        self.dir = output_dir
-        self.tracks_dir = os.path.join(output_dir, "tracks")
-        os.makedirs(self.tracks_dir, exist_ok=True)
-        self.events_file = open(os.path.join(output_dir, "events.jsonl"), "w")
-        self.csv_writers = {}
-        self.csv_files = {}
-
-    def log_event(self, event_type, data):
-        data["_event"] = event_type
-        data["_time"] = time.time()
-        self.events_file.write(json.dumps(data) + "\n")
-        self.events_file.flush()
-
-    def record_track_point(self, m_uid, m_data):
-        """บันทึกพิกัด Telemetry ลง CSV ของลูกนั้นๆ"""
-        if m_uid not in self.csv_writers:
-            safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in m_data["name"])
-            csv_path = os.path.join(self.tracks_dir, f"track_{m_uid}_{safe_name}.csv")
-            f = open(csv_path, "w", newline="")
-            writer = csv.writer(f)
-            writer.writerow([
-                "timestamp", "frame", "age_s", "pos_x", "pos_y", "pos_z",
-                "vel_x", "vel_y", "vel_z", "speed_ms", "mach", "accel_g",
-                "alt_m", "heading", "pitch", "dist_shooter_m", "dist_target_m", "dist_you_m",
-                "seeker_locked", "seeker_tracking", "target_id", "target_name", "target_rel",
-                "shooter_name", "shooter_rel", "state", "phase", "detonated", "slot"
-            ])
-            self.csv_files[m_uid] = f
-            self.csv_writers[m_uid] = writer
-
-        writer = self.csv_writers[m_uid]
-        writer.writerow([
-            round(m_data["t"], 3),
-            m_data["frame"],
-            round(m_data["age_s"], 3),
-            m_data["pos"][0], m_data["pos"][1], m_data["pos"][2],
-            m_data["vel"][0], m_data["vel"][1], m_data["vel"][2],
-            m_data["speed"],
-            m_data["mach"],
-            round(m_data.get("g_force", 0.0), 2),
-            m_data["alt"],
-            m_data["heading"],
-            m_data["pitch"],
-            round(m_data.get("dist_shooter", 0.0), 1),
-            round(m_data.get("dist_target", 0.0), 1),
-            round(m_data.get("dist_you", 0.0), 1),
-            m_data["g_locked"],
-            m_data["g_tracking"],
-            m_data["g_target_id"],
-            m_data.get("target_name", ""),
-            m_data.get("target_rel", ""),
-            m_data.get("shooter_name", ""),
-            m_data.get("shooter_rel", ""),
-            m_data["state"],
-            m_data["phase"],
-            m_data["detonated"],
-            m_data.get("slot", -1)
-        ])
-
-    def close(self, all_tracked_records):
-        """ปิดไฟล์และสร้าง Summary Reports"""
-        for f in self.csv_files.values():
-            try: f.close()
-            except: pass
-        try: self.events_file.close()
-        except: pass
-
-        # Generate Summary Markdown & JSON
-        self._write_summary(all_tracked_records)
-
-    def _write_summary(self, all_missiles):
-        summary_md_path = os.path.join(self.dir, "summary.md")
-        summary_json_path = os.path.join(self.dir, "summary.json")
-
-        summary_data = []
-        for uid, tr in all_missiles.items():
-            pts = tr["points"]
-            if not pts: continue
-            first = pts[0]
-            last = pts[-1]
-            speeds = [p["speed"] for p in pts]
-            g_forces = [p.get("g_force", 0.0) for p in pts]
-            alts = [p["alt"] for p in pts]
-
-            rec = {
-                "uid": uid,
-                "name": tr["name"],
-                "seeker_type": tr["seeker_type"],
-                "is_guided": tr["is_guided"],
-                "shooter": tr.get("shooter_name") or "Unknown",
-                "shooter_relation": tr.get("shooter_rel") or "Unknown",
-                "target": tr.get("target_name") or "None",
-                "target_relation": tr.get("target_rel") or "None",
-                "frames": len(pts),
-                "duration_s": round(last["age_s"], 2),
-                "speed_start_ms": speeds[0],
-                "speed_peak_ms": max(speeds),
-                "speed_end_ms": speeds[-1],
-                "max_g_force": round(max(g_forces), 1) if g_forces else 0.0,
-                "alt_min_m": min(alts),
-                "alt_max_m": max(alts),
-                "distance_traveled_m": round(vdist(first["pos"], last["pos"]), 1),
-                "final_status": tr.get("termination_reason", "IN_FLIGHT"),
-                "csv_file": f"tracks/track_{uid}_{tr['name']}.csv"
-            }
-            summary_data.append(rec)
-
-        # Write JSON
-        with open(summary_json_path, "w") as f:
-            json.dump(summary_data, f, indent=2)
-
-        # Write Markdown
-        with open(summary_md_path, "w") as f:
-            f.write("# 🎯 War Thunder Guided Missile Telemetry Summary\n\n")
-            f.write(f"- **Total Missiles Tracked:** {len(summary_data)}\n")
-            f.write(f"- **Guided Missiles:** {sum(1 for m in summary_data if m['is_guided'])}\n")
-            f.write(f"- **Targeting YOU:** {sum(1 for m in summary_data if m['target_relation'] == 'YOU')}\n\n")
-
-            f.write("## 📋 Missile Flight Log Table\n\n")
-            f.write("| # | Weapon | Type | Shooter | Target | Dur (s) | Peak Spd | Max G | Traveled | End Reason |\n")
-            f.write("|---|---|---|---|---|---|---|---|---|---|\n")
-            for m in summary_data:
-                guided_mark = "🎯 " if m["is_guided"] else ""
-                sh = f"{m['shooter']} ({m['shooter_relation'][:3]})"
-                tg = f"{m['target']} ({m['target_relation'][:3]})" if m['target'] != "None" else "-"
-                f.write(f"| {m['uid']} | {guided_mark}{m['name']} | {m['seeker_type'].split()[0]} | {sh} | {tg} | {m['duration_s']}s | {m['speed_peak_ms']}m/s | {m['max_g_force']}G | {m['distance_traveled_m']}m | {m['final_status']} |\n")
-
-            f.write("\n\n## 💡 Tips for Analysis\n")
-            f.write("- ไฟล์ CSV ละเอียดแต่ละลูกถูกบันทึกอยู่ในโฟลเดอร์ `tracks/`\n")
-            f.write("- นำไฟล์ CSV ไปเปิดใน Microsoft Excel, Google Sheets, หรือ Python Pandas เพื่อพล็อตกราฟ Speed Curve หรือ G-Force ได้ทันที!\n")
-
-
-# ====================================================================
-# Offline Analyzer Mode (`--analyze`)
-# ====================================================================
-def run_analyzer(target_dir=None):
+def run_analyzer(target_dir: Optional[str] = None):
     """วิเคราะห์ผลลัพธ์จากโฟลเดอร์ Dump ที่เลือกหรือโฟลเดอร์ล่าสุด"""
     dumps_base = os.path.join(PROJECT_ROOT, "logs", "missile_dumps")
-    if not target_dir:
-        # Pick latest session
+    if not target_dir or target_dir == "latest":
         if not os.path.exists(dumps_base):
             print(f"❌ ไม่พบโฟลเดอร์ {dumps_base}!")
             return
@@ -624,243 +268,192 @@ def run_analyzer(target_dir=None):
     else:
         target_dir = os.path.abspath(target_dir)
 
-    summary_json = os.path.join(target_dir, "summary.json")
-    if not os.path.exists(summary_json):
-        print(f"❌ ไม่พบ {summary_json} ใน {target_dir}!")
+    summary_md = os.path.join(target_dir, "summary.md")
+    if os.path.exists(summary_md):
+        print(f"\n📄 [SESSION REPORT] {os.path.basename(target_dir)}")
+        print("=" * 80)
+        with open(summary_md, "r", encoding="utf-8") as f:
+            print(f.read())
+        print("=" * 80)
+    else:
+        print(f"❌ ไม่พบ {summary_md} ใน {target_dir}!")
+
+
+def run_sql_query(query: str, target_dir: Optional[str] = None):
+    """รันคำสั่ง SQL Query บน telemetry.db เพื่อตรวจสอบข้อมูลเชิงลึก"""
+    dumps_base = os.path.join(PROJECT_ROOT, "logs", "missile_dumps")
+    if not target_dir or target_dir == "latest":
+        sessions = sorted([s for s in os.listdir(dumps_base) if os.path.isdir(os.path.join(dumps_base, s))])
+        if not sessions:
+            print("❌ ไม่พบ Session ฐานข้อมูล!")
+            return
+        target_dir = os.path.join(dumps_base, sessions[-1])
+
+    db_path = os.path.join(target_dir, "telemetry.db")
+    if not os.path.exists(db_path):
+        print(f"❌ ไม่พบฐานข้อมูล SQLite: {db_path}")
         return
 
-    with open(summary_json) as f:
-        data = json.load(f)
+    print(f"\n🔍 [SQL QUERY] Executing on: {db_path}")
+    print(f"   Query: {query}\n" + "-" * 80)
 
-    print(f"\n📊 [ANALYZER] Session Report: {os.path.basename(target_dir)}")
-    print("=" * 80)
-    print(f"🎯 Total Missiles: {len(data)} | Guided: {sum(1 for m in data if m['is_guided'])}")
-    print("=" * 80)
+    try:
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?immutable=1", uri=True)
+        except Exception:
+            try:
+                conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            except Exception:
+                conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(query)
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description] if cur.description else []
 
-    for m in data:
-        guided_tag = "🎯 GUIDED" if m["is_guided"] else "🚀 ROCKET"
-        print(f"\n[{m['uid']}] {m['name']} ({guided_tag})")
-        print(f"   Shooter: {m['shooter']} [{m['shooter_relation']}]  ──►  Target: {m['target']} [{m['target_relation']}]")
-        print(f"   Duration: {m['duration_s']}s ({m['frames']} frames) | Status: {m['final_status']}")
-        print(f"   Speed: {m['speed_start_ms']} ➔ Peak: {m['speed_peak_ms']} ➔ End: {m['speed_end_ms']} m/s")
-        print(f"   Max G-Force: {m['max_g_force']}G | Distance Traveled: {m['distance_traveled_m']}m | Alt: {m['alt_min_m']:.0f}..{m['alt_max_m']:.0f}m")
-        print(f"   📁 Track CSV: {os.path.join(target_dir, m['csv_file'])}")
-
-    print("\n" + "=" * 80)
-    print(f"✅ ดูตารางสรุปเต็มได้ที่: {os.path.join(target_dir, 'summary.md')}\n")
+        if not rows:
+            print("⚪ ไม่พบข้อมูลที่ตรงกับเงื่อนไข (0 rows returned)")
+        else:
+            # Print table
+            header = " | ".join(f"{c:<18}" for c in cols)
+            print(header)
+            print("-" * len(header))
+            for r in rows:
+                print(" | ".join(f"{str(v):<18}" for v in r))
+            print(f"\n✅ Total Rows: {len(rows)}")
+        conn.close()
+    except Exception as e:
+        print(f"❌ SQL Error: {e}")
 
 
 # ====================================================================
-# MAIN APPLICATION LOOP
+# Main Application Loop
 # ====================================================================
 def main():
-    parser = argparse.ArgumentParser(description="War Thunder Guided Missile Live Dumper v3")
-    parser.add_argument("--analyze", nargs="?", const="latest", help="เปิดโหมดวิเคราะห์ผลลัพธ์ (ระบุ path หรือเว้นว่างเพื่อดูรอบล่าสุด)")
+    parser = argparse.ArgumentParser(description="War Thunder Missile Live Dumper & ESP Telemetry Analyzer v4.0")
+    parser.add_argument("--analyze", nargs="?", const="latest", help="เปิดดูรายงานสรุป (ระบุโฟลเดอร์หรือเว้นว่างเพื่อดูรอบล่าสุด)")
+    parser.add_argument("--sql", type=str, help="รันคำสั่ง SQL Query บน telemetry.db ของ Session ล่าสุด")
+    parser.add_argument("--session", type=str, help="ระบุโฟลเดอร์ Session เฉพาะเจาะจงสำหรับ --analyze หรือ --sql")
+    parser.add_argument("--interval", type=float, default=0.05, help="อัตราการสแกนต่อวินาที (ค่าเริ่มต้น 0.05s = 20 FPS)")
+    parser.add_argument("--unfiltered-only", action="store_true", help="แสดงเฉพาะตาราง Raw ECS Unfiltered เท่านั้น")
     args = parser.parse_args()
 
+    if args.sql:
+        run_sql_query(args.sql, args.session)
+        return
+
     if args.analyze:
-        target = None if args.analyze == "latest" else args.analyze
+        target = args.session or args.analyze
         run_analyzer(target)
         return
 
-    print("🎯 WT Guided Missile Live Dumper & Telemetry Analyzer (v3.0)")
-    print("=" * 70)
-
+    print("🚀 [BOOT] กำลังเชื่อมต่อกระบวนการเกม War Thunder (aces)...")
     pid = get_game_pid()
     if not pid:
-        print("❌ ไม่พบ Game PID ของ War Thunder (aces)!")
+        print("❌ ไม่พบ Game PID ของ War Thunder! กรุณาเปิดเกมก่อนรันสคริปต์")
         return
 
     base = get_game_base_address(pid)
     sc = MemoryScanner(pid)
     init_dynamic_offsets(sc, base)
 
-    # Session directory
+    # 1. Initialize Core Components
+    raw_scanner = RawECSScanner()
+    bridge = MissileTelemetryBridge(is_publisher=False)
+
+    # 2. Session Directory & Recorder
     session_id = time.strftime("%Y%m%d_%H%M%S")
-    out_dir = os.path.join(PROJECT_ROOT, "logs", "missile_dumps", session_id)
-    os.makedirs(out_dir, exist_ok=True)
-    exporter = SessionExporter(out_dir)
+    recorder = TelemetrySessionRecorder(session_id)
 
     print(f"[+] PID: {pid}, Base: {hex(base)}")
-    print(f"[+] Output Session: {out_dir}/")
+    print(f"[+] Database & Logs: {recorder.dir}/")
 
-    # Local player & team resolution
     my_unit, my_team = mul.get_local_team(sc, base)
     unit_map = refresh_unit_map(sc, base, my_unit, my_team)
     my_plane_name = unit_map.get(my_unit, {}).get("name", "Unknown Aircraft")
     print(f"[+] Local Unit: {hex(my_unit)} | Aircraft: {my_plane_name} | Team: {my_team}")
-    print("=" * 70)
-    time.sleep(1.0)
 
-    dashboard = TerminalDashboard()
-
-    # Track management
-    # tracked_missiles: uid -> {first_seen, last_seen, name, points: [pts], ...}
-    tracked_missiles = {}
-    next_uid = 1
-    ptr_to_uid = {}
+    dashboard = LiveDashboardRenderer()
     frame_count = 0
     start_time = time.time()
     last_unit_refresh = 0.0
 
+    print("🟢 เริ่มต้นการดักจับข้อมูลแบบ Real-Time (กด Ctrl+C เพื่อหยุดและสร้างสรุป)...")
+    time.sleep(0.5)
+
+    running = True
+
+    def _sig_handler(signum, frame):
+        nonlocal running
+        running = False
+
+    import signal
+    signal.signal(signal.SIGTERM, _sig_handler)
+    signal.signal(signal.SIGINT, _sig_handler)
+
     try:
-        while True:
+        while running:
             now = time.time()
             frame_count += 1
 
-            # Refresh unit map every 2.0s
-            if now - last_unit_refresh > 2.0:
+            # Refresh Unit Map every 2.0s
+            if (now - last_unit_refresh) > 2.0:
                 unit_map = refresh_unit_map(sc, base, my_unit, my_team)
                 last_unit_refresh = now
 
-            # Scan 256 slots
-            active_list = scan_projectiles_wide(sc, base, max_slots=256)
-            current_ptrs = set()
+            # 1. Read Latest ESP Broadcast (if radar_overlay.py is running)
+            esp_connected = bridge.is_esp_connected(max_age=1.5)
+            esp_frame_data = bridge.read_latest(max_age=2.0) if esp_connected else None
+            esp_tracks = esp_frame_data.get("tracks", []) if esp_frame_data else []
 
-            live_dashboard_missiles = []
+            # 2. Complete 100% Unfiltered Scan of ECS Node Table & Proj List
+            raw_candidates = raw_scanner.scan_all_raw_entities(sc, base, max_entries=500)
 
-            for m in active_list:
-                ptr = m["ptr"]
-                current_ptrs.add(ptr)
+            # 3. Log to SQLite, JSONL, and CSV Tracks via non-blocking worker thread
+            recorder.log_tick(frame_count, now, raw_candidates, esp_tracks)
 
-                # Resolve shooter info
-                owner_u = m.get("owner_unit", 0)
-                sh_info = unit_map.get(owner_u, {})
-                m["shooter_name"] = sh_info.get("name", "Unknown")
-                m["shooter_rel"] = sh_info.get("relation", "Unknown")
-                if sh_info.get("pos"):
-                    m["dist_shooter"] = vdist(m["pos"], sh_info["pos"])
-                else:
-                    m["dist_shooter"] = 0.0
-
-                # Resolve target info
-                tgt_id = m.get("g_target_id", 0)
-                tg_info = unit_map.get(tgt_id, {})
-                m["target_name"] = tg_info.get("name", "None")
-                m["target_rel"] = tg_info.get("relation", "None")
-                if tg_info.get("pos"):
-                    m["dist_target"] = vdist(m["pos"], tg_info["pos"])
-                else:
-                    m["dist_target"] = 0.0
-
-                # Distance to local player
-                my_info = unit_map.get(my_unit, {})
-                if my_info.get("pos"):
-                    m["dist_you"] = vdist(m["pos"], my_info["pos"])
-                else:
-                    m["dist_you"] = 0.0
-
-                # Audio alarm if targeting local player!
-                if m.get("target_rel") == "YOU" and (m.get("g_tracking") or m.get("g_locked")):
-                    sys.stdout.write("\a") # terminal bell
-
-                # Assign or reuse UID
-                if ptr not in ptr_to_uid:
-                    uid = next_uid
-                    next_uid += 1
-                    ptr_to_uid[ptr] = uid
-                    tracked_missiles[uid] = {
-                        "uid": uid,
-                        "ptr": hex(ptr),
-                        "name": m["name"],
-                        "seeker_type": m["seeker_type"],
-                        "is_guided": m["is_guided"],
-                        "shooter_name": m["shooter_name"],
-                        "shooter_rel": m["shooter_rel"],
-                        "target_name": m["target_name"],
-                        "target_rel": m["target_rel"],
-                        "first_seen_t": now,
-                        "last_seen_t": now,
-                        "points": [],
-                        "termination_reason": "FLYING",
-                    }
-                    exporter.log_event("MISSILE_SPAWN", {
-                        "uid": uid,
-                        "ptr": hex(ptr),
-                        "name": m["name"],
-                        "shooter": m["shooter_name"],
-                        "target": m["target_name"],
-                    })
-
-                uid = ptr_to_uid[ptr]
-                tr = tracked_missiles[uid]
-                tr["last_seen_t"] = now
-
-                # Calculate G-Force
-                prev_pts = tr["points"]
-                g_force = 0.0
-                if prev_pts:
-                    prev_p = prev_pts[-1]
-                    dt = now - prev_p["t"]
-                    if dt > 0.005:
-                        d_vx = m["vel"][0] - prev_p["vel"][0]
-                        d_vy = m["vel"][1] - prev_p["vel"][1]
-                        d_vz = m["vel"][2] - prev_p["vel"][2]
-                        accel = math.sqrt(d_vx**2 + d_vy**2 + d_vz**2) / dt
-                        g_force = accel / 9.80665
-                m["g_force"] = round(g_force, 1)
-
-                m["age_s"] = now - tr["first_seen_t"]
-                m["frame"] = frame_count
-                m["t"] = now
-
-                if m.get("target_name") not in ("None", "Unknown", None) and tr.get("target_name") in ("None", "Unknown", None):
-                    tr["target_name"] = m["target_name"]
-                    tr["target_rel"] = m["target_rel"]
-
-                # Record point in history & CSV
-                tr["points"].append(m)
-                exporter.record_track_point(uid, m)
-
-                live_dashboard_missiles.append(m)
-
-            # Detect despawned missiles
-            for ptr, uid in list(ptr_to_uid.items()):
-                if ptr not in current_ptrs:
-                    tr = tracked_missiles[uid]
-                    # If not seen for 0.4s, finalize termination reason
-                    if now - tr["last_seen_t"] > 0.4:
-                        last_pt = tr["points"][-1] if tr["points"] else None
-                        reason = "LOST / EVICTED"
-                        if last_pt:
-                            if last_pt.get("detonated", 0) != 0:
-                                reason = "💥 DETONATED"
-                            elif last_pt.get("dist_target", 999.0) < 18.0 and last_pt.get("target_name") not in ("None", "Unknown"):
-                                reason = "🎯 TARGET HIT"
-                            elif last_pt.get("dist_you", 999.0) < 25.0:
-                                reason = "💥 PROXIMITY/HIT YOU"
-                            elif last_pt.get("alt", 999.0) < 25.0:
-                                reason = "⛰️ GROUND IMPACT"
-                            elif last_pt["age_s"] > 25.0:
-                                reason = "⏱️ TIMEOUT"
-                        tr["termination_reason"] = reason
-
-                        exporter.log_event("MISSILE_DESPAWN", {
-                            "uid": uid,
-                            "name": tr["name"],
-                            "reason": reason,
-                            "duration_s": round(now - tr["first_seen_t"], 2),
-                        })
-                        del ptr_to_uid[ptr]
-
-            # Update live dashboard
+            # 4. Render Live Dual-Table Terminal Dashboard
             elapsed = max(0.1, now - start_time)
             fps = frame_count / elapsed
-            dashboard.render(frame_count, fps, my_plane_name, live_dashboard_missiles, len(tracked_missiles))
+            dashboard.render(
+                frame_count,
+                fps,
+                session_id,
+                my_plane_name,
+                esp_connected,
+                esp_frame_data,
+                esp_tracks,
+                raw_candidates,
+                recorder.total_raw_captured,
+                unfiltered_only=args.unfiltered_only,
+            )
 
-            time.sleep(0.06)  # ~16 FPS sampling rate
+            time.sleep(args.interval)
 
     except KeyboardInterrupt:
-        print("\n\n" + "="*70)
-        print("💾 กำลังบันทึก CSV Tracks รายลูก และสรุปผลรายงาน...")
-        exporter.close(tracked_missiles)
-        print(f"✅ บันทึกเสร็จสมบูรณ์!")
-        print(f"📂 โฟลเดอร์ผลลัพธ์: {out_dir}/")
-        print(f"   - 📄 summary.md (ตารางสรุปผล)")
-        print(f"   - 📊 tracks/*.csv (ไฟล์วิถีและความเร็วรายลูก สำหรับเปิดใน Excel/Plotly)")
-        print(f"   - 📜 events.jsonl (Event logs ทั้งหมด)")
-        print("="*70)
-        print(f"💡 วิเคราะห์รอบนี้ซ้ำเมื่อไรก็ได้ด้วยคำสั่ง:\n   python3 tools/sub/missile/missile_guided_live_dumper.py --analyze {out_dir}\n")
+        pass
+    finally:
+        print("\n\n" + "=" * 80)
+        print("💾 กำลังบันทึกข้อมูลและสร้างรายงานสรุป (Closing Session)...")
+        meta_info = {
+            "game_pid": pid,
+            "player_unit": hex(my_unit),
+            "player_team": my_team,
+            "aircraft_name": my_plane_name,
+            "total_frames": frame_count,
+            "duration_s": round(time.time() - start_time, 2),
+        }
+        recorder.close(meta_info)
+        print("✅ ปิด Session และบันทึกข้อมูลสมบูรณ์แบบ!")
+        print(f"📂 โฟลเดอร์ Session: {recorder.dir}/")
+        print(f"   - 📄 summary.md (ตารางสรุป Entity และผลการวินิจฉัย)")
+        print(f"   - 🗄️ telemetry.db (ฐานข้อมูล SQLite สำหรับสืบค้น)")
+        print(f"   - 📜 raw_ecs_stream.jsonl (ข้อมูลดิบ 100% ทั้งหมดใน ECS)")
+        print(f"   - 📜 esp_stream.jsonl (ข้อมูลการตรวจจับของ ESP)")
+        print(f"   - 📊 tracks/*.csv (ไฟล์วิถีและความเร็วรายลูก)")
+        print("=" * 80)
+        print(f"💡 คำสั่งวิเคราะห์ย้อนหลัง:")
+        print(f"   python3 tools/sub/missile/missile_guided_live_dumper.py --analyze {recorder.dir}")
+        print(f"   python3 tools/sub/missile/missile_guided_live_dumper.py --session {recorder.dir} --sql \"SELECT ptr, name, speed, esp_verdict, reject_reason FROM raw_ecs_samples WHERE esp_verdict != 'ACCEPTED' LIMIT 15\"\n")
 
 
 if __name__ == "__main__":
