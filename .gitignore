@@ -5,3 +5,4 @@ ghidra
 datamine/
 chat_history
 __pycache__
+logs

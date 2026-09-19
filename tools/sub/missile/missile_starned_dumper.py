@@ -173,9 +173,9 @@ def check_ptr_is_rocket(sc, ptr):
             if not eid and len(header) >= 0x34:
                 eid = struct.unpack_from("<I", header, 0x30)[0]
 
-            # 🛡️ STRICT VALIDATION: Filter out fake/garbage entities and non-rocket objects
-            # 1. State: In-flight missiles only have state 0 (active), 1 (boost), or 2 (sustain).
-            if state > 3:
+            # 🛡️ VALIDATION: Filter out fake/garbage entities and non-rocket objects
+            # 1. State: Allow in-flight states (0..32, including post-burnout coast/terminal guidance state 11)
+            if state > 32:
                 continue
 
             # 2. Entity ID: Active projectile IDs are normal positive integers (< 50,000,000).
@@ -194,9 +194,9 @@ def check_ptr_is_rocket(sc, ptr):
 
             # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็น sam_missile.blk หรือ missile.blk
             if not found_wep:
-                if is_valid_ptr(guid) and state in (0, 1, 2):
+                if is_valid_ptr(guid):
                     found_wep = "sam_missile.blk"
-                elif speed > 300.0 and state in (0, 1, 2):
+                elif speed > 250.0:
                     found_wep = "missile.blk"
                 else:
                     continue
@@ -233,20 +233,20 @@ def brute_force_entries(sc, node_table, max_entries=350, base=0):
             cnt_cap = sc.read_mem(base + proj_list_off + 8, 8)
             if cnt_cap and len(cnt_cap) == 8:
                 count, cap = struct.unpack("<II", cnt_cap)
-                if 0 < count <= 2000 and cap <= 65536:
-                    raw_entries = sc.read_mem(table_ptr + 0x20, count * 0x20)
-                    if raw_entries and len(raw_entries) >= 0x20:
-                        num_m = min(count, len(raw_entries) // 0x20)
-                        for i in range(num_m):
-                            chunk = raw_entries[i * 0x20 : (i + 1) * 0x20]
-                            ent_ptr = struct.unpack_from("<Q", chunk, 0x10)[0]
-                            if is_valid_ptr(ent_ptr) and (ent_ptr & 7 == 0) and ent_ptr not in seen_ptrs:
-                                info = check_ptr_is_rocket(sc, ent_ptr)
-                                if info:
-                                    info["layout"] = "proj_list"
-                                    info["entry"] = i
-                                    seen_ptrs.add(ent_ptr)
-                                    all_rockets.append(info)
+                scan_slots = min(max(cap, count, 128), 256)
+                raw_entries = sc.read_mem(table_ptr + 0x20, scan_slots * 0x20)
+                if raw_entries and len(raw_entries) >= 0x20:
+                    num_m = len(raw_entries) // 0x20
+                    for i in range(num_m):
+                        chunk = raw_entries[i * 0x20 : (i + 1) * 0x20]
+                        ent_ptr = struct.unpack_from("<Q", chunk, 0x10)[0]
+                        if is_valid_ptr(ent_ptr) and (ent_ptr & 7 == 0) and ent_ptr not in seen_ptrs:
+                            info = check_ptr_is_rocket(sc, ent_ptr)
+                            if info:
+                                info["layout"] = "proj_list"
+                                info["entry"] = i
+                                seen_ptrs.add(ent_ptr)
+                                all_rockets.append(info)
 
     # 2. Check ECS node_table
     if node_table and is_valid_ptr(node_table):

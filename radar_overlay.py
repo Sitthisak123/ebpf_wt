@@ -267,8 +267,8 @@ COLOR_MISSILE_INFO_TEXT         = (255, 200, 80, 230)    # Missile info text
 MISSILE_SCAN_INTERVAL_S         = 0.10                   # Scan every 100ms
 MISSILE_WARNING_FLASH_HZ        = 3.0                    # Flash frequency
 OFFSCREEN_MISSILE_INDICATOR_MARGIN = 95.0               # Screen edge margin (avoids overlap with air indicator at 28px)
-MISSILE_TRACK_TIMEOUT_S         = 0.30                   # Persistence grace period to prevent blinking (300ms)
-MISSILE_EXTRAPOLATION_MAX_S     = 0.35                   # Dead reckoning extrapolation max duration
+MISSILE_TRACK_TIMEOUT_S         = 1.20                   # Persistence grace period to prevent blinking (1.2s)
+MISSILE_EXTRAPOLATION_MAX_S     = 1.20                   # Dead reckoning extrapolation max duration
 MISSILE_SMOOTH_LERP             = 0.45                   # Angular smoothing factor for edge indicator
 MISSILE_POS_EMA_ALPHA           = 0.35                   # EMA smoothing factor for missile position correction (0.35 = buttery smooth)
 MISSILE_VEL_EMA_ALPHA           = 0.45                   # EMA smoothing factor for missile velocity vector
@@ -7227,26 +7227,17 @@ class ESPOverlay(QOpenGLWidget):
                                     continue
 
                             # ตรวจสอบสถานะ Guidance
-                            # 1) ล็อกเป้าหมายเครื่องเราโดยตรง 100% ผ่าน target_id (IR AAM เช่น AAM-3, AIM-9L หรือ Radar เช่น AIM-120, R-77)
+                            # 🎯 Alert ONLY when target_id is ME (100% Seeker Lock Match)
                             is_exact_locked_me = bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
-                            # 2) ขีปนาวุธ SPAA Bot SAM / SACLOS / Command-Guided (target_id <= 0 แต่ล็อก/ติดตาม และวิถีพุ่งตรงเข้าหาเครื่องเรา)
-                            is_sam_guided_to_me = bool(is_heading_to_me and (m.is_tracking or m.is_locked) and m.target_id <= 0)
+                            is_guided_to_me = is_exact_locked_me
 
-                            is_guided_to_me = is_exact_locked_me or is_sam_guided_to_me
-
-                            # ขีปนาวุธล็อกเครื่องอื่น: ต้องเป็น target_id ที่มีตัวตนจริง (> 0) และไม่ใช่ ID ของเรา และทิศทางไม่ได้พุ่งตรงมาที่เรา
-                            is_guided_to_other = bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_heading_to_me)
+                            # ขีปนาวุธล็อกเครื่องอื่น: ต้องเป็น target_id ที่มีตัวตนจริง (> 0) และไม่ใช่ ID ของเรา
+                            is_guided_to_other = bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked))
 
                             # 🎯 ประเมินว่าเป็นภัยคุกคามต่อตัวเราหรือไม่ (Alert Trigger):
-                            # 1) ถ้า 100% Exact Locked On You -> ถือเป็นภัยคุกคามสูงสุดทันที (Seeker ID Match)
-                            # 2) ถ้า SAM / Guided Missile นำวิถีพุ่งเข้าหาเรา -> ถือเป็นภัยคุกคามทันที
-                            # 3) หากตั้ง MISSILE_ALERT_ONLY_GUIDED = True:
-                            #    จะแจ้งเตือน (Warning HUD / Red Border / Auto CM) เฉพาะขีปนาวุธนำวิถี (is_exact_locked_me หรือ is_guided_to_me) เท่านั้น
-                            #    จะไม่แจ้งเตือนจรวด unguided ทั่วไป (เช่น FFAR, S-8, S-13) หรือลูกที่ล็อกคนอื่นเด็ดขาด
+                            # แจ้งเตือนเฉพาะเมื่อ target_id ตรงกับ ID ของเราเท่านั้น (Target ID is ME)
                             threat_to_me = False
                             if is_exact_locked_me:
-                                threat_to_me = True
-                            elif is_guided_to_me:
                                 threat_to_me = True
                             elif not MISSILE_ALERT_ONLY_GUIDED and is_heading_to_me:
                                 if not is_guided_to_other or dist <= AUTO_CM_STAGE1_MAX_RANGE or time_to_impact <= AUTO_CM_STAGE1_TIME_LEFT:
@@ -7329,7 +7320,7 @@ class ESPOverlay(QOpenGLWidget):
                                 is_exact_locked_me or (m.ptr in incoming_guided_ptrs)
                             )
                             is_guided_other = False if (is_my or is_friendly) else bool(
-                                m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me
+                                m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me and not is_incoming
                             )
 
                             # 🎯 TARGET TRACKING: ค้นหาชื่อยูนิตเป้าหมายจาก target_id (แคชในแทร็กเพื่อป้องกัน Lookup ซ้ำซ้อน)

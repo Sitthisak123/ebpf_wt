@@ -902,64 +902,59 @@ def init_dynamic_offsets(scanner, base_address):
     else: print("  [-] ❌ หา RELOAD ไม่เจอ")
 
     # ---------------------------------------------------------
+    # 🎯 Phase 5: Dynamic ECS Manager Offset Verification & Persistence
     # ---------------------------------------------------------
-    # 🎯 Phase 5: Dynamic Missile & Projectile System Detection (OFF_PROJ_LIST)
-    # ---------------------------------------------------------
-    print("[*] 🔍 5/5 ตรวจสอบและค้นหา Projectile/Missile Table (OFF_PROJ_LIST Persistence)...")
-    proj_ok = False
+    print("[*] 🔍 5/5 ตรวจสอบและค้นหา ECS Manager (OFF_ECS_MANAGER Persistence)...")
+    ecs_ok = False
     
-    # 1. Check existing or persistent OFF_PROJ_LIST
-    cand_proj_off = getattr(mul, "OFF_PROJ_LIST", 0xac02ab8)
-    test_tbl = mul._read_ptr(scanner, base_address + cand_proj_off)
-    if mul.is_valid_ptr(test_tbl):
-        cnt_cap = scanner.read_mem(base_address + cand_proj_off + 8, 8)
-        if cnt_cap and len(cnt_cap) == 8:
-            t_cnt, t_cap = struct.unpack("<II", cnt_cap)
-            if t_cap < 65536:
-                proj_ok = True
-                mul.OFF_PROJ_LIST = cand_proj_off
-                print(f"  [+] ✅ BINGO! Projectile Table = {hex(mul.OFF_PROJ_LIST)} (count={t_cnt}, capacity={t_cap})")
+    # 1. Check verified candidate offsets
+    for cand_off in (getattr(mul, "OFF_ECS_MANAGER", 0xb0e29b8), 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
+        test_mgr = mul._read_ptr(scanner, base_address + cand_off)
+        if mul.is_valid_ptr(test_mgr):
+            test_node = mul._read_ptr(scanner, test_mgr + getattr(mul, "OFF_ECS_NODE_TABLE", 0x178))
+            test_class = mul._read_ptr(scanner, test_mgr + getattr(mul, "OFF_ECS_CLASS_TABLE", 0x5E8))
+            if mul.is_valid_ptr(test_node):
+                node_bytes = scanner.read_mem(test_node, 128)
+                if node_bytes and any(b != 0 for b in node_bytes):
+                    ecs_ok = True
+                    mul.OFF_ECS_MANAGER = cand_off
+                    print(f"  [+] ✅ BINGO! ECS Manager = {hex(mul.OFF_ECS_MANAGER)} (Confirmed Active)")
+                    break
 
-    # 2. If shifted or unverified, dynamically scan text segment for unique Projectile DNA
-    if not proj_ok:
-        print("  [!] ⚠️ Projectile offset เดิมไม่ตรง กำลังสแกนหา OFF_PROJ_LIST ผ่าน DNA...")
-        text_start = base_address + 0xb000
-        text_end   = base_address + 0x9000000
-        dna = bytes.fromhex("4c8d47204989f448c1e005")
+    # 2. If game updated and offset shifted, scan base region dynamically
+    if not ecs_ok:
+        print("  [!] ⚠️ Offset เดิมไม่ตรงกับแพตช์ปัจจุบัน กำลังสแกนหา ECS Manager ใหม่...")
+        scan_start = base_address + 0x7000000
+        scan_end   = base_address + 0xD000000
+        chunk_size = 0x200000
         found_off = 0
-        chunk_sz = 2 * 1024 * 1024
-        
-        for cur in range(text_start, text_end, chunk_sz):
-            sz = min(chunk_sz, text_end - cur)
-            buf = scanner.read_mem(cur, sz)
-            if not buf: continue
-            idx = buf.find(dna)
-            if idx != -1:
-                dna_addr = cur + idx
-                insn_buf = scanner.read_mem(dna_addr - 30, 30)
-                if insn_buf:
-                    mov_idx = insn_buf.rfind(b"\x48\x8b\x3d")
-                    if mov_idx != -1:
-                        mov_addr = (dna_addr - 30) + mov_idx
-                        disp32 = struct.unpack_from("<i", insn_buf, mov_idx + 3)[0]
-                        target_addr = mov_addr + 7 + disp32
-                        found_off = target_addr - base_address
-                        break
+        for addr in range(scan_start, scan_end, chunk_size):
+            chunk = scanner.read_mem(addr, chunk_size)
+            if not chunk: continue
+            for i in range(0, len(chunk) - 8, 8):
+                ptr_val = struct.unpack_from("<Q", chunk, i)[0]
+                if mul.is_valid_ptr(ptr_val) and (ptr_val & 7 == 0):
+                    test_node = mul._read_ptr(scanner, ptr_val + mul.OFF_ECS_NODE_TABLE)
+                    if mul.is_valid_ptr(test_node) and (test_node & 7 == 0):
+                        nb = scanner.read_mem(test_node, 128)
+                        if nb and len(nb) >= 64:
+                            valid_nodes = 0
+                            for entry_idx in range(len(nb) // 32):
+                                st = struct.unpack_from("<Q", nb, entry_idx * 32)[0]
+                                cnt = struct.unpack_from("<I", nb, entry_idx * 32 + 8)[0]
+                                cap = struct.unpack_from("<I", nb, entry_idx * 32 + 0x14)[0]
+                                if mul.is_valid_ptr(st) and (st & 7 == 0) and 0 < cnt <= cap <= 8192:
+                                    valid_nodes += 1
+                            if valid_nodes >= 2:
+                                found_off = (addr + i) - base_address
+                                break
             if found_off: break
-            
+        
         if found_off:
-            mul.OFF_PROJ_LIST = found_off
-            print(f"  [+] 🎉 DYNAMIC BINGO! OFF_PROJ_LIST = {hex(mul.OFF_PROJ_LIST)}")
+            mul.OFF_ECS_MANAGER = found_off
+            print(f"  [+] 🎉 DYNAMIC BINGO! OFF_ECS_MANAGER = {hex(mul.OFF_ECS_MANAGER)}")
         else:
-            print(f"  [!] ⚠️ ใช้ค่า Default สำหรับ Projectile List: {hex(mul.OFF_PROJ_LIST)}")
-
-    # 🎯 Verify ECS Manager offset (OFF_ECS_MANAGER)
-    cand_ecs_mgr = getattr(mul, "OFF_ECS_MANAGER", 0xb0e29b8)
-    test_mgr = mul._read_ptr(scanner, base_address + cand_ecs_mgr)
-    if mul.is_valid_ptr(test_mgr):
-        test_node = mul._read_ptr(scanner, test_mgr + getattr(mul, "OFF_ECS_NODE_TABLE", 0x178))
-        if mul.is_valid_ptr(test_node):
-            print(f"  [+] ✅ BINGO! ECS Manager = {hex(cand_ecs_mgr)} (Active node_table = {hex(test_node)})")
+            print(f"  [!] ⚠️ ใช้ค่า Default สำหรับ ECS Manager: {hex(mul.OFF_ECS_MANAGER)}")
 
     # 5️⃣ หา OFF_AIR_VEL (0x318)
     # 🧬 DNA: 0F 10 ?? 18 03 00 00 0F 10 ?? 24 03 00 00 (จาก 025effcb)
