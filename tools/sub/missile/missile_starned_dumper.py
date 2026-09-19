@@ -30,9 +30,9 @@ OFFSET_SETS = [
         getattr(mul, 'OFF_RKT_VEL', 0x258),
         getattr(mul, 'OFF_RKT_OWNER', 0x50),
         getattr(mul, 'OFF_RKT_STATE', 0x94),
-        getattr(mul, 'OFF_RKT_GUIDANCE', 0x670),
+        getattr(mul, 'OFF_RKT_GUIDANCE', 0x680),
         getattr(mul, 'OFF_RKT_ENTITY_ID', 0x40),
-        getattr(mul, 'OFF_RKT_PROPS', 0x700),
+        getattr(mul, 'OFF_RKT_PROPS', 0x710),
     ),
 ]
 
@@ -94,11 +94,11 @@ def check_ptr_is_rocket(sc, ptr):
         
         # 1. ตรวจสอบชื่อ Blk ของอาวุธจาก Props pointers (+0x700 / +0x6c8 -> +0x50, +0x28, +0x58)
         found_wep = ""
-        for off in [0x700, 0x6c8, 0x690, 0x6a0, 0x620]:
+        for off in [getattr(mul, 'OFF_RKT_PROPS', 0x710), 0x710, 0x700, 0x6c8, 0x690, 0x6a0, 0x620]:
             if len(header) >= off + 8:
                 prp = struct.unpack_from("<Q", header, off)[0]
                 if is_valid_ptr(prp):
-                    for poff in (0x28, 0x50, 0x58):
+                    for poff in (0x28, 0x50, 0x58, 0x10):
                         raw_np = sc.read_mem(prp + poff, 8)
                         if raw_np and len(raw_np) == 8:
                             np = struct.unpack("<Q", raw_np)[0]
@@ -167,8 +167,13 @@ def check_ptr_is_rocket(sc, ptr):
                 owner = struct.unpack_from("<Q", header, 0x40)[0]
             state = header[st_off] if len(header) > st_off else 0
             guid  = struct.unpack_from("<Q", header, guid_off)[0] if len(header) >= guid_off + 8 else 0
-            if not guid and len(header) >= 0x640:
-                guid = struct.unpack_from("<Q", header, 0x638)[0]
+            if not guid:
+                for goff in (0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698):
+                    if len(header) >= goff + 8:
+                        g_cand = struct.unpack_from("<Q", header, goff)[0]
+                        if is_valid_ptr(g_cand) and (g_cand & 7 == 0):
+                            guid = g_cand
+                            break
             eid   = struct.unpack_from("<I", header, eid_off)[0] if len(header) >= eid_off + 4 else 0
             if not eid and len(header) >= 0x34:
                 eid = struct.unpack_from("<I", header, 0x30)[0]
@@ -370,7 +375,21 @@ def main():
                 g_tgt = struct.unpack("<H", g_tgt_raw)[0] if g_tgt_raw and len(g_tgt_raw) == 2 else 0
                 if g_tgt == 0xFFFF:
                     g_tgt = 0
-                tgt_info = f" (🎯 {unit_map[g_tgt][1]})" if g_tgt in unit_map else ""
+                elif g_tgt not in (65280,):
+                    if g_tgt <= 0 or g_tgt >= 20000:
+                        fb_raw = sc.read_mem(r['guid'] + 0x8C, 2)
+                        fb = struct.unpack("<H", fb_raw)[0] if fb_raw and len(fb_raw) == 2 else 0
+                        g_tgt = fb if (0 < fb < 20000 and fb != 65280) else 0
+
+                is_sam_wep = any(k in (r['name'] or '').lower() for k in ("sam", "mim146", "mim-146", "roland", "vt1", "vt-1", "pantsir", "9m311", "9m331", "tor", "strela", "tunguska", "adats"))
+                if g_tgt == 65280 or (is_sam_wep and g_tgt == 0):
+                    tgt_info = " (📡 SACLOS / Beam-Riding SAM - No Seeker Head)"
+                elif g_tgt in unit_map:
+                    tgt_info = f" (🎯 {unit_map[g_tgt][1]})"
+                elif 0 < g_tgt < 20000:
+                    tgt_info = f" (id={g_tgt})"
+                else:
+                    tgt_info = " (no target / beam-rider)" if is_sam_wep else ""
                 guid_str += f" locked={g_lock} tracking={g_trk} target_id={g_tgt}{tgt_info}"
             
             name_str = f'\n     Name:     "{r["name"]}"' if r["name"] else ""

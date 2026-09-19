@@ -21,7 +21,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address
+from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 from src.utils.mul import (
     get_cgame_base, get_view_matrix, get_local_team, get_unit_pos,
     world_to_screen, GHIDRA_BASE
@@ -36,6 +36,8 @@ def main():
     base = get_game_base_address(pid)
     scanner = MemoryScanner(pid)
     print(f"[+] Game PID: {pid}, Base: {hex(base)}")
+    
+    init_dynamic_offsets(scanner, base)
     
     cgame_base = get_cgame_base(scanner, base)
     print(f"[+] CGame Base: {hex(cgame_base)}")
@@ -55,9 +57,15 @@ def main():
     print("=" * 70)
     from src.utils.missile import MissileScanner
     import src.utils.mul as mul
-    ecs_mgr_off = getattr(mul, 'OFF_ECS_MANAGER', 0xb0e29b8)
+    ecs_mgr_off = getattr(mul, 'OFF_ECS_MANAGER', 0x8ccd918)
     ecs_node_off = getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178)
     mgr = rp(scanner, base + ecs_mgr_off)
+    if not mgr:
+        for cand in (0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0):
+            test_m = rp(scanner, base + cand)
+            if test_m and rp(scanner, test_m + ecs_node_off):
+                mgr = test_m
+                break
     node_t = rp(scanner, mgr + ecs_node_off) if mgr else 0
     
     dumper_rockets = []

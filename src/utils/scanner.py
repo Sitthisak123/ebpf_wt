@@ -908,7 +908,7 @@ def init_dynamic_offsets(scanner, base_address):
     ecs_ok = False
     
     # 1. Check verified candidate offsets
-    for cand_off in (getattr(mul, "OFF_ECS_MANAGER", 0xb0e29b8), 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
+    for cand_off in (getattr(mul, "OFF_ECS_MANAGER", 0x8ccd918), 0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
         test_mgr = mul._read_ptr(scanner, base_address + cand_off)
         if mul.is_valid_ptr(test_mgr):
             test_node = mul._read_ptr(scanner, test_mgr + getattr(mul, "OFF_ECS_NODE_TABLE", 0x178))

@@ -14,10 +14,10 @@ except Exception:
 # 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
 # ===================================================
 GHIDRA_BASE         = 0x400000
-DAT_MANAGER         = 0xb028160
-MANAGER_OFFSET      = DAT_MANAGER - GHIDRA_BASE
-MANAGER_CANDIDATE_OFFSETS = []
-DAT_CONTROLLED_UNIT = 0xb02a4a8
+DAT_MANAGER         = 0xb02b1c0
+MANAGER_OFFSET      = 0xac2b1c0
+MANAGER_CANDIDATE_OFFSETS = [0xac2b1c0, 0xac2b1a8, 0xac28160, 0xac27160]
+DAT_CONTROLLED_UNIT = 0xb02d508
 
 OFF_CAMERA_PTR      = 0x660
 OFF_VIEW_MATRIX     = 0x1D8
@@ -65,7 +65,7 @@ OFF_MY_AIR_OMEGA    = 0x0098      # 🌪️ My air angular velocity: DOUBLE vec3
 
 # 🚀 Missile/Rocket Projectile & ECS Offsets (confirmed 2026-09)
 OFF_PROJ_LIST       = 0xac02ab8   # base + this → pointer to active projectile table (Tab<Projectile>)
-OFF_ECS_MANAGER     = 0xb0e29b8   # base + this → ECS manager ptr (fallback/multiplayer confirmed 2026-09)
+OFF_ECS_MANAGER     = 0x8ccd918   # base + this → ECS manager ptr (fallback/multiplayer confirmed 2026-09)
 OFF_ECS_NODE_TABLE  = 0x178       # manager + this → node_table ptr
 OFF_ECS_CLASS_TABLE = 0x5E8       # manager + this → class_table ptr
 OFF_RKT_ENTITY_ID   = 0x40        # rocket + this → entity id (u32)
@@ -75,9 +75,9 @@ OFF_RKT_POS         = 0x23c       # rocket + this → Vec3 position
 OFF_RKT_VEL         = 0x258       # rocket + this → Vec3 velocity
 OFF_RKT_DETONATED   = 0x420       # rocket + this → detonation/impact flag (0 = flying, non-zero = detonated)
 OFF_RKT_PHASE       = 0x498       # rocket + this → projectile phase (3 = in-flight, 6 = terminated/impacted)
-OFF_RKT_GUIDANCE    = 0x670       # rocket + this → guidance struct ptr (updated from 0x638)
-OFF_RKT_ALIVE       = 0x6c0       # rocket + this → is_alive (1 = active flying, 0 = dead/inactive)
-OFF_RKT_PROPS       = 0x700       # rocket + this → props ptr (name at +0x50) (updated from 0x6c8)
+OFF_RKT_GUIDANCE    = 0x680       # rocket + this → guidance struct ptr (updated from 0x670)
+OFF_RKT_ALIVE       = 0x6d0       # rocket + this → is_alive (updated from 0x6c0)
+OFF_RKT_PROPS       = 0x710       # rocket + this → props ptr (name at +0x28 / +0x50) (updated from 0x700)
 OFF_GUID_LOCKED     = 0x4C        # guidance + this → isLocked byte (updated from 0x50)
 OFF_GUID_TRACKING   = 0x4D        # guidance + this → isTracking byte (updated from 0x51)
 OFF_GUID_TARGET_ID  = 0x84        # guidance + this → target unit id (i16) (updated from 0x8C)
@@ -89,11 +89,11 @@ OFF_GROUND_OMEGA    = 0
 FILTER_ZERO_POS_UNITS = True
 # 🔫 ระบบขีปนาวุธ (BALLISTICS - อัปเดตโครงสร้าง 2.59+ เลื่อน +0x20)
 OFF_WEAPON_PTR      = 0x3f0        # 🎯 อัปเดตจากผลสแกน Ballistic
-OFF_CCIP_IMPACT     = 0x1CBC       # 🎯 vec3_t (x, y, z) CCIP Impact Point จาก Dagor Engine (เดิม 0x1C9C)
-OFF_BULLET_SPEED    = 0x2108       # 🎯 ความเร็วต้น (Muzzle Velocity - เดิม 0x20E8)
-OFF_BULLET_MASS     = 0x2114       # ⚖️ มวลกระสุน (เดิม 0x20F4)
-OFF_BULLET_CALIBER  = 0x2118       # 📏 Caliber เมตร (เดิม 0x20F8)
-OFF_BULLET_CD       = 0x211C       # 💨 Drag Coeff (เดิม 0x20FC)
+OFF_CCIP_IMPACT     = 0x1CCC       # 🎯 vec3_t (x, y, z) CCIP Impact Point จาก Dagor Engine (เดิม 0x1CBC / 0x1C9C)
+OFF_BULLET_SPEED    = 0x2118       # 🎯 ความเร็วต้น (Muzzle Velocity - เดิม 0x2108 / 0x20E8)
+OFF_BULLET_MASS     = 0x2124       # ⚖️ มวลกระสุน (เดิม 0x2114 / 0x20F4)
+OFF_BULLET_CALIBER  = 0x2128       # 📏 Caliber เมตร (เดิม 0x2118 / 0x20F8)
+OFF_BULLET_CD       = 0x212C       # 💨 Drag Coeff (เดิม 0x211C / 0x20FC)
 
 OFF_INVUL_TIMER     = 0x0E6C       # 🛡️ นับถอยหลังอมตะเกิดใหม่ (วินาที)
 OFF_INVULNERABLE    = 0x0E90       # 🛡️ แฟล็กอมตะเกิดใหม่ (bool)
@@ -139,6 +139,8 @@ def is_valid_ptr(p):
     if not isinstance(p, int):
         return False
     return 0x10000 < p < 0xFFFFFFFFFFFFFFFF
+
+_is_valid_ptr = is_valid_ptr
 
 
 UNIT_KIND_CACHE = {}
@@ -2093,9 +2095,10 @@ def get_direct_bomb_impact(scanner, cgame_base, unit_ptr=0, my_pos=None):
         if not is_valid_ptr(weapon_ptr):
             return None
 
-        # 1. ตรวจสอบ OFF_CCIP_IMPACT (0x1CBC) และ Fallback pylon offsets (0x117C, 0x114C, 0x111C, 0x10EC, 0x1C9C)
+        # 1. ตรวจสอบ OFF_CCIP_IMPACT (0x1CCC) และ Fallback pylon offsets (0x1CBC, 0x117C, 0x114C, 0x111C, 0x10EC, 0x1C9C)
         offsets_to_try = [
             OFF_CCIP_IMPACT,
+            0x1CCC,
             0x1CBC,
             0x117C,
             0x114C,

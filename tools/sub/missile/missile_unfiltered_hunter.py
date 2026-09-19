@@ -124,12 +124,12 @@ def _parse_hunter_candidate(sc, ptr, buf, entry_idx, slot_idx, layout_name):
     name_offset = None
     props_ptr = 0
     
-    # Check primary props pointers (0x700, 0x6c8)
-    for off in (getattr(mul, 'OFF_RKT_PROPS', 0x700), 0x6c8, 0x690, 0x6a0):
+    # Check primary props pointers (0x710, 0x700, 0x6c8)
+    for off in (getattr(mul, 'OFF_RKT_PROPS', 0x710), 0x710, 0x700, 0x6c8, 0x690, 0x6a0):
         if len(buf) >= off + 8:
             p = struct.unpack_from("<Q", buf, off)[0]
             if is_valid_ptr(p):
-                for poff in (0x28, 0x50, 0x58):
+                for poff in (0x28, 0x10, 0x50, 0x58):
                     n_ptr = rp(sc, p + poff)
                     if is_valid_ptr(n_ptr):
                         s = rstr(sc, n_ptr, 64)
@@ -167,9 +167,13 @@ def _parse_hunter_candidate(sc, ptr, buf, entry_idx, slot_idx, layout_name):
             eid = struct.unpack_from("<I", buf, 0x30)[0]
         phase = struct.unpack_from("<I", buf, getattr(mul, 'OFF_RKT_PHASE', 0x498))[0] if len(buf) >= 0x49c else 0
         detonated = struct.unpack_from("<I", buf, getattr(mul, 'OFF_RKT_DETONATED', 0x420))[0] if len(buf) >= 0x424 else 0
-        guid = struct.unpack_from("<Q", buf, getattr(mul, 'OFF_RKT_GUIDANCE', 0x670))[0] if len(buf) >= 0x678 else 0
-        if not guid and len(buf) >= 0x640:
-            guid = struct.unpack_from("<Q", buf, 0x638)[0]
+        guid = 0
+        for goff in (getattr(mul, 'OFF_RKT_GUIDANCE', 0x680), 0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698):
+            if len(buf) >= goff + 8:
+                g_cand = struct.unpack_from("<Q", buf, goff)[0]
+                if is_valid_ptr(g_cand) and (g_cand & 7 == 0):
+                    guid = g_cand
+                    break
         
         return {
             "entry": entry_idx,

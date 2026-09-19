@@ -107,3 +107,18 @@ Unit Rotation,0xb14,0xCE4,✅ ยืนยัน (Pos−36 bytes)
 BB Min / Max,0x230 / 0x23C,0x240 / 0x24C,✅ ยืนยัน
 Camera Pointer,0x5F0,0x670,🟡 อ้างอิงจาก Windows v2
 View Matrix,0x1B8,0x1C0,🟡 อ้างอิงจาก Windows v2
+
+update5:
+ตัวแปรในสคริปต์,Offset เก่า,Offset ใหม่ (v_3_linux),สถานะ
+OFF_WEAPON_PTR,0x3E8,0x3F0,✅ ยืนยัน (cgame + 0x3F0)
+OFF_BULLET_SPEED,0x2108,0x2118,✅ ยืนยัน (ความเร็วต้น 795 m/s)
+OFF_BULLET_MASS,0x2114,0x2124,✅ ยืนยัน (มวลกระสุน 0.274 kg)
+OFF_BULLET_CALIBER,0x2118,0x2128,✅ ยืนยัน (ขนาดกระสุน 0.030 m / 30mm)
+OFF_BULLET_CD,0x211C,0x212C,✅ ยืนยัน (สัมประสิทธิ์แรงต้าน 0.45)
+OFF_CCIP_IMPACT,0x1CBC,0x1CCC,✅ ยืนยัน (พิกัดจุดตกกระทบ 3D Vec3)
+
+update6:
+ตัวแปรในสคริปต์,Offset เก่า,Offset ใหม่ (v_4_linux),สถานะ
+OFF_RKT_GUIDANCE,0x670,0x680,✅ ยืนยัน (Seeker & Tracking struct ptr)
+OFF_RKT_PROPS,0x700,0x710,✅ ยืนยัน (Weapon properties & blk name ptr)
+OFF_RKT_ALIVE,0x6c0,0x6d0,✅ ยืนยัน (Entity active/alive flag)

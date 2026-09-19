@@ -25,7 +25,7 @@ if PROJECT_ROOT not in sys.path:
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 import src.utils.mul as mul
 
-OFF_CCIP_IMPACT = getattr(mul, "OFF_CCIP_IMPACT", 0x1CBC)  # vec3_t (x, y, z) impact point calculated by Dagor engine
+OFF_CCIP_IMPACT = getattr(mul, "OFF_CCIP_IMPACT", 0x1CCC)  # vec3_t (x, y, z) impact point calculated by Dagor engine
 
 def print_header(title):
     print("\n" + "=" * 70)
@@ -125,10 +125,10 @@ def dump_ccip_offsets():
 
     print_header("2. BULLET & BALLISTICS PROPERTIES SCAN")
     known_fields = {
-        "Muzzle Speed": getattr(mul, "OFF_BULLET_SPEED", 0x2108),
-        "Bullet Mass": getattr(mul, "OFF_BULLET_MASS", 0x2114),
-        "Caliber (m)": getattr(mul, "OFF_BULLET_CALIBER", 0x2118),
-        "Drag Coeff (Cd)": getattr(mul, "OFF_BULLET_CD", 0x211C),
+        "Muzzle Speed": getattr(mul, "OFF_BULLET_SPEED", 0x2118),
+        "Bullet Mass": getattr(mul, "OFF_BULLET_MASS", 0x2124),
+        "Caliber (m)": getattr(mul, "OFF_BULLET_CALIBER", 0x2128),
+        "Drag Coeff (Cd)": getattr(mul, "OFF_BULLET_CD", 0x212C),
     }
     
     for label, off in known_fields.items():
@@ -139,12 +139,12 @@ def dump_ccip_offsets():
         else:
             print(f"  [{label:<18}] @ 0x{off:04X} = READ FAILED")
 
-    print_header("3. DIRECT CCIP IMPACT POINT SCAN (+ 0x1CBC / Region)")
+    print_header("3. DIRECT CCIP IMPACT POINT SCAN (+ 0x1CCC / Region)")
     
     print(f"{'Offset':>10} | {'X':>12} | {'Y':>12} | {'Z':>12} | Status / Reason")
     print("-" * 75)
 
-    offsets_to_scan = [0x10EC, 0x111C, 0x114C, 0x117C, 0x1C80, 0x1C8C, 0x1C90, 0x1C9C, 0x1CA0, 0x1CA8, 0x1CB0, 0x1CBC, 0x1CC0]
+    offsets_to_scan = [0x10EC, 0x111C, 0x114C, 0x117C, 0x1C80, 0x1C8C, 0x1C90, 0x1C9C, 0x1CA0, 0x1CA8, 0x1CB0, 0x1CBC, 0x1CC0, 0x1CCC]
     for off in offsets_to_scan:
         raw_vec = scanner.read_mem(weapon_ptr + off, 12)
         if not raw_vec or len(raw_vec) < 12:

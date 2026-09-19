@@ -34,6 +34,7 @@ except Exception:
 # 🎯 นำเข้าจากระบบ Core Engine ที่แยกออกมาใหม่
 from src.utils.scanner import *
 from src.utils.mul import *
+_is_valid_ptr = is_valid_ptr
 from src.utils.debug import *
 from src.utils.kalman import KinematicKalmanFilter
 from src.utils.ammo_family import resolve_ammo_family, classify_weapon_caliber
@@ -493,7 +494,7 @@ BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
 SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
-SHOW_BOT_UNITS = False               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
+SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
 LOCK_CAMERA_PARALLAX = True
 DYNAMIC_GEOMETRY_ENABLE = True
@@ -529,14 +530,14 @@ VERTICAL_BASELINE_LAST_MATCH = {
 DYNAMIC_PARALLAX_SCALE = 1
 DYNAMIC_WORLDSPACE_ENABLE = True
 
-BALLISTIC_STRUCT_BASE_OFF = 0x20f0
-BALLISTIC_SPEED_OFF = 0x20e8
-BALLISTIC_MASS_OFF = 0x20f4
-BALLISTIC_CALIBER_OFF = 0x20f8
-BALLISTIC_CX_OFF = 0x20fc
-BALLISTIC_MAX_DISTANCE_OFF = 0x2100
-BALLISTIC_VEL_RANGE_X_OFF = 0x2114
-BALLISTIC_VEL_RANGE_Y_OFF = 0x2118
+BALLISTIC_STRUCT_BASE_OFF = 0x2120
+BALLISTIC_SPEED_OFF = 0x2118
+BALLISTIC_MASS_OFF = 0x2124
+BALLISTIC_CALIBER_OFF = 0x2128
+BALLISTIC_CX_OFF = 0x212C
+BALLISTIC_MAX_DISTANCE_OFF = 0x2130
+BALLISTIC_VEL_RANGE_X_OFF = 0x2144
+BALLISTIC_VEL_RANGE_Y_OFF = 0x2148
 
 BALLISTIC_PERSISTENCE_PATH = os.path.join("config", "ballistic_layout_persistence.json")
 BBOX_PERSISTENCE_PATH = os.path.join("config", "unit_bbox_persistence.json")
@@ -2320,7 +2321,7 @@ def _plausible_ballistic_struct(scanner, base_addr, ref_cx=0.0):
 def _scan_ballistic_profile(scanner, weapon_ptr, fallback_cx=0.0):
     speed = 0.0
     best_speed_delta = None
-    for off in range(0x2030, 0x2071, 4):
+    for off in range(0x2030, 0x2180, 4):
         value = _read_f32_fast(scanner, weapon_ptr + off, 0.0)
         if not (50.0 <= value <= 3000.0):
             continue
@@ -2331,7 +2332,7 @@ def _scan_ballistic_profile(scanner, weapon_ptr, fallback_cx=0.0):
 
     best_score = -1
     best_candidate = None
-    for off in range(0x2040, 0x20A1, 4):
+    for off in range(0x2040, 0x2180, 4):
         score, candidate = _plausible_ballistic_struct(scanner, weapon_ptr + off, fallback_cx)
         if score > best_score:
             best_score = score
@@ -6998,7 +6999,7 @@ class ESPOverlay(QOpenGLWidget):
                                     dot = m.vel[0]*dx + m.vel[1]*dy + m.vel[2]*dz
                                     closing_speed = dot / cur_dist
 
-                            is_sam_name = ("sam" in m.name.lower()) if m.name else False
+                            is_sam_name = any(k in (m.name or "").lower() for k in ("sam", "mim146", "mim-146", "roland", "vt1", "vt-1", "pantsir", "9m311", "9m331", "tor", "strela", "tunguska", "adats"))
 
                             # 🎯 DIRECT TAGGED UNIT POINTER CHECK & RESOLUTION (m.owner & ~1 == unit_ptr)
                             # ใน Dagor Engine ฟิลด์ Owner ของขีปนาวุธคือ Unit Pointer ที่ถูก Tag บิต 0 (u_ptr | 1)
@@ -7037,17 +7038,17 @@ class ESPOverlay(QOpenGLWidget):
                                 is_friendly = False
                             elif is_new_track:
                                 # Fallback เมื่อไม่มี owner หรือ owner เป็น 0 (ใช้ launch_pos หรือระยะห่างจากลำตัวเครื่องบิน ณ ขณะยิง)
-                                # หมายเหตุ: ช่วง 0-0.5s แรกที่ขีปนาวุธแยกตัวจากรางยิง (Pylon) ใต้ปีก อาจมี closing_speed > 0 เล็กน้อย จึงไม่ตัดด้วย closing_speed
-                                if not (my_is_air and is_sam_name) and cur_dist < 40.0:
+                                # หมายเหตุ: หากพุ่งเข้าหาเรา (closing_speed > 10.0) ย่อมไม่ใช่จรวดของเราเด็ดขาด
+                                if not (my_is_air and is_sam_name) and cur_dist < 40.0 and closing_speed <= 10.0:
                                     lpos = getattr(m, 'launch_pos', (0.0, 0.0, 0.0))
                                     if lpos and lpos != (0.0, 0.0, 0.0) and my_pos:
                                         ldx = my_pos[0] - lpos[0]
                                         ldy = my_pos[1] - lpos[1]
                                         ldz = my_pos[2] - lpos[2]
                                         launch_dist = math.sqrt(ldx*ldx + ldy*ldy + ldz*ldz)
-                                        if launch_dist < 50.0:
+                                        if launch_dist < 30.0:
                                             is_my = True
-                                    else:
+                                    elif cur_dist < 20.0 and m.speed < 150.0:
                                         is_my = True
 
                             if m.ptr in self.missile_tracks and not is_new_track:
@@ -7179,8 +7180,9 @@ class ESPOverlay(QOpenGLWidget):
                             if MISSILE_ESP_ONLY_GUIDED:
                                 # ข้ามจรวด unguided ที่ไม่มีระบบนำวิถีเลย
                                 has_guid = bool(
-                                    (m.guidance_ptr and _is_valid_ptr(m.guidance_ptr)) or
-                                    m.is_tracking or m.is_locked or (m.target_id > 0)
+                                    (m.guidance_ptr and is_valid_ptr(m.guidance_ptr)) or
+                                    m.is_tracking or m.is_locked or (m.target_id > 0) or
+                                    is_sam_name
                                 )
                                 if not has_guid:
                                     continue
@@ -7227,17 +7229,38 @@ class ESPOverlay(QOpenGLWidget):
                                     continue
 
                             # ตรวจสอบสถานะ Guidance
-                            # 🎯 Alert ONLY when target_id is ME (100% Seeker Lock Match)
+                            # 1) Exact Seeker Lock on ME (100% Seeker Lock Match with Unit ID)
                             is_exact_locked_me = bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
-                            is_guided_to_me = is_exact_locked_me
 
-                            # ขีปนาวุธล็อกเครื่องอื่น: ต้องเป็น target_id ที่มีตัวตนจริง (> 0) และไม่ใช่ ID ของเรา
-                            is_guided_to_other = bool(m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked))
+                            # 2) ขีปนาวุธล็อกเครื่องอื่น: ต้องเป็น Target ID ของผู้เล่นอื่นที่มีตัวตนจริง (0 < id < 20000 และไม่ใช่ Sentinel 65280/0xFF00)
+                            has_real_other_target = bool(
+                                0 < m.target_id < 20000 and m.target_id != 65280 and
+                                my_unit_id > 0 and m.target_id != my_unit_id and
+                                (m.is_tracking or m.is_locked)
+                            )
+                            is_guided_to_other = has_real_other_target
+
+                            # 3) SAM / SACLOS / Laser Beam-Riding / Command Guidance (เช่น MIM-146 ADATS, Roland, VT-1, Pantsir, Tunguska, Tor)
+                            # ขีปนาวุธเหล่านี้ไม่มี Seeker Head ล็อก Unit ID แยกรายตัว (target_id มักเป็น 65280/0xFF00 หรือ 0)
+                            # หากมีระบบนำวิถี (locked=1, tracking=1 หรือ guidance_ptr หรือชื่อ SAM) + ไม่ได้ล็อกผู้เล่นอื่น + กำลังบินพุ่งตรงเข้าหาเครื่องเรา (is_heading_to_me)
+                            has_guidance = bool(
+                                (m.guidance_ptr and is_valid_ptr(m.guidance_ptr)) or
+                                m.is_tracking or m.is_locked or is_sam_name
+                            )
+                            is_sam_guided_me = bool(
+                                has_guidance and
+                                not is_guided_to_other and
+                                is_heading_to_me
+                            )
+
+                            is_guided_to_me = bool(is_exact_locked_me or is_sam_guided_me)
 
                             # 🎯 ประเมินว่าเป็นภัยคุกคามต่อตัวเราหรือไม่ (Alert Trigger):
-                            # แจ้งเตือนเฉพาะเมื่อ target_id ตรงกับ ID ของเราเท่านั้น (Target ID is ME)
                             threat_to_me = False
                             if is_exact_locked_me:
+                                threat_to_me = True
+                            elif is_sam_guided_me:
+                                # SAM / SACLOS / Beam-Rider พุ่งตรงเข้าหาเครื่องเรา
                                 threat_to_me = True
                             elif not MISSILE_ALERT_ONLY_GUIDED and is_heading_to_me:
                                 if not is_guided_to_other or dist <= AUTO_CM_STAGE1_MAX_RANGE or time_to_impact <= AUTO_CM_STAGE1_TIME_LEFT:
@@ -7319,12 +7342,13 @@ class ESPOverlay(QOpenGLWidget):
                             is_guided_me = False if (is_my or is_friendly) else (
                                 is_exact_locked_me or (m.ptr in incoming_guided_ptrs)
                             )
+                            has_real_other_tgt = bool(0 < m.target_id < 20000 and m.target_id != 65280)
                             is_guided_other = False if (is_my or is_friendly) else bool(
-                                m.target_id > 0 and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me and not is_incoming
+                                has_real_other_tgt and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me and not is_incoming
                             )
 
-                            # 🎯 TARGET TRACKING: ค้นหาชื่อยูนิตเป้าหมายจาก target_id (แคชในแทร็กเพื่อป้องกัน Lookup ซ้ำซ้อน)
-                            if m.target_id > 0:
+                            # 🎯 TARGET TRACKING: ค้นหาชื่อยูนิตเป้าหมายจาก target_id (เฉพาะ ID จริง ไม่รวม Sentinel 65280)
+                            if has_real_other_tgt:
                                 if 'tracked_tgt_name' not in tr or tr.get('last_tgt_id') != m.target_id:
                                     tgt_name, _ = self.resolve_unit_by_id(m.target_id)
                                     tr['tracked_tgt_name'] = tgt_name
@@ -7370,8 +7394,12 @@ class ESPOverlay(QOpenGLWidget):
                                 label = f"🚨 [100% LOCKED ON YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
                                 t_str = f"🚨 [100% LOCKED YOU] {dist_label}"
                             elif is_guided_me:
-                                label = f"⚠️ [LOCKED ON YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
-                                t_str = f"⚠️ [LOCKED YOU] {dist_label}"
+                                if m.target_id in (0, 65280) or is_sam_name or not has_real_other_tgt:
+                                    label = f"🚨 [SAM / BEAM-RIDER AT YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
+                                    t_str = f"🚨 [SAM AT YOU] {dist_label}"
+                                else:
+                                    label = f"⚠️ [LOCKED ON YOU!] {short_name}{by_str} ({dist_label} {speed_label})"
+                                    t_str = f"⚠️ [LOCKED YOU] {dist_label}"
                             elif is_guided_other:
                                 tgt_disp = tracked_tgt_name if tracked_tgt_name else f"#{m.target_id}"
                                 label = f"🟠 [TRACKING: {tgt_disp}] {short_name}{by_str} ({dist_label})"

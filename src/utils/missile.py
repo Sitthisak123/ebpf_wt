@@ -23,7 +23,7 @@ except Exception:
 # ====================================================================
 # Rocket Struct Offsets (confirmed 2026-09)
 # ====================================================================
-OFF_ECS_MANAGER    = getattr(mul, 'OFF_ECS_MANAGER', 0xb0e29b8)
+OFF_ECS_MANAGER    = getattr(mul, 'OFF_ECS_MANAGER', 0x8ccd918)
 OFF_ECS_NODE_TABLE = getattr(mul, 'OFF_ECS_NODE_TABLE', 0x178)
 OFF_ECS_CLASS_TABLE= getattr(mul, 'OFF_ECS_CLASS_TABLE', 0x5E8)
 OFF_PROJ_LIST      = getattr(mul, 'OFF_PROJ_LIST', 0xac02ab8)
@@ -34,10 +34,10 @@ OFF_RKT_STATE      = getattr(mul, 'OFF_RKT_STATE', 0x94)
 OFF_RKT_POS        = getattr(mul, 'OFF_RKT_POS', 0x23c)
 OFF_RKT_VEL        = getattr(mul, 'OFF_RKT_VEL', 0x258)
 OFF_RKT_DETONATED  = getattr(mul, 'OFF_RKT_DETONATED', 0x420)   # Detonation/impact effect flag
-OFF_RKT_PHASE      = getattr(mul, 'OFF_RKT_PHASE', 0x498)       # Projectile lifecycle phase
-OFF_RKT_GUIDANCE   = getattr(mul, 'OFF_RKT_GUIDANCE', 0x670)
-OFF_RKT_ALIVE      = getattr(mul, 'OFF_RKT_ALIVE', 0x6c0)       # Entity active/alive flag
-OFF_RKT_PROPS      = getattr(mul, 'OFF_RKT_PROPS', 0x700)
+OFF_RKT_PHASE      = getattr(mul, 'OFF_RKT_PHASE', 0x498)       # Projectile phase (3 = in-flight, 6 = terminated)
+OFF_RKT_GUIDANCE   = getattr(mul, 'OFF_RKT_GUIDANCE', 0x680)
+OFF_RKT_ALIVE      = getattr(mul, 'OFF_RKT_ALIVE', 0x6d0)       # Entity active/alive flag
+OFF_RKT_PROPS      = getattr(mul, 'OFF_RKT_PROPS', 0x710)
 
 # Guidance struct internals
 OFF_GUID_LOCKED    = getattr(mul, 'OFF_GUID_LOCKED', 0x4C)
@@ -180,10 +180,16 @@ class MissileScanner:
     
     def _init_ecs(self, scanner, base):
         """Initialize ECS manager pointers dynamically from mul.OFF_ECS_MANAGER"""
-        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0xb0e29b8)
+        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8ccd918)
         ecs_node_off = getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)
         
         mgr = _rp(scanner, base + ecs_mgr_off)
+        if not _is_valid_ptr(mgr):
+            for cand_off in (0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
+                test_m = _rp(scanner, base + cand_off)
+                if _is_valid_ptr(test_m) and _is_valid_ptr(_rp(scanner, test_m + ecs_node_off)):
+                    mgr = test_m
+                    break
         if not _is_valid_ptr(mgr):
             return False
         
@@ -234,54 +240,56 @@ class MissileScanner:
                                 found_missiles.append(m)
         
         # 2. Complement: ECS Node Table - covers network/enemy missiles that may not be in proj_list
-        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0xb0e29b8)
+        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8ccd918)
         ecs_node_off = getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)
         
         mgr = _rp(scanner, base + ecs_mgr_off)
-        if not _is_valid_ptr(mgr):
-            # Fallback search candidate offsets if shifted
-            for cand_off in (0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
+        node_t = _rp(scanner, mgr + ecs_node_off) if _is_valid_ptr(mgr) else 0
+        if not _is_valid_ptr(node_t):
+            # Fallback search candidate offsets if shifted or stale on rematch
+            for cand_off in (0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
                 test_m = _rp(scanner, base + cand_off)
-                if _is_valid_ptr(test_m) and _is_valid_ptr(_rp(scanner, test_m + ecs_node_off)):
-                    mgr = test_m
-                    break
+                if _is_valid_ptr(test_m):
+                    test_node = _rp(scanner, test_m + ecs_node_off)
+                    if _is_valid_ptr(test_node):
+                        mgr = test_m
+                        node_t = test_node
+                        mul.OFF_ECS_MANAGER = cand_off
+                        break
         
-        if _is_valid_ptr(mgr):
-            node_t = _rp(scanner, mgr + ecs_node_off)
-            if _is_valid_ptr(node_t):
-                table_bytes = scanner.read_mem(node_t, NODE_ENTRY_WINDOW * 0x20)
-                if table_bytes and len(table_bytes) >= 0x20:
-                    num_entries = len(table_bytes) // 0x20
-                    for entry_idx in range(num_entries):
-                        data = table_bytes[entry_idx * 0x20 : (entry_idx + 1) * 0x20]
-                        if all(b == 0 for b in data):
+        if _is_valid_ptr(mgr) and _is_valid_ptr(node_t):
+            table_bytes = scanner.read_mem(node_t, NODE_ENTRY_WINDOW * 0x20)
+            if table_bytes and len(table_bytes) >= 0x20:
+                num_entries = len(table_bytes) // 0x20
+                for entry_idx in range(num_entries):
+                    data = table_bytes[entry_idx * 0x20 : (entry_idx + 1) * 0x20]
+                    if all(b == 0 for b in data):
+                        continue
+                    
+                    storage = struct.unpack_from("<Q", data, 0)[0]
+                    if not _is_valid_ptr(storage) or (storage & 0x7 != 0):
+                        continue
+                    
+                    count = struct.unpack_from("<I", data, 8)[0]
+                    capacity = struct.unpack_from("<I", data, 0x14)[0]
+                    if count == 0 or capacity == 0 or count > capacity or capacity > 8192:
+                        continue
+                    
+                    read_bytes = min(max(capacity * 64, 2048), 65536)
+                    bulk = scanner.read_mem(storage, read_bytes)
+                    if not bulk or len(bulk) < 8:
+                        continue
+                    
+                    for idx in range(len(bulk) // 8):
+                        try:
+                            ptr = struct.unpack_from("<Q", bulk, idx * 8)[0]
+                            if _is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
+                                m = self._check_rocket(scanner, ptr, entry_idx)
+                                if m and m.name != "":
+                                    seen_ptrs.add(m.ptr)
+                                    found_missiles.append(m)
+                        except Exception:
                             continue
-                        
-                        storage = struct.unpack_from("<Q", data, 0)[0]
-                        if not _is_valid_ptr(storage) or (storage & 0x7 != 0):
-                            continue
-                        
-                        count = struct.unpack_from("<I", data, 8)[0]
-                        capacity = struct.unpack_from("<I", data, 0x14)[0]
-                        if count == 0 or capacity == 0 or count > capacity or capacity > 8192:
-                            continue
-                        
-                        read_bytes = min(max(capacity * 8, 128), 65536)
-                        bulk = scanner.read_mem(storage, read_bytes)
-                        if not bulk or len(bulk) < 8:
-                            continue
-                        
-                        num_ptrs = min(count, len(bulk) // 8) if count > 0 else (len(bulk) // 8)
-                        for idx in range(num_ptrs):
-                            try:
-                                ptr = struct.unpack_from("<Q", bulk, idx * 8)[0]
-                                if _is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
-                                    m = self._check_rocket(scanner, ptr, entry_idx)
-                                    if m and m.name != "":
-                                        seen_ptrs.add(m.ptr)
-                                        found_missiles.append(m)
-                            except Exception:
-                                continue
 
         return [m for m in found_missiles if m.name != ""]
     
@@ -315,9 +323,9 @@ class MissileScanner:
         eid = struct.unpack_from("<I", header, OFF_RKT_ENTITY_ID)[0] if len(header) >= OFF_RKT_ENTITY_ID + 4 else 0
         if not eid and len(header) >= 0x34:
             eid = struct.unpack_from("<I", header, 0x30)[0]
-        # Check guidance pointer candidates (0x670, 0x638, 0x648, 0x6C8, 0x698)
+        # Check guidance pointer candidates (0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698)
         guid = 0
-        for goff in (OFF_RKT_GUIDANCE, 0x638, 0x648, 0x6C8, 0x698):
+        for goff in (OFF_RKT_GUIDANCE, 0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698):
             if len(header) >= goff + 8:
                 g_cand = struct.unpack_from("<Q", header, goff)[0]
                 if _is_valid_ptr(g_cand) and (g_cand & 7 == 0):
@@ -352,7 +360,7 @@ class MissileScanner:
         # Caching by props (the static weapon definition pointer in Dagor Engine) guarantees that
         # when entity memory ptr is recycled for a newly dropped flare/chaff, it will NEVER inherit the old missile name!
         props = 0
-        for poff in (OFF_RKT_PROPS, 0x6c8, 0x690, 0x6a0, 0x620):
+        for poff in (OFF_RKT_PROPS, 0x710, 0x700, 0x6c8, 0x690, 0x6a0, 0x620):
             if len(header) >= poff + 8:
                 p_cand = struct.unpack_from("<Q", header, poff)[0]
                 if _is_valid_ptr(p_cand) and (p_cand & 7 == 0):
@@ -367,7 +375,7 @@ class MissileScanner:
             else:
                 found_cm = False
                 cand_name = ""
-                for poff in (0x28, 0x50, 0x58):
+                for poff in (0x28, 0x50, 0x58, 0x10):
                     n_ptr = _rp(scanner, props + poff)
                     if _is_valid_ptr(n_ptr):
                         s = _rstr(scanner, n_ptr)
@@ -459,11 +467,18 @@ class MissileScanner:
         if _is_valid_ptr(guid):
             m.is_locked = (_r8(scanner, guid + OFF_GUID_LOCKED) == 1) or (_r8(scanner, guid + 0x50) == 1)
             m.is_tracking = (_r8(scanner, guid + OFF_GUID_TRACKING) == 1) or (_r8(scanner, guid + 0x51) == 1)
-            tgt = _ri16(scanner, guid + OFF_GUID_TARGET_ID)
-            if tgt <= 0:
-                tgt_fallback = _ri16(scanner, guid + 0x8C)
-                if 0 < tgt_fallback < 20000:
-                    tgt = tgt_fallback
+            tgt_raw = scanner.read_mem(guid + OFF_GUID_TARGET_ID, 2)
+            tgt = struct.unpack("<H", tgt_raw)[0] if tgt_raw and len(tgt_raw) == 2 else 0
+            if tgt == 0xFFFF:
+                tgt = 0
+            elif tgt not in (65280,):
+                if tgt <= 0 or tgt >= 20000:
+                    fb_raw = scanner.read_mem(guid + 0x8C, 2)
+                    fb = struct.unpack("<H", fb_raw)[0] if fb_raw and len(fb_raw) == 2 else 0
+                    if 0 < fb < 20000 and fb != 65280:
+                        tgt = fb
+                    else:
+                        tgt = 0
             m.target_id = tgt
         
         return m

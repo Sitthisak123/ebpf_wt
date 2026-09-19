@@ -53,9 +53,9 @@ OFFSET_SETS = [
         getattr(mul, 'OFF_RKT_VEL', 0x258),
         getattr(mul, 'OFF_RKT_OWNER', 0x50),
         getattr(mul, 'OFF_RKT_STATE', 0x94),
-        getattr(mul, 'OFF_RKT_GUIDANCE', 0x670),
+        getattr(mul, 'OFF_RKT_GUIDANCE', 0x680),
         getattr(mul, 'OFF_RKT_ENTITY_ID', 0x40),
-        getattr(mul, 'OFF_RKT_PROPS', 0x700),
+        getattr(mul, 'OFF_RKT_PROPS', 0x710),
     ),
 ]
 
@@ -156,11 +156,11 @@ def check_ptr_is_rocket(sc, ptr):
 
         # 1. ค้นหาชื่อ Blk อาวุธ
         found_wep = ""
-        for off in [0x700, 0x6c8, 0x690, 0x6a0, 0x620]:
+        for off in [getattr(mul, 'OFF_RKT_PROPS', 0x710), 0x710, 0x700, 0x6c8, 0x690, 0x6a0, 0x620]:
             if len(header) >= off + 8:
                 prp = struct.unpack_from("<Q", header, off)[0]
                 if is_valid_ptr(prp):
-                    for poff in (0x28, 0x50, 0x58):
+                    for poff in (0x28, 0x10, 0x50, 0x58):
                         raw_np = sc.read_mem(prp + poff, 8)
                         if raw_np and len(raw_np) == 8:
                             np = struct.unpack("<Q", raw_np)[0]
@@ -220,8 +220,13 @@ def check_ptr_is_rocket(sc, ptr):
                 owner = struct.unpack_from("<Q", header, 0x40)[0]
             state = header[st_off] if len(header) > st_off else 0
             guid  = struct.unpack_from("<Q", header, guid_off)[0] if len(header) >= guid_off + 8 else 0
-            if not guid and len(header) >= 0x640:
-                guid = struct.unpack_from("<Q", header, 0x638)[0]
+            if not guid:
+                for goff in (0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698):
+                    if len(header) >= goff + 8:
+                        g_cand = struct.unpack_from("<Q", header, goff)[0]
+                        if is_valid_ptr(g_cand) and (g_cand & 7 == 0):
+                            guid = g_cand
+                            break
             eid   = struct.unpack_from("<I", header, eid_off)[0] if len(header) >= eid_off + 4 else 0
             if not eid and len(header) >= 0x34:
                 eid = struct.unpack_from("<I", header, 0x30)[0]
@@ -245,7 +250,7 @@ def check_ptr_is_rocket(sc, ptr):
                 else:
                     continue
 
-            alive = header[getattr(mul, 'OFF_RKT_ALIVE', 0x6c0)] if len(header) > 0x6c0 else 0
+            alive = header[getattr(mul, 'OFF_RKT_ALIVE', 0x6d0)] if len(header) > 0x6d0 else 0
 
             # Guidance internals
             g_locked = 0

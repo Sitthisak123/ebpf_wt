@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from datetime import datetime
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -84,12 +84,12 @@ def fmt_sci(value):
 def current_weapon_ptr(scanner, unit_ptr, cgame_ptr):
     weapon_ptr = 0
     source = "none"
-    if mul.is_valid_ptr(unit_ptr):
-        weapon_ptr = read_u64(scanner, unit_ptr + mul.OFF_WEAPON_PTR)
-        source = "unit+OFF_WEAPON_PTR"
-    if not mul.is_valid_ptr(weapon_ptr) and mul.is_valid_ptr(cgame_ptr):
+    if mul.is_valid_ptr(cgame_ptr):
         weapon_ptr = read_u64(scanner, cgame_ptr + mul.OFF_WEAPON_PTR)
         source = "cgame+OFF_WEAPON_PTR"
+    if not mul.is_valid_ptr(weapon_ptr) and mul.is_valid_ptr(unit_ptr):
+        weapon_ptr = read_u64(scanner, unit_ptr + mul.OFF_WEAPON_PTR)
+        source = "unit+OFF_WEAPON_PTR"
     return weapon_ptr, source
 
 
@@ -97,13 +97,17 @@ def read_live_profile(scanner, weapon_ptr):
     if not mul.is_valid_ptr(weapon_ptr):
         return {}
     model_enum = read_u32(scanner, weapon_ptr + MODEL_ENUM_OFF)
-    speed = read_f32(scanner, weapon_ptr + 0x2050)
-    mass = read_f32(scanner, weapon_ptr + 0x205C)
-    caliber = read_f32(scanner, weapon_ptr + 0x2060)
-    cx = read_f32(scanner, weapon_ptr + 0x2064)
-    max_distance = read_f32(scanner, weapon_ptr + 0x2068)
-    vel_lo = read_f32(scanner, weapon_ptr + 0x207C)
-    vel_hi = read_f32(scanner, weapon_ptr + 0x2080)
+    speed_off = getattr(mul, "OFF_BULLET_SPEED", 0x2118)
+    mass_off = getattr(mul, "OFF_BULLET_MASS", 0x2124)
+    caliber_off = getattr(mul, "OFF_BULLET_CALIBER", 0x2128)
+    cx_off = getattr(mul, "OFF_BULLET_CD", 0x212C)
+    speed = read_f32(scanner, weapon_ptr + speed_off)
+    mass = read_f32(scanner, weapon_ptr + mass_off)
+    caliber = read_f32(scanner, weapon_ptr + caliber_off)
+    cx = read_f32(scanner, weapon_ptr + cx_off)
+    max_distance = read_f32(scanner, weapon_ptr + 0x2130)
+    vel_lo = read_f32(scanner, weapon_ptr + 0x2144)
+    vel_hi = read_f32(scanner, weapon_ptr + 0x2148)
     return {
         "model_enum": model_enum,
         "model_label": MODEL_ENUM_LABELS.get(model_enum, f"model_{model_enum}_unknown"),

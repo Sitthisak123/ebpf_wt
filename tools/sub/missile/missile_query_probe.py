@@ -79,7 +79,7 @@ ROCKET_POS_CANDIDATES   = [getattr(mul, 'OFF_RKT_POS', 0x23c), 0x298, 0x2C8, 0x1
 ROCKET_VEL_CANDIDATES   = [getattr(mul, 'OFF_RKT_VEL', 0x258), 0x2B4, 0x2E4, 0x1AC, 0x1EC]
 ROCKET_OWNER_CANDIDATES = [getattr(mul, 'OFF_RKT_OWNER', 0x50), 0x40, 0x48, 0x480]
 ROCKET_STATE_CANDIDATES = [getattr(mul, 'OFF_RKT_STATE', 0x94)]
-ROCKET_GUID_CANDIDATES  = [getattr(mul, 'OFF_RKT_GUIDANCE', 0x670), 0x638, 0x648, 0x6C8, 0x698]
+ROCKET_GUID_CANDIDATES  = [getattr(mul, 'OFF_RKT_GUIDANCE', 0x680), 0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698]
 
 
 def dump_ecs_query(scanner, class_table, node_table, selector, verbose=True):
@@ -289,7 +289,7 @@ def probe_rocket_offsets(scanner, entities):
     
     # Brute-force scan for entity name (string pointer)
     print("\n  🔍 Scanning for name pointers...")
-    props_candidates = [getattr(mul, 'OFF_RKT_PROPS', 0x700), 0x6c8] + list(range(0x600, 0x750, 8))
+    props_candidates = [getattr(mul, 'OFF_RKT_PROPS', 0x710), 0x710, 0x700, 0x6c8] + list(range(0x600, 0x750, 8))
     for e in alive_entities[:3]:
         for off in props_candidates:
             name_cont = read_ptr(scanner, e["ptr"] + off)
