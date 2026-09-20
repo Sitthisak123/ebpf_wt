@@ -1189,8 +1189,7 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                         r3 = struct.unpack_from("<ffff", m_data, 0x30)
                         bx, by, bz = r3[0], r3[1], r3[2]
                         d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
-                        d_up  = r1[0]**2 + (r1[1]-1.0)**2 + r1[2]**2
-                        if d_fwd < 0.04 and d_up < 0.04 and y_min <= by <= y_max and abs(bz) < 0.8 and bx > -0.6:
+                        if d_fwd < 0.04 and y_min <= by <= y_max and abs(bz) < 0.6 and bx > -0.6:
                             candidates.append((bx, by, bz, b))
 
                     if candidates:
