@@ -77,64 +77,122 @@ def dump_barrel_offset(write_persistence=True):
     best_score = -1
     best_info = None
 
-    # สแกนหา AnimChar / Bone Tree Offset จาก My Unit
-    for off in [0x238, 0x1F0, 0x1FD8, 0x2E20, 0x2F38, 0x1E8, 0x1E0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8, 0x3E8, 0x400, 0x13B0]:
-        raw_ptr = scanner.read_mem(my_unit + off, 8)
-        if not raw_ptr: continue
-        tree_ptr = struct.unpack("<Q", raw_ptr)[0]
-        if not mul.is_valid_ptr(tree_ptr): continue
-
-        for sub_off in [0x40, 0x20, 0xB0]:
-            raw_name = scanner.read_mem(tree_ptr + sub_off, 8)
-            if not raw_name: continue
-            name_ptr = struct.unpack("<Q", raw_name)[0]
-            if not mul.is_valid_ptr(name_ptr): continue
-            names_block = scanner.read_mem(name_ptr, 0x4000)
-            if not names_block: continue
-
-            for i in range(400):
+    # 1. ตรวจสอบ Dagor GeomNodeTree แบบ Inline Matrix (War Thunder 2.59+)
+    for cand_off in [0x250, 0x208]:
+        raw_cand = scanner.read_mem(my_unit + cand_off, 8)
+        if not raw_cand: continue
+        tree_cand = struct.unpack("<Q", raw_cand)[0]
+        if not mul.is_valid_ptr(tree_cand): continue
+        cnt_raw = scanner.read_mem(tree_cand + 0x10, 2)
+        cnt = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
+        if not (0 < cnt < 1000): continue
+        w_ptr_cand = tree_cand + 0x30
+        min_off = 0x30 + cnt * 64
+        block_size = min(0x18000, min_off + 0x8000)
+        raw_tree = scanner.read_mem(tree_cand, block_size)
+        if not raw_tree: continue
+        s_idx_found = raw_tree.find(b"root\x00")
+        if s_idx_found == -1:
+            s_idx_found = raw_tree.find(b"\x00root\x00")
+            if s_idx_found != -1:
+                s_idx_found += 1
+        if s_idx_found != -1:
+            strings = raw_tree[s_idx_found:].split(b"\x00")
+            for s_idx in range(min(cnt, len(strings))):
                 try:
-                    str_offset = struct.unpack_from("<H", names_block, i * 2)[0]
-                    if str_offset == 0 or str_offset >= len(names_block): continue
-                    end_idx = names_block.find(b'\x00', str_offset)
-                    if end_idx == -1: continue
-                    bone_name = names_block[str_offset:end_idx].decode('utf-8', errors='ignore').lower().strip()
-                    
+                    s_str = strings[s_idx].decode("utf-8", errors="ignore").lower().strip()
+                    if not s_str: continue
                     score = -1
-                    if "bone_gun_barrel" in bone_name: score = 100
-                    elif "gun_barrel" in bone_name: score = 80
-                    elif "bone_gun" in bone_name and bone_name == "bone_gun": score = 70
-                    elif "bone_gun" in bone_name: score = 60
-                    elif "barrel" in bone_name: score = 40
-                    if any(b in bone_name for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root"]):
+                    if "bone_gun_barrel" in s_str: score = 100
+                    elif "gun_barrel" in s_str and not s_str.endswith("_dm"): score = 80
+                    elif s_str == "bone_gun": score = 70
+                    elif "bone_gun" in s_str: score = 60
+                    elif "barrel" in s_str and not s_str.endswith("_dm"): score = 40
+                    elif any(k in s_str for k in ["rocket_launcher", "launcher_dm", "missile_rail"]): score = 35
+                    if any(b in s_str for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root", "roller", "drive", "ammo", "cls_"]):
                         score = -100
-
                     if score > best_score:
-                        for wtm_off in [0x00]:
-                            wtm_base_raw = scanner.read_mem(tree_ptr + wtm_off, 8)
-                            if not wtm_base_raw: continue
-                            w_ptr = struct.unpack("<Q", wtm_base_raw)[0]
-                            if not mul.is_valid_ptr(w_ptr): continue
-                            
-                            matrix_data = scanner.read_mem(w_ptr + (i * 64), 64)
-                            if matrix_data and len(matrix_data) == 64:
-                                fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00)
-                                bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
-                                f_len = (fx*fx + fy*fy + fz*fz) ** 0.5
-                                if math.isfinite(bx) and math.isfinite(fx) and (0.5 < f_len < 2.0):
-                                    best_score = score
-                                    best_info = {
-                                        "animchar_off": off,
-                                        "bone_tree_off": off,
-                                        "sub_off": sub_off,
-                                        "wtm_off": wtm_off,
-                                        "bone_idx": i,
-                                        "bone_name": bone_name,
-                                        "pos": (bx, by, bz),
-                                        "forward": (fx, fy, fz),
-                                    }
-                except:
+                        m_bytes = scanner.read_mem(w_ptr_cand + s_idx * 64, 64)
+                        if m_bytes and len(m_bytes) == 64:
+                            fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                            bx, by, bz = struct.unpack_from("<fff", m_bytes, 0x30)
+                            fl = (fx*fx + fy*fy + fz*fz) ** 0.5
+                            if 0.5 < fl < 2.0 and (abs(bx) > 0.05 or abs(by) > 0.05 or abs(bz) > 0.05):
+                                best_score = score
+                                best_info = {
+                                    "animchar_off": cand_off,
+                                    "bone_tree_off": cand_off,
+                                    "sub_off": s_idx_found,
+                                    "wtm_off": 0x30,
+                                    "bone_idx": s_idx,
+                                    "bone_name": s_str,
+                                    "pos": (bx, by, bz),
+                                    "forward": (fx, fy, fz),
+                                }
+                except Exception:
                     pass
+            if best_info and cand_off == 0x250 and best_score >= 100:
+                break
+
+    # 2. Fallback สแกนหา AnimChar / Bone Tree Offset แบบเดิม
+    if not best_info:
+        for off in [0x238, 0x1F0, 0x1FD8, 0x2E20, 0x2F38, 0x1E8, 0x1E0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8, 0x3E8, 0x400, 0x13B0]:
+            raw_ptr = scanner.read_mem(my_unit + off, 8)
+            if not raw_ptr: continue
+            tree_ptr = struct.unpack("<Q", raw_ptr)[0]
+            if not mul.is_valid_ptr(tree_ptr): continue
+
+            for sub_off in [0x40, 0x20, 0xB0]:
+                raw_name = scanner.read_mem(tree_ptr + sub_off, 8)
+                if not raw_name: continue
+                name_ptr = struct.unpack("<Q", raw_name)[0]
+                if not mul.is_valid_ptr(name_ptr): continue
+                names_block = scanner.read_mem(name_ptr, 0x4000)
+                if not names_block: continue
+
+                for i in range(400):
+                    try:
+                        str_offset = struct.unpack_from("<H", names_block, i * 2)[0]
+                        if str_offset == 0 or str_offset >= len(names_block): continue
+                        end_idx = names_block.find(b'\x00', str_offset)
+                        if end_idx == -1: continue
+                        bone_name = names_block[str_offset:end_idx].decode('utf-8', errors='ignore').lower().strip()
+                        
+                        score = -1
+                        if "bone_gun_barrel" in bone_name: score = 100
+                        elif "gun_barrel" in bone_name: score = 80
+                        elif "bone_gun" in bone_name and bone_name == "bone_gun": score = 70
+                        elif "bone_gun" in bone_name: score = 60
+                        elif "barrel" in bone_name: score = 40
+                        if any(b in bone_name for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root"]):
+                            score = -100
+
+                        if score > best_score:
+                            for wtm_off in [0x00]:
+                                wtm_base_raw = scanner.read_mem(tree_ptr + wtm_off, 8)
+                                if not wtm_base_raw: continue
+                                w_ptr = struct.unpack("<Q", wtm_base_raw)[0]
+                                if not mul.is_valid_ptr(w_ptr): continue
+                                
+                                matrix_data = scanner.read_mem(w_ptr + (i * 64), 64)
+                                if matrix_data and len(matrix_data) == 64:
+                                    fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00)
+                                    bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
+                                    f_len = (fx*fx + fy*fy + fz*fz) ** 0.5
+                                    if math.isfinite(bx) and math.isfinite(fx) and (0.5 < f_len < 2.0):
+                                        best_score = score
+                                        best_info = {
+                                            "animchar_off": off,
+                                            "bone_tree_off": off,
+                                            "sub_off": sub_off,
+                                            "wtm_off": wtm_off,
+                                            "bone_idx": i,
+                                            "bone_name": bone_name,
+                                            "pos": (bx, by, bz),
+                                            "forward": (fx, fy, fz),
+                                        }
+                    except:
+                        pass
 
     if best_info:
         print("\n==================================================")
