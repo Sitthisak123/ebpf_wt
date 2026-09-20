@@ -1,0 +1,404 @@
+//dump from WT/OPS a.k.a. monkrel.cc
+{
+  "game": "warthunder",
+  "channel": "live",
+  "version": "2.59.0.7",
+  "count": 66,
+  "offsets": 
+    {
+      "group": "Ballistics",
+      "name": "m_BombPredPos",
+      "value": "0x1CBC",
+      "type": "Vector3"
+    },
+    {
+      "group": "Camera",
+      "name": "m_CameraPos",
+      "value": "0x60",
+      "type": "Vector3"
+    },
+    {
+      "group": "Camera",
+      "name": "m_ViewMatrix",
+      "value": "0x1D8",
+      "type": "Matrix4x4"
+    },
+    {
+      "group": "Game",
+      "name": "m_BallisticsCont",
+      "value": "0x3F0",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Game",
+      "name": "m_CameraCont",
+      "value": "0x660",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Game",
+      "name": "m_CurrentMap",
+      "value": "0x1F0",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Game",
+      "name": "m_UnitCount1",
+      "value": "0x320",
+      "type": "uint16_t"
+    },
+    {
+      "group": "Game",
+      "name": "m_UnitCount2",
+      "value": "0x338",
+      "type": "uint16_t"
+    },
+    {
+      "group": "Game",
+      "name": "m_UnitCount3",
+      "value": "0x350",
+      "type": "uint16_t"
+    },
+    {
+      "group": "Game",
+      "name": "m_UnitList1",
+      "value": "0x310",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Game",
+      "name": "m_UnitList2",
+      "value": "0x328",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Game",
+      "name": "m_UnitList3",
+      "value": "0x340",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_AirPredictionBool",
+      "value": "0x7E7DE20",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_BombListIndexPtr",
+      "value": "0x79EFF10",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_GameContext",
+      "value": "0x7A15218",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_GameOptics",
+      "value": "0x7A17090",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_HudInfo",
+      "value": "0x7A14840",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_IsScoping",
+      "value": "0x7A5E42C",
+      "type": "bool"
+    },
+    {
+      "group": "Global",
+      "name": "g_LocalPlayer",
+      "value": "0x79EC8A0",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_MyUnit",
+      "value": "0x7A171C0",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_RocketListIndexPtr",
+      "value": "0x79F1450",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_ScreenWidth",
+      "value": "0x7E5B650",
+      "type": "Vector2"
+    },
+    {
+      "group": "Global",
+      "name": "g_UIPosArr",
+      "value": "0x7A61628",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Global",
+      "name": "g_ViewAngles",
+      "value": "0x7A19D28",
+      "type": "Vector2"
+    },
+    {
+      "group": "Global",
+      "name": "g_ViewMatrix",
+      "value": "0x7A6F278",
+      "type": "Matrix4x4"
+    },
+    {
+      "group": "GroundMovement",
+      "name": "m_Velocity",
+      "value": "0x5C",
+      "type": "Vector3"
+    },
+    {
+      "group": "MissileNameCont",
+      "name": "m_Type",
+      "value": "0x870",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Player",
+      "name": "m_ControlledUnit",
+      "value": "0x878",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Player",
+      "name": "m_GuiState",
+      "value": "0x640",
+      "type": "uint8_t"
+    },
+    {
+      "group": "Player",
+      "name": "m_Name",
+      "value": "0x60",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Player",
+      "name": "m_OwnedUnit",
+      "value": "0x848",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Player",
+      "name": "m_SpectatedModelIndex",
+      "value": "0x670",
+      "type": "uint8_t"
+    },
+    {
+      "group": "Projectile",
+      "name": "m_BombNameCont",
+      "value": "0x708",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Projectile",
+      "name": "m_MissileNameCont",
+      "value": "0x710",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Projectile",
+      "name": "m_OwnerUnit",
+      "value": "0x58",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Projectile",
+      "name": "m_Position",
+      "value": "0x2C0",
+      "type": "Vector3"
+    },
+    {
+      "group": "Projectile",
+      "name": "m_Velocity",
+      "value": "0x2DC",
+      "type": "Vector3"
+    },
+    {
+      "group": "UI",
+      "name": "m_CursorPos",
+      "value": "0xD5C",
+      "type": "Vector2"
+    },
+    {
+      "group": "Unit",
+      "name": "m_AirContainer",
+      "value": "0xD50",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_Armory",
+      "value": "0x10D0",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_BBMax",
+      "value": "0x274",
+      "type": "Vector3"
+    },
+    {
+      "group": "Unit",
+      "name": "m_BBMin",
+      "value": "0x268",
+      "type": "Vector3"
+    },
+    {
+      "group": "Unit",
+      "name": "m_BodyBBMax",
+      "value": "0x218C",
+      "type": "Vector3"
+    },
+    {
+      "group": "Unit",
+      "name": "m_BodyBBMin",
+      "value": "0x2180",
+      "type": "Vector3"
+    },
+    {
+      "group": "Unit",
+      "name": "m_DamageModelCont",
+      "value": "0x10A8",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_InvulTimer",
+      "value": "0xE74",
+      "type": "float"
+    },
+    {
+      "group": "Unit",
+      "name": "m_Invulnerable",
+      "value": "0xE98",
+      "type": "bool"
+    },
+    {
+      "group": "Unit",
+      "name": "m_PlayerInfo",
+      "value": "0xFA0",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_Position",
+      "value": "0xD40",
+      "type": "Vector3"
+    },
+    {
+      "group": "Unit",
+      "name": "m_RotationMatrix",
+      "value": "0xD1C",
+      "type": "Matrix3x3"
+    },
+    {
+      "group": "Unit",
+      "name": "m_TeamNum",
+      "value": "0x1018",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_UnitFlags1",
+      "value": "0x90",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_UnitFlags2",
+      "value": "0x91",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_UnitFlags3",
+      "value": "0x92",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_UnitFlags4",
+      "value": "0x93",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_UnitIndex",
+      "value": "0x8",
+      "type": "int16_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_UnitInfo",
+      "value": "0x1028",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_UnitState",
+      "value": "0xF98",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_UnitType",
+      "value": "0x8C",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_Velocity",
+      "value": "0x2100",
+      "type": "uintptr_t"
+    },
+    {
+      "group": "Unit",
+      "name": "m_VisualReload",
+      "value": "0xAF0",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit::Info",
+      "name": "m_BomberView",
+      "value": "0x454",
+      "type": "bool"
+    },
+    {
+      "group": "Unit::Info",
+      "name": "m_HaveCCIPForBombs",
+      "value": "0x459",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit::Info",
+      "name": "m_HaveCCIPForGun",
+      "value": "0x457",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit::Info",
+      "name": "m_HaveCCIPForRocket",
+      "value": "0x456",
+      "type": "int8_t"
+    },
+    {
+      "group": "Unit::Info",
+      "name": "m_HaveCCIPForTurret",
+      "value": "0x458",
+      "type": "bool"
+    }
+}
