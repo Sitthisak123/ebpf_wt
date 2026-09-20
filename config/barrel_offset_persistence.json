@@ -1,11 +1,11 @@
 {
-  "updated_at": "2026-09-20T17:16:21.306954",
+  "updated_at": "2026-09-20T17:41:19.890060",
   "animchar_off": 592,
   "bone_tree_off": 520,
   "sub_off": 48,
   "wtm_off": 48,
   "bone_idx": 189,
-  "breech_idx": 118,
+  "breech_idx": 190,
   "muzzle_idx": 189,
   "bone_name": "geometric_gun_barrel",
   "row0_forward_offset": 0,

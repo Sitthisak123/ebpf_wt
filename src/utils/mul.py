@@ -1128,8 +1128,9 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                             fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
                             if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
                                 cache['fail_count'] = 0
-                                if breech_idx == muzzle_idx or (abs(mx - bx) < 0.05 and abs(my - by) < 0.05):
-                                    mx, my, mz = bx + fx * 4.0, by + fy * 4.0, bz + fz * 4.0
+                                barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                                if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                    bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
                                 return to_world(bx, by, bz), to_world(mx, my, mz)
                         cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
                         if cache['fail_count'] >= 10:
@@ -1156,8 +1157,9 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                             "info_ptr": current_info_ptr,
                             "fail_count": 0,
                         }
-                        if breech_idx == muzzle_idx or (abs(mx - bx) < 0.05 and abs(my - by) < 0.05):
-                            mx, my, mz = bx + fx * 4.0, by + fy * 4.0, bz + fz * 4.0
+                        barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                        if breech_idx == muzzle_idx or barrel_len < 0.5:
+                            bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
                         return to_world(bx, by, bz), to_world(mx, my, mz)
 
         # 3. Geometric Scan บน Dagor GeomNodeTree (Bind Pose 0x208 vs Animated Pose 0x250)
@@ -1189,12 +1191,21 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                         d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
                         d_up  = r1[0]**2 + (r1[1]-1.0)**2 + r1[2]**2
                         if d_fwd < 0.04 and d_up < 0.04 and y_min <= by <= y_max and abs(bz) < 0.8 and bx > -0.6:
-                            candidates.append((bx, b))
+                            candidates.append((bx, by, bz, b))
 
                     if candidates:
                         candidates.sort(key=lambda x: x[0])
-                        breech_idx = candidates[0][1]
-                        muzzle_idx = candidates[-1][1]
+                        muzzle = candidates[-1]
+                        mx_bind, my_bind, mz_bind, m_idx = muzzle
+
+                        # กรองเฉพาะโหนดที่อยู่บนแกนกระบอกปืนเดียวกับ Muzzle (Collinear along Gun Bore)
+                        barrel_nodes = [c for c in candidates if abs(c[1] - my_bind) < 0.20 and abs(c[2] - mz_bind) < 0.20]
+                        barrel_nodes.sort(key=lambda x: x[0])
+                        breech = barrel_nodes[0]
+                        bx_bind, by_bind, bz_bind, b_idx = breech
+
+                        breech_idx = b_idx
+                        muzzle_idx = m_idx
                         anim_wtm = t250 + 0x30
 
                         if current_info_ptr:
@@ -1214,8 +1225,9 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                             mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
                             fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
                             if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
-                                if breech_idx == muzzle_idx or (abs(mx - bx) < 0.05 and abs(my - by) < 0.05):
-                                    mx, my, mz = bx + fx * 4.0, by + fy * 4.0, bz + fz * 4.0
+                                barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                                if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                    bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
                                 return to_world(bx, by, bz), to_world(mx, my, mz)
 
         # 4. Fallback (Legacy Scan สำหรับโมเดลรุ่นเก่า)

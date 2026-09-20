@@ -110,12 +110,21 @@ def dump_barrel_offset(write_persistence=True):
                     d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
                     d_up  = r1[0]**2 + (r1[1]-1.0)**2 + r1[2]**2
                     if d_fwd < 0.04 and d_up < 0.04 and y_min <= by <= y_max and abs(bz) < 0.8 and bx > -0.6:
-                        candidates.append((bx, b))
+                        candidates.append((bx, by, bz, b))
 
                 if candidates:
                     candidates.sort(key=lambda x: x[0])
-                    breech_idx = candidates[0][1]
-                    muzzle_idx = candidates[-1][1]
+                    muzzle = candidates[-1]
+                    mx_bind, my_bind, mz_bind, m_idx = muzzle
+
+                    # กรองเฉพาะโหนดที่อยู่บนแกนกระบอกปืนเดียวกับ Muzzle (Collinear along Gun Bore)
+                    barrel_nodes = [c for c in candidates if abs(c[1] - my_bind) < 0.20 and abs(c[2] - mz_bind) < 0.20]
+                    barrel_nodes.sort(key=lambda x: x[0])
+                    breech = barrel_nodes[0]
+                    bx_bind, by_bind, bz_bind, b_idx = breech
+
+                    breech_idx = b_idx
+                    muzzle_idx = m_idx
                     anim_wtm = t250 + 0x30
                     b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
                     m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
@@ -124,6 +133,9 @@ def dump_barrel_offset(write_persistence=True):
                         mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
                         fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
                         barrel_len = math.sqrt((mx-bx)**2 + (my-by)**2 + (mz-bz)**2)
+                        if breech_idx == muzzle_idx or barrel_len < 0.5:
+                            bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
+                            barrel_len = 2.5
                         best_info = {
                             "animchar_off": 0x250,
                             "bone_tree_off": 0x208,
