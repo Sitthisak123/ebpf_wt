@@ -1,5 +1,7 @@
 import sys, os, struct, math
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 from src.utils.scanner import MemoryScanner, get_game_pid, get_game_base_address, init_dynamic_offsets
 from src.utils.mul import get_weapon_barrel, is_valid_ptr
 from src.utils import mul

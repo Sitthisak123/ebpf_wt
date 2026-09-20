@@ -21,7 +21,7 @@ from src.utils.scanner import (
 )
 import src.utils.mul as mul
 
-def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bone_idx, bone_name, confidence=0.95):
+def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bone_idx, bone_name, breech_idx=-1, muzzle_idx=-1, confidence=0.99):
     """บันทึกค่า Barrel Offset ลง persistence พร้อม build fingerprint และนโยบาย Rate Overwrite ตาม Confidence"""
     if not _can_overwrite_persistence(BARREL_PERSISTENCE_PATH, confidence):
         print(f"  [*] ข้ามการบันทึก Barrel Persistence: ไฟล์เดิมมีค่า confidence สูงกว่า {confidence:.2f}")
@@ -34,6 +34,8 @@ def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bon
         "sub_off": int(sub_off),
         "wtm_off": int(wtm_off),
         "bone_idx": int(bone_idx),
+        "breech_idx": int(breech_idx if breech_idx != -1 else bone_idx),
+        "muzzle_idx": int(muzzle_idx if muzzle_idx != -1 else bone_idx),
         "bone_name": str(bone_name),
         "row0_forward_offset": 0x00,
         "row3_position_offset": 0x30,
@@ -46,7 +48,7 @@ def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bon
     with open(BARREL_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
     print(f"\n[+] บันทึก Barrel Persistence สำเร็จ: {BARREL_PERSISTENCE_PATH}")
-    print(f"    animchar_off={hex(animchar_off)} sub_off={hex(sub_off)} wtm_off={hex(wtm_off)} idx={bone_idx} name='{bone_name}' (conf: {confidence:.2f})")
+    print(f"    animchar_off={hex(animchar_off)} wtm_off={hex(wtm_off)} breech={breech_idx} muzzle={muzzle_idx} (conf: {confidence:.2f})")
     return BARREL_PERSISTENCE_PATH
 
 
@@ -77,62 +79,129 @@ def dump_barrel_offset(write_persistence=True):
     best_score = -1
     best_info = None
 
-    # 1. ตรวจสอบ Dagor GeomNodeTree แบบ Inline Matrix (War Thunder 2.59+)
-    for cand_off in [0x250, 0x208]:
-        raw_cand = scanner.read_mem(my_unit + cand_off, 8)
-        if not raw_cand: continue
-        tree_cand = struct.unpack("<Q", raw_cand)[0]
-        if not mul.is_valid_ptr(tree_cand): continue
-        cnt_raw = scanner.read_mem(tree_cand + 0x10, 2)
-        cnt = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
-        if not (0 < cnt < 1000): continue
-        w_ptr_cand = tree_cand + 0x30
-        min_off = 0x30 + cnt * 64
-        block_size = min(0x18000, min_off + 0x8000)
-        raw_tree = scanner.read_mem(tree_cand, block_size)
-        if not raw_tree: continue
-        s_idx_found = raw_tree.find(b"root\x00")
-        if s_idx_found == -1:
-            s_idx_found = raw_tree.find(b"\x00root\x00")
+    # 1. 🎯 แม่นยำสูงสุด: Geometric Bind Pose (0x208) vs Animated Pose (0x250)
+    raw_t208 = scanner.read_mem(my_unit + 0x208, 8)
+    raw_t250 = scanner.read_mem(my_unit + 0x250, 8)
+    t208 = struct.unpack("<Q", raw_t208)[0] if raw_t208 else 0
+    t250 = struct.unpack("<Q", raw_t250)[0] if raw_t250 else 0
+    if mul.is_valid_ptr(t208) and mul.is_valid_ptr(t250):
+        cnt_raw = scanner.read_mem(t208 + 0x10, 2)
+        cnt208 = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
+        if 0 < cnt208 < 1000:
+            raw_mats = scanner.read_mem(t208 + 0x30, cnt208 * 64)
+            if raw_mats and len(raw_mats) == cnt208 * 64:
+                bmin_data = scanner.read_mem(my_unit + mul.OFF_UNIT_BBMIN, 12) if mul.OFF_UNIT_BBMIN else None
+                bmax_data = scanner.read_mem(my_unit + mul.OFF_UNIT_BBMAX, 12) if mul.OFF_UNIT_BBMAX else None
+                if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
+                    bmin = struct.unpack("<fff", bmin_data)
+                    bmax = struct.unpack("<fff", bmax_data)
+                    y_min = bmin[1] + (bmax[1] - bmin[1]) * 0.35
+                    y_max = bmax[1] + 0.6
+                else:
+                    y_min, y_max = 0.5, 4.0
+
+                candidates = []
+                for b in range(cnt208):
+                    m_data = raw_mats[b*64:(b+1)*64]
+                    r0 = struct.unpack_from("<ffff", m_data, 0x00)
+                    r1 = struct.unpack_from("<ffff", m_data, 0x10)
+                    r3 = struct.unpack_from("<ffff", m_data, 0x30)
+                    bx, by, bz = r3[0], r3[1], r3[2]
+                    d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
+                    d_up  = r1[0]**2 + (r1[1]-1.0)**2 + r1[2]**2
+                    if d_fwd < 0.04 and d_up < 0.04 and y_min <= by <= y_max and abs(bz) < 0.8 and bx > -0.6:
+                        candidates.append((bx, b))
+
+                if candidates:
+                    candidates.sort(key=lambda x: x[0])
+                    breech_idx = candidates[0][1]
+                    muzzle_idx = candidates[-1][1]
+                    anim_wtm = t250 + 0x30
+                    b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
+                    m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
+                    if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
+                        bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
+                        mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
+                        fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                        barrel_len = math.sqrt((mx-bx)**2 + (my-by)**2 + (mz-bz)**2)
+                        best_info = {
+                            "animchar_off": 0x250,
+                            "bone_tree_off": 0x208,
+                            "sub_off": 0x30,
+                            "wtm_off": 0x30,
+                            "bone_idx": muzzle_idx,
+                            "breech_idx": breech_idx,
+                            "muzzle_idx": muzzle_idx,
+                            "bone_name": "geometric_gun_barrel",
+                            "pos": (mx, my, mz),
+                            "breech_pos": (bx, by, bz),
+                            "forward": (fx, fy, fz),
+                            "length": barrel_len,
+                            "confidence": 0.99,
+                        }
+
+    # 2. ตรวจสอบ Fallback Dagor GeomNodeTree แบบ String Search
+    if not best_info:
+        for cand_off in [0x250, 0x208]:
+            raw_cand = scanner.read_mem(my_unit + cand_off, 8)
+            if not raw_cand: continue
+            tree_cand = struct.unpack("<Q", raw_cand)[0]
+            if not mul.is_valid_ptr(tree_cand): continue
+            cnt_raw = scanner.read_mem(tree_cand + 0x10, 2)
+            cnt = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
+            if not (0 < cnt < 1000): continue
+            w_ptr_cand = tree_cand + 0x30
+            min_off = 0x30 + cnt * 64
+            block_size = min(0x18000, min_off + 0x8000)
+            raw_tree = scanner.read_mem(tree_cand, block_size)
+            if not raw_tree: continue
+            s_idx_found = raw_tree.find(b"root\x00")
+            if s_idx_found == -1:
+                s_idx_found = raw_tree.find(b"\x00root\x00")
+                if s_idx_found != -1:
+                    s_idx_found += 1
             if s_idx_found != -1:
-                s_idx_found += 1
-        if s_idx_found != -1:
-            strings = raw_tree[s_idx_found:].split(b"\x00")
-            for s_idx in range(min(cnt, len(strings))):
-                try:
-                    s_str = strings[s_idx].decode("utf-8", errors="ignore").lower().strip()
-                    if not s_str: continue
-                    score = -1
-                    if "bone_gun_barrel" in s_str: score = 100
-                    elif "gun_barrel" in s_str and not s_str.endswith("_dm"): score = 80
-                    elif s_str == "bone_gun": score = 70
-                    elif "bone_gun" in s_str: score = 60
-                    elif "barrel" in s_str and not s_str.endswith("_dm"): score = 40
-                    elif any(k in s_str for k in ["rocket_launcher", "launcher_dm", "missile_rail"]): score = 35
-                    if any(b in s_str for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root", "roller", "drive", "ammo", "cls_"]):
-                        score = -100
-                    if score > best_score:
-                        m_bytes = scanner.read_mem(w_ptr_cand + s_idx * 64, 64)
-                        if m_bytes and len(m_bytes) == 64:
-                            fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
-                            bx, by, bz = struct.unpack_from("<fff", m_bytes, 0x30)
-                            fl = (fx*fx + fy*fy + fz*fz) ** 0.5
-                            if 0.5 < fl < 2.0 and (abs(bx) > 0.05 or abs(by) > 0.05 or abs(bz) > 0.05):
-                                best_score = score
-                                best_info = {
-                                    "animchar_off": cand_off,
-                                    "bone_tree_off": cand_off,
-                                    "sub_off": s_idx_found,
-                                    "wtm_off": 0x30,
-                                    "bone_idx": s_idx,
-                                    "bone_name": s_str,
-                                    "pos": (bx, by, bz),
-                                    "forward": (fx, fy, fz),
-                                }
-                except Exception:
-                    pass
-            if best_info and cand_off == 0x250 and best_score >= 100:
-                break
+                strings = raw_tree[s_idx_found:].split(b"\x00")
+                for s_idx in range(min(cnt, len(strings))):
+                    try:
+                        s_str = strings[s_idx].decode("utf-8", errors="ignore").lower().strip()
+                        if not s_str: continue
+                        score = -1
+                        if "bone_gun_barrel" in s_str: score = 100
+                        elif "gun_barrel" in s_str and not s_str.endswith("_dm"): score = 80
+                        elif s_str == "bone_gun": score = 70
+                        elif "bone_gun" in s_str: score = 60
+                        elif "barrel" in s_str and not s_str.endswith("_dm"): score = 40
+                        elif any(k in s_str for k in ["rocket_launcher", "launcher_dm", "missile_rail"]): score = 35
+                        if any(b in s_str for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root", "roller", "drive", "ammo", "cls_"]):
+                            score = -100
+                        if score > best_score:
+                            m_bytes = scanner.read_mem(w_ptr_cand + s_idx * 64, 64)
+                            if m_bytes and len(m_bytes) == 64:
+                                fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                                bx, by, bz = struct.unpack_from("<fff", m_bytes, 0x30)
+                                fl = (fx*fx + fy*fy + fz*fz) ** 0.5
+                                if 0.5 < fl < 2.0 and (abs(bx) > 0.05 or abs(by) > 0.05 or abs(bz) > 0.05):
+                                    best_score = score
+                                    best_info = {
+                                        "animchar_off": cand_off,
+                                        "bone_tree_off": cand_off,
+                                        "sub_off": s_idx_found,
+                                        "wtm_off": 0x30,
+                                        "bone_idx": s_idx,
+                                        "breech_idx": s_idx,
+                                        "muzzle_idx": s_idx,
+                                        "bone_name": s_str,
+                                        "pos": (bx, by, bz),
+                                        "breech_pos": (bx, by, bz),
+                                        "forward": (fx, fy, fz),
+                                        "length": 6.0,
+                                        "confidence": 0.85,
+                                    }
+                    except Exception:
+                        pass
+                if best_info and cand_off == 0x250 and best_score >= 100:
+                    break
 
     # 2. Fallback สแกนหา AnimChar / Bone Tree Offset แบบเดิม
     if not best_info:
@@ -199,11 +268,13 @@ def dump_barrel_offset(write_persistence=True):
         print(" 🎯 BARREL OFFSET & ANIMCHAR MATRIX DUMP")
         print("==================================================")
         print(f"  Bone Name     : {best_info['bone_name']}")
-        print(f"  Bone Index    : {best_info['bone_idx']}")
+        print(f"  Breech Node   : {best_info.get('breech_idx', best_info['bone_idx'])}")
+        print(f"  Muzzle Node   : {best_info.get('muzzle_idx', best_info['bone_idx'])}")
         print(f"  AnimChar Off  : {hex(best_info['animchar_off'])}")
-        print(f"  Sub Name Off  : {hex(best_info['sub_off'])}")
         print(f"  WTM Array Off : {hex(best_info['wtm_off'])}")
-        print(f"  Local Pos     : {best_info['pos']}")
+        print(f"  Barrel Length : {best_info.get('length', 0.0):.2f}m")
+        print(f"  Local Muzzle  : {best_info['pos']}")
+        print(f"  Local Breech  : {best_info.get('breech_pos', best_info['pos'])}")
         print(f"  Forward Vector: {best_info['forward']}")
 
         if write_persistence:
@@ -214,7 +285,9 @@ def dump_barrel_offset(write_persistence=True):
                 wtm_off=best_info["wtm_off"],
                 bone_idx=best_info["bone_idx"],
                 bone_name=best_info["bone_name"],
-                confidence=0.95
+                breech_idx=best_info.get("breech_idx", -1),
+                muzzle_idx=best_info.get("muzzle_idx", -1),
+                confidence=best_info.get("confidence", 0.99)
             )
         return best_info
     else:

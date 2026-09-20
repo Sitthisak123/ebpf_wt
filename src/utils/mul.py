@@ -1092,15 +1092,20 @@ def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
 def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=False):
     if u_ptr == 0: return None
     if not hasattr(scanner, "bone_cache"): scanner.bone_cache = {}
-    target_bone_index = -1
-    wtm_ptr = 0
+    if not hasattr(scanner, "model_barrel_cache"): scanner.model_barrel_cache = {}
+
+    def to_world(lx, ly, lz):
+        return (lx*unit_rot_matrix[0] + ly*unit_rot_matrix[3] + lz*unit_rot_matrix[6] + unit_pos[0],
+                lx*unit_rot_matrix[1] + ly*unit_rot_matrix[4] + lz*unit_rot_matrix[7] + unit_pos[1],
+                lx*unit_rot_matrix[2] + ly*unit_rot_matrix[5] + lz*unit_rot_matrix[8] + unit_pos[2])
 
     try:
         current_info_ptr = _read_ptr(scanner, u_ptr + OFF_UNIT_INFO) if OFF_UNIT_INFO else 0
+
+        # 1. ตรวจสอบ bone_cache ก่อน (Per-Unit Cache)
         if u_ptr in scanner.bone_cache:
             cache = scanner.bone_cache[u_ptr]
             if cache.get('no_barrel'):
-                # Check if unit respawned or 5s retry window passed
                 if current_info_ptr and cache.get('info_ptr') and cache.get('info_ptr') != current_info_ptr:
                     del scanner.bone_cache[u_ptr]
                 elif (time.time() - cache.get('failed_at', 0)) > 5.0:
@@ -1108,281 +1113,184 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                 else:
                     return None
             else:
-                cache_expired = False
                 if cache.get('info_ptr') and current_info_ptr and cache.get('info_ptr') != current_info_ptr:
-                    cache_expired = True
-                if not cache_expired:
-                    reuse_count = int(cache.get('reuse_count', 0) or 0) + 1
-                    cache['reuse_count'] = reuse_count
-                    if reuse_count >= 5000:
-                        cache_expired = True
-                if cache_expired:
                     del scanner.bone_cache[u_ptr]
                 else:
-                    # Dynamic WTM matrix array: tree_ptr + 0x00 or direct_w_ptr (0x250 / 0x208)
-                    cached_direct_w = cache.get('direct_w_ptr', 0)
-                    cached_tree = cache.get('tree_ptr', 0)
-                    cached_wtm_off = cache.get('wtm_off', 0x00)
-                    w_ptr = 0
-                    if cached_direct_w and is_valid_ptr(cached_direct_w):
-                        w_ptr = cached_direct_w
-                    elif cached_tree and is_valid_ptr(cached_tree):
-                        if cached_wtm_off == 0x30:
-                            w_ptr = cached_tree + 0x30
-                        else:
-                            wtm_raw = scanner.read_mem(cached_tree + cached_wtm_off, 8)
-                            if wtm_raw:
-                                w = struct.unpack("<Q", wtm_raw)[0]
-                                if is_valid_ptr(w):
-                                    w_ptr = w
-                    if w_ptr and is_valid_ptr(w_ptr):
-                        target_idx = cache['bone_idx']
-                        matrix_data = scanner.read_mem(w_ptr + (target_idx * 64), 64)
-                        if matrix_data and len(matrix_data) == 64:
-                            bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
-                            if math.isfinite(bx) and math.isfinite(by) and math.isfinite(bz) and abs(bx) < 5000 and abs(by) < 5000 and abs(bz) < 5000:
-                                wtm_ptr = w_ptr
-                                target_bone_index = target_idx
+                    anim_wtm = cache.get('anim_wtm_ptr', 0)
+                    breech_idx = cache.get('breech_idx', -1)
+                    muzzle_idx = cache.get('muzzle_idx', -1)
+                    if anim_wtm and is_valid_ptr(anim_wtm) and breech_idx != -1 and muzzle_idx != -1:
+                        b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
+                        m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
+                        if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
+                            bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
+                            mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
+                            fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                            if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
                                 cache['fail_count'] = 0
-                            else:
-                                cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
-                                if cache['fail_count'] >= 10:
-                                    del scanner.bone_cache[u_ptr]
-                        else:
-                            cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
-                            if cache['fail_count'] >= 10:
-                                del scanner.bone_cache[u_ptr]
-                    else:
+                                if breech_idx == muzzle_idx or (abs(mx - bx) < 0.05 and abs(my - by) < 0.05):
+                                    mx, my, mz = bx + fx * 4.0, by + fy * 4.0, bz + fz * 4.0
+                                return to_world(bx, by, bz), to_world(mx, my, mz)
                         cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
                         if cache['fail_count'] >= 10:
                             del scanner.bone_cache[u_ptr]
-        if not hasattr(scanner, "model_barrel_cache"):
-            scanner.model_barrel_cache = {}
 
-        if u_ptr not in scanner.bone_cache:
-            # ใช้ model_barrel_cache ก่อน หากเคยค้นพบสำหรับโมเดลนี้แล้ว (Zero Scan Overload)
-            model_cached_idx = scanner.model_barrel_cache.get(current_info_ptr) if current_info_ptr else None
-            persisted_animchar_off = 0x250
-            persisted_wtm_off = 0x30
-            try:
-                import src.utils.scanner as scanner_mod
-                persisted = scanner_mod._load_barrel_persistence()
-                if persisted:
-                    persisted_animchar_off = persisted.get("animchar_off", 0x250)
-                    persisted_wtm_off = persisted.get("wtm_off", 0x30)
-            except Exception:
-                pass
+        # 2. ตรวจสอบ model_barrel_cache (Per-Vehicle Model)
+        cached_model = scanner.model_barrel_cache.get(current_info_ptr) if current_info_ptr else None
+        if cached_model:
+            breech_idx, muzzle_idx = cached_model
+            t250 = _read_ptr(scanner, u_ptr + 0x250)
+            if is_valid_ptr(t250):
+                anim_wtm = t250 + 0x30
+                b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
+                m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
+                if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
+                    bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
+                    mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
+                    fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                    if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
+                        scanner.bone_cache[u_ptr] = {
+                            "breech_idx": breech_idx,
+                            "muzzle_idx": muzzle_idx,
+                            "anim_wtm_ptr": anim_wtm,
+                            "info_ptr": current_info_ptr,
+                            "fail_count": 0,
+                        }
+                        if breech_idx == muzzle_idx or (abs(mx - bx) < 0.05 and abs(my - by) < 0.05):
+                            mx, my, mz = bx + fx * 4.0, by + fy * 4.0, bz + fz * 4.0
+                        return to_world(bx, by, bz), to_world(mx, my, mz)
 
-            if model_cached_idx is not None and model_cached_idx != -1:
-                raw_ptr = scanner.read_mem(u_ptr + persisted_animchar_off, 8)
-                if raw_ptr:
-                    tree_ptr = struct.unpack("<Q", raw_ptr)[0]
-                    if is_valid_ptr(tree_ptr):
-                        w_ptr = (tree_ptr + 0x30) if persisted_wtm_off == 0x30 else 0
-                        if not w_ptr:
-                            wtm_base_raw = scanner.read_mem(tree_ptr + persisted_wtm_off, 8)
-                            if wtm_base_raw:
-                                cand_w = struct.unpack("<Q", wtm_base_raw)[0]
-                                if is_valid_ptr(cand_w):
-                                    w_ptr = cand_w
-                        if w_ptr and is_valid_ptr(w_ptr):
-                            matrix_data = scanner.read_mem(w_ptr + (model_cached_idx * 64), 64)
-                            if matrix_data and len(matrix_data) == 64:
-                                fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00)
-                                bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
-                                f_len = (fx*fx + fy*fy + fz*fz) ** 0.5
-                                if math.isfinite(bx) and math.isfinite(fx) and (0.5 < f_len < 2.0):
-                                    wtm_ptr = w_ptr
-                                    target_bone_index = model_cached_idx
-                                    scanner.bone_cache[u_ptr] = {
-                                        "tree_ptr": tree_ptr,
-                                        "wtm_off": persisted_wtm_off,
-                                        "direct_w_ptr": w_ptr if persisted_wtm_off == 0x30 else 0,
-                                        "bone_idx": model_cached_idx,
-                                        "info_ptr": current_info_ptr,
-                                    }
+        # 3. Geometric Scan บน Dagor GeomNodeTree (Bind Pose 0x208 vs Animated Pose 0x250)
+        t208 = _read_ptr(scanner, u_ptr + 0x208)
+        t250 = _read_ptr(scanner, u_ptr + 0x250)
+        if is_valid_ptr(t208) and is_valid_ptr(t250):
+            cnt_raw = scanner.read_mem(t208 + 0x10, 2)
+            cnt208 = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
+            if 0 < cnt208 < 1000:
+                raw_mats = scanner.read_mem(t208 + 0x30, cnt208 * 64)
+                if raw_mats and len(raw_mats) == cnt208 * 64:
+                    bmin_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 12) if OFF_UNIT_BBMIN else None
+                    bmax_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMAX, 12) if OFF_UNIT_BBMAX else None
+                    if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
+                        bmin = struct.unpack("<fff", bmin_data)
+                        bmax = struct.unpack("<fff", bmax_data)
+                        y_min = bmin[1] + (bmax[1] - bmin[1]) * 0.35
+                        y_max = bmax[1] + 0.6
+                    else:
+                        y_min, y_max = 0.5, 4.0
 
-        if wtm_ptr == 0 or target_bone_index == -1:
-            # 🎯 Fast Path: สแกนโครงสร้าง Dagor GeomNodeTree ที่ u_ptr + 0x250 (เคลื่อนไหวสด) ก่อน แล้วค่อย 0x208
-            for cand_off in [0x250, persisted_animchar_off, 0x208]:
-                raw_cand = scanner.read_mem(u_ptr + cand_off, 8)
-                if not raw_cand:
-                    continue
-                tree_cand = struct.unpack("<Q", raw_cand)[0]
-                if not is_valid_ptr(tree_cand):
-                    continue
-                cnt_raw = scanner.read_mem(tree_cand + 0x10, 2)
-                cnt = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
-                if not (0 < cnt < 1000):
-                    continue
-                w_ptr_cand = tree_cand + 0x30
-                min_off = 0x30 + cnt * 64
-                block_size = min(0x18000, min_off + 0x8000)
-                raw_tree = scanner.read_mem(tree_cand, block_size)
-                if not raw_tree:
-                    continue
-                s_idx_found = raw_tree.find(b"root\x00")
-                if s_idx_found == -1:
-                    s_idx_found = raw_tree.find(b"\x00root\x00")
-                    if s_idx_found != -1:
-                        s_idx_found += 1
-                if s_idx_found != -1:
-                    strings = raw_tree[s_idx_found:].split(b"\x00")
-                    b_score, b_idx = -1, -1
-                    for s_idx in range(min(cnt, len(strings))):
-                        try:
-                            s_str = strings[s_idx].decode("utf-8", errors="ignore").lower().strip()
-                            if not s_str:
-                                continue
-                            score = -1
-                            if "bone_gun_barrel" in s_str: score = 100
-                            elif "gun_barrel" in s_str and not s_str.endswith("_dm"): score = 80
-                            elif s_str == "bone_gun": score = 70
-                            elif "bone_gun" in s_str: score = 60
-                            elif "barrel" in s_str and not s_str.endswith("_dm"): score = 40
-                            elif "rocket_launcher" in s_str or "launcher_dm" in s_str or "missile_rail" in s_str: score = 35
-                            if any(b in s_str for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root", "roller", "drive", "ammo", "cls_"]):
-                                score = -100
-                            if score > b_score:
-                                b_score = score
-                                b_idx = s_idx
-                        except Exception:
-                            pass
-                    if b_idx != -1 and b_idx < cnt:
-                        m_bytes = scanner.read_mem(w_ptr_cand + b_idx * 64, 64)
-                        if m_bytes and len(m_bytes) == 64:
+                    candidates = []
+                    for b in range(cnt208):
+                        m_data = raw_mats[b*64:(b+1)*64]
+                        r0 = struct.unpack_from("<ffff", m_data, 0x00)
+                        r1 = struct.unpack_from("<ffff", m_data, 0x10)
+                        r3 = struct.unpack_from("<ffff", m_data, 0x30)
+                        bx, by, bz = r3[0], r3[1], r3[2]
+                        d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
+                        d_up  = r1[0]**2 + (r1[1]-1.0)**2 + r1[2]**2
+                        if d_fwd < 0.04 and d_up < 0.04 and y_min <= by <= y_max and abs(bz) < 0.8 and bx > -0.6:
+                            candidates.append((bx, b))
+
+                    if candidates:
+                        candidates.sort(key=lambda x: x[0])
+                        breech_idx = candidates[0][1]
+                        muzzle_idx = candidates[-1][1]
+                        anim_wtm = t250 + 0x30
+
+                        if current_info_ptr:
+                            scanner.model_barrel_cache[current_info_ptr] = (breech_idx, muzzle_idx)
+                        scanner.bone_cache[u_ptr] = {
+                            "breech_idx": breech_idx,
+                            "muzzle_idx": muzzle_idx,
+                            "anim_wtm_ptr": anim_wtm,
+                            "info_ptr": current_info_ptr,
+                            "fail_count": 0,
+                        }
+
+                        b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
+                        m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
+                        if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
+                            bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
+                            mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
                             fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
-                            bx, by, bz = struct.unpack_from("<fff", m_bytes, 0x30)
-                            fl = (fx*fx + fy*fy + fz*fz) ** 0.5
-                            if 0.5 < fl < 2.0 and (abs(bx) > 0.05 or abs(by) > 0.05 or abs(bz) > 0.05):
-                                wtm_ptr = w_ptr_cand
-                                target_bone_index = b_idx
-                                scanner.bone_cache[u_ptr] = {
-                                    "tree_ptr": tree_cand,
-                                    "wtm_off": 0x30,
-                                    "direct_w_ptr": w_ptr_cand,
-                                    "bone_idx": b_idx,
-                                    "info_ptr": current_info_ptr,
-                                }
-                                if current_info_ptr:
-                                    scanner.model_barrel_cache[current_info_ptr] = b_idx
-                                if cand_off == 0x250 and b_score >= 100:
-                                    break
+                            if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
+                                if breech_idx == muzzle_idx or (abs(mx - bx) < 0.05 and abs(my - by) < 0.05):
+                                    mx, my, mz = bx + fx * 4.0, by + fy * 4.0, bz + fz * 4.0
+                                return to_world(bx, by, bz), to_world(mx, my, mz)
 
-        if wtm_ptr == 0 or target_bone_index == -1:
-            best_score, best_idx = -1, -1
+        # 4. Fallback (Legacy Scan สำหรับโมเดลรุ่นเก่า)
+        best_score, best_idx = -1, -1
+        u_ptr_tree = 0
+        best_wtm_off = 0x00
+        for off in [0x250, 0x208, 0x238, 0x1F0, 0x1FD8, 0x2E20, 0x2F38, 0x1E8, 0x1E0, 0x1D8]:
+            raw_ptr = scanner.read_mem(u_ptr + off, 8)
+            if not raw_ptr: continue
+            tree_ptr = struct.unpack("<Q", raw_ptr)[0]
+            if not is_valid_ptr(tree_ptr): continue
             
-            u_ptr_tree = 0
-            best_tree_off = 0
-            best_sub_off = 0
-            for off in [0x250, 0x208, 0x238, 0x1F0, 0x1FD8, 0x2E20, 0x2F38, 0x1E8, 0x1E0, 0x1D8, 0x200, 0x210, 0x228, 0x1C8, 0x3E8, 0x400, 0x13B0]:
-                raw_ptr = scanner.read_mem(u_ptr + off, 8)
-                if not raw_ptr: continue
-                tree_ptr = struct.unpack("<Q", raw_ptr)[0]
-                if not is_valid_ptr(tree_ptr): continue
-                
-                cnt_raw = scanner.read_mem(tree_ptr + 0x08, 4)
-                bone_cnt = struct.unpack("<I", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 4 else 400
-                if bone_cnt <= 0 or bone_cnt > 1000:
-                    bone_cnt = 400
+            cnt_raw = scanner.read_mem(tree_ptr + 0x08, 4)
+            bone_cnt = struct.unpack("<I", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 4 else 400
+            if bone_cnt <= 0 or bone_cnt > 1000: bone_cnt = 400
 
-                for sub_off in [0x40, 0x20, 0xB0]:
-                    raw_name = scanner.read_mem(tree_ptr + sub_off, 8)
-                    if not raw_name: continue
-                    name_ptr = struct.unpack("<Q", raw_name)[0]
-                    if not is_valid_ptr(name_ptr): continue
-                    names_block = scanner.read_mem(name_ptr, max(0x4000, bone_cnt * 32))
-                    if not names_block: continue
-                        
-                    for i in range(min(bone_cnt, 512)):
-                        try:
-                            str_offset = struct.unpack_from("<H", names_block, i * 2)[0]
-                            if str_offset == 0 or str_offset >= len(names_block): continue
-                            end_idx = names_block.find(b'\x00', str_offset)
-                            if end_idx != -1:
-                                bone_name = names_block[str_offset:end_idx].decode('utf-8', errors='ignore').lower().strip()
-                                score = -1
-                                if "bone_gun_barrel" in bone_name: score = 100
-                                elif "gun_barrel" in bone_name: score = 80
-                                elif "bone_gun" in bone_name and bone_name == "bone_gun": score = 70
-                                elif "bone_gun" in bone_name: score = 60
-                                elif "barrel" in bone_name: score = 40
-                                elif "rocket_launcher" in bone_name or "launcher_dm" in bone_name or "missile_rail" in bone_name: score = 35
-                                if any(b in bone_name for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root"]): score = -100
-                                if score > best_score:
-                                    best_score = score
-                                    best_idx = i
-                                    u_ptr_tree = tree_ptr
-                                    best_tree_off = off
-                                    best_sub_off = sub_off
-                                if best_score >= 100: break
-                        except: pass
-                    if best_score >= 100: break
-                if best_score >= 100: break
-
-            if best_idx != -1:
-                wtm_found = False
-                for wtm_off in [0x00, 0x10]:
-                    wtm_base_raw = scanner.read_mem(u_ptr_tree + wtm_off, 8)
-                    if not wtm_base_raw: continue
-                    w_ptr = struct.unpack("<Q", wtm_base_raw)[0]
-                    if not is_valid_ptr(w_ptr): continue
+            for sub_off in [0x40, 0x20, 0xB0]:
+                raw_name = scanner.read_mem(tree_ptr + sub_off, 8)
+                if not raw_name: continue
+                name_ptr = struct.unpack("<Q", raw_name)[0]
+                if not is_valid_ptr(name_ptr): continue
+                names_block = scanner.read_mem(name_ptr, max(0x4000, bone_cnt * 32))
+                if not names_block: continue
                     
+                for i in range(min(bone_cnt, 512)):
+                    try:
+                        str_offset = struct.unpack_from("<H", names_block, i * 2)[0]
+                        if str_offset == 0 or str_offset >= len(names_block): continue
+                        end_idx = names_block.find(b'\x00', str_offset)
+                        if end_idx != -1:
+                            bone_name = names_block[str_offset:end_idx].decode('utf-8', errors='ignore').lower().strip()
+                            score = -1
+                            if "bone_gun_barrel" in bone_name: score = 100
+                            elif "gun_barrel" in bone_name: score = 80
+                            elif bone_name == "bone_gun": score = 70
+                            elif "bone_gun" in bone_name: score = 60
+                            elif "barrel" in bone_name: score = 40
+                            if any(b in bone_name for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root"]): score = -100
+                            if score > best_score:
+                                best_score = score
+                                best_idx = i
+                                u_ptr_tree = tree_ptr
+                                best_wtm_off = 0x00
+                            if best_score >= 100: break
+                    except: pass
+                if best_score >= 100: break
+            if best_score >= 100: break
+
+        if best_idx != -1 and u_ptr_tree:
+            wtm_base_raw = scanner.read_mem(u_ptr_tree + best_wtm_off, 8)
+            if wtm_base_raw:
+                w_ptr = struct.unpack("<Q", wtm_base_raw)[0]
+                if is_valid_ptr(w_ptr):
                     matrix_data = scanner.read_mem(w_ptr + (best_idx * 64), 64)
                     if matrix_data and len(matrix_data) == 64:
-                        fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00) # Row 0 (X axis / barrel forward)
-                        bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30) # Row 3 (Local Pos)
-                        if math.isfinite(bx) and math.isfinite(by) and math.isfinite(bz) and math.isfinite(fx):
-                            f_len = (fx*fx + fy*fy + fz*fz) ** 0.5
-                            if (abs(bx) > 0.1 or abs(by) > 0.1 or abs(bz) > 0.1) and abs(bx) < 15 and abs(by) < 15 and abs(bz) < 15 and 0.5 < f_len < 2.0:
-                                wtm_ptr = w_ptr
-                                target_bone_index = best_idx
-                                scanner.bone_cache[u_ptr] = {
-                                    "tree_ptr": u_ptr_tree,
-                                    "wtm_off": wtm_off,
-                                    "bone_idx": best_idx,
-                                    "info_ptr": current_info_ptr,
-                                }
-                                if current_info_ptr:
-                                    scanner.model_barrel_cache[current_info_ptr] = best_idx
-                                wtm_found = True
-                                break
+                        fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00)
+                        bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
+                        if math.isfinite(bx) and math.isfinite(fx):
+                            scanner.bone_cache[u_ptr] = {
+                                "breech_idx": best_idx,
+                                "muzzle_idx": best_idx,
+                                "anim_wtm_ptr": w_ptr,
+                                "info_ptr": current_info_ptr,
+                                "fail_count": 0,
+                            }
+                            length = 6.0
+                            return to_world(bx, by, bz), to_world(bx + fx * length, by + fy * length, bz + fz * length)
 
-        if wtm_ptr == 0 or target_bone_index == -1:
-            if u_ptr not in scanner.bone_cache:
-                scanner.bone_cache[u_ptr] = {
-                    "no_barrel": True,
-                    "info_ptr": current_info_ptr,
-                    "failed_at": time.time(),
-                }
-            return None
-
-        if wtm_ptr != 0 and target_bone_index != -1:
-            matrix_data = scanner.read_mem(wtm_ptr + (target_bone_index * 64), 64)
-            if matrix_data and len(matrix_data) == 64:
-                fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00) # Row 0 (X axis / barrel forward)
-                bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30) # Row 3 (Local Pos) 
-                if math.isfinite(bx) and math.isfinite(by) and math.isfinite(bz):
-                    if abs(bx) < 0.1 and abs(by) < 0.1 and abs(bz) < 0.1:
-                        return None
-                        
-                    if not math.isfinite(fx) or not math.isfinite(fy) or not math.isfinite(fz):
-                        return None
-                        
-                    f_len = (fx*fx + fy*fy + fz*fz) ** 0.5
-                    if not (0.5 < f_len < 2.0) or abs(bx) > 30 or abs(by) > 30 or abs(bz) > 30:
-                        return None
-                        
-                    length = 8.0 
-                    if abs(bx) > 500.0 or abs(by) > 500.0: # Keeping this as a fallback just in case
-                        return (bx, by, bz), (bx + (fx * length), by + (fy * length), bz + (fz * length))
-                    else:
-                        def to_world(lx, ly, lz):
-                            return (lx*unit_rot_matrix[0] + ly*unit_rot_matrix[3] + lz*unit_rot_matrix[6] + unit_pos[0],
-                                    lx*unit_rot_matrix[1] + ly*unit_rot_matrix[4] + lz*unit_rot_matrix[7] + unit_pos[1],
-                                    lx*unit_rot_matrix[2] + ly*unit_rot_matrix[5] + lz*unit_rot_matrix[8] + unit_pos[2])
-                        return to_world(bx, by, bz), to_world(bx + (fx * length), by + (fy * length), bz + (fz * length))
-    except Exception as e:
+        if u_ptr not in scanner.bone_cache:
+            scanner.bone_cache[u_ptr] = {
+                "no_barrel": True,
+                "info_ptr": current_info_ptr,
+                "failed_at": time.time(),
+            }
+    except Exception:
         pass
     return None
 
