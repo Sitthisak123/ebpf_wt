@@ -1189,12 +1189,12 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                     if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
                         bmin = struct.unpack("<fff", bmin_data)
                         bmax = struct.unpack("<fff", bmax_data)
-                        y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.48
+                        y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.55
                         y_max = bmax[1] + 0.6
-                        z_max = max(1.0, abs(bmax[2]) * 0.70)
+                        z_max = min(1.0, max(0.40, abs(bmax[2]) * 0.65))
                     else:
                         y_turret_min, y_max = 1.0, 4.0
-                        z_max = 1.4
+                        z_max = 1.0
 
                     candidates = []
                     for b in range(cnt208):
@@ -1214,23 +1214,23 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                     if candidates:
                         candidates.sort(key=lambda x: x[0], reverse=True)
 
-                        # 3a. ตรวจหา Cannon Barrel มาตรฐาน (ปลายกระบอกยื่นไปใกล้/เกินหน้ารถ และยาว >= 0.85m)
+                        # 3a. ตรวจหา Cannon Barrel มาตรฐาน / IFV Autocannon (ค้นหาคู่ collinear ทั้งหมดที่มี c_len >= 0.85m แล้วเลือกคู่ที่ปลายกระบอกยื่นไปข้างหน้ามากที่สุด)
+                        cannon_pairs = []
                         for cand in candidates:
                             mx_b, my_b, mz_b, m_idx = cand
-                            front_limit = (bmax[0] - 0.6) if bmax_data else 1.5
-                            if mx_b >= front_limit:
-                                collinear = [c for c in candidates if abs(c[1] - my_b) < 0.08 and abs(c[2] - mz_b) < 0.08 and c[0] <= mx_b]
-                                if len(collinear) < 2:
-                                    collinear = [c for c in candidates if abs(c[1] - my_b) < 0.12 and abs(c[2] - mz_b) < 0.12 and c[0] <= mx_b]
-                                if collinear:
-                                    collinear.sort(key=lambda x: x[0])
-                                    b_cand = collinear[0]
-                                    c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
-                                    if c_len >= 0.85:
-                                        breech_idx = b_cand[3]
-                                        muzzle_idx = m_idx
-                                        is_launcher = False
-                                        break
+                            collinear = [c for c in candidates if abs(c[1] - my_b) < 0.08 and abs(c[2] - mz_b) < 0.08 and c[0] <= mx_b]
+                            if len(collinear) < 2:
+                                collinear = [c for c in candidates if abs(c[1] - my_b) < 0.12 and abs(c[2] - mz_b) < 0.12 and c[0] <= mx_b]
+                            if len(collinear) >= 2:
+                                collinear.sort(key=lambda x: x[0])
+                                b_cand = collinear[0]
+                                c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
+                                if c_len >= 0.85:
+                                    cannon_pairs.append((b_cand[3], m_idx, False, c_len, cand))
+
+                        if cannon_pairs:
+                            best_cannon = max(cannon_pairs, key=lambda p: p[4][0])
+                            breech_idx, muzzle_idx, is_launcher = best_cannon[0], best_cannon[1], best_cannon[2]
 
                         # 3b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901)
                         if breech_idx == -1 and bmin_data and bmax_data:
