@@ -513,11 +513,7 @@ class MissileScanner:
                         tgt = 0
 
         # 🚫 FILTER: Ignore invalid entities / bombs (Owner=0x1 || None, tracking=255)
-        if raw_tracking == 255:
-            return None
-        if owner in (1, 0x1):
-            return None
-        if (owner == 0 or owner is None) and raw_tracking == 255:
+        if owner in (0, 0x0) or raw_tracking == 255:
             return None
 
         m.is_locked = is_locked
