@@ -1119,6 +1119,7 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                     anim_wtm = cache.get('anim_wtm_ptr', 0)
                     breech_idx = cache.get('breech_idx', -1)
                     muzzle_idx = cache.get('muzzle_idx', -1)
+                    is_launcher = cache.get('is_launcher', False)
                     if anim_wtm and is_valid_ptr(anim_wtm) and breech_idx != -1 and muzzle_idx != -1:
                         b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
                         m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
@@ -1128,9 +1129,14 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                             fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
                             if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
                                 cache['fail_count'] = 0
-                                barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
-                                if breech_idx == muzzle_idx or barrel_len < 0.5:
-                                    bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
+                                if is_launcher:
+                                    mx = bx + fx * 4.0
+                                    my = by + fy * 4.0
+                                    mz = bz + fz * 4.0
+                                else:
+                                    barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                                    if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                        bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
                                 return to_world(bx, by, bz), to_world(mx, my, mz)
                         cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
                         if cache['fail_count'] >= 10:
@@ -1139,7 +1145,8 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
         # 2. ตรวจสอบ model_barrel_cache (Per-Vehicle Model)
         cached_model = scanner.model_barrel_cache.get(current_info_ptr) if current_info_ptr else None
         if cached_model:
-            breech_idx, muzzle_idx = cached_model
+            breech_idx, muzzle_idx = cached_model[0], cached_model[1]
+            is_launcher = cached_model[2] if len(cached_model) > 2 else False
             t250 = _read_ptr(scanner, u_ptr + 0x250)
             if is_valid_ptr(t250):
                 anim_wtm = t250 + 0x30
@@ -1153,13 +1160,19 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                         scanner.bone_cache[u_ptr] = {
                             "breech_idx": breech_idx,
                             "muzzle_idx": muzzle_idx,
+                            "is_launcher": is_launcher,
                             "anim_wtm_ptr": anim_wtm,
                             "info_ptr": current_info_ptr,
                             "fail_count": 0,
                         }
-                        barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
-                        if breech_idx == muzzle_idx or barrel_len < 0.5:
-                            bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
+                        if is_launcher:
+                            mx = bx + fx * 4.0
+                            my = by + fy * 4.0
+                            mz = bz + fz * 4.0
+                        else:
+                            barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                            if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
                         return to_world(bx, by, bz), to_world(mx, my, mz)
 
         # 3. Geometric Scan บน Dagor GeomNodeTree (Bind Pose 0x208 vs Animated Pose 0x250)
@@ -1176,10 +1189,12 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                     if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
                         bmin = struct.unpack("<fff", bmin_data)
                         bmax = struct.unpack("<fff", bmax_data)
-                        y_min = bmin[1] + (bmax[1] - bmin[1]) * 0.35
+                        y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.52
                         y_max = bmax[1] + 0.6
+                        z_max = max(1.0, abs(bmax[2]) * 0.70)
                     else:
-                        y_min, y_max = 0.5, 4.0
+                        y_turret_min, y_max = 1.0, 4.0
+                        z_max = 1.4
 
                     candidates = []
                     for b in range(cnt208):
@@ -1189,29 +1204,61 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                         r3 = struct.unpack_from("<ffff", m_data, 0x30)
                         bx, by, bz = r3[0], r3[1], r3[2]
                         d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
-                        if d_fwd < 0.04 and y_min <= by <= y_max and abs(bz) < 0.6 and bx > -0.6:
+                        if d_fwd < 0.04 and y_turret_min <= by <= y_max and abs(bz) <= z_max and bx > -0.6:
                             candidates.append((bx, by, bz, b))
 
+                    breech_idx = -1
+                    muzzle_idx = -1
+                    is_launcher = False
+
                     if candidates:
-                        candidates.sort(key=lambda x: x[0])
-                        muzzle = candidates[-1]
-                        mx_bind, my_bind, mz_bind, m_idx = muzzle
+                        candidates.sort(key=lambda x: x[0], reverse=True)
 
-                        # กรองเฉพาะโหนดที่อยู่บนแกนกระบอกปืนเดียวกับ Muzzle (Collinear along Gun Bore)
-                        barrel_nodes = [c for c in candidates if abs(c[1] - my_bind) < 0.20 and abs(c[2] - mz_bind) < 0.20]
-                        barrel_nodes.sort(key=lambda x: x[0])
-                        breech = barrel_nodes[0]
-                        bx_bind, by_bind, bz_bind, b_idx = breech
+                        # 3a. ตรวจหา Cannon Barrel มาตรฐาน (ปลายกระบอกยื่นไปใกล้/เกินหน้ารถ และยาว >= 1.2m)
+                        for cand in candidates:
+                            mx_b, my_b, mz_b, m_idx = cand
+                            front_limit = (bmax[0] - 0.6) if bmax_data else 1.5
+                            if mx_b >= front_limit:
+                                collinear = [c for c in candidates if abs(c[1] - my_b) < 0.20 and abs(c[2] - mz_b) < 0.20 and c[0] <= mx_b]
+                                if collinear:
+                                    collinear.sort(key=lambda x: x[0])
+                                    b_cand = collinear[0]
+                                    c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
+                                    if c_len >= 1.2:
+                                        breech_idx = b_cand[3]
+                                        muzzle_idx = m_idx
+                                        is_launcher = False
+                                        break
 
-                        breech_idx = b_idx
-                        muzzle_idx = m_idx
+                        # 3b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901)
+                        if breech_idx == -1 and bmin_data and bmax_data:
+                            upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.65
+                            launcher_cands = [c for c in candidates if c[1] >= upper_turret_min and abs(c[2]) < abs(bmax[2]) * 0.70]
+                            if launcher_cands:
+                                launcher_cands.sort(key=lambda c: (c[1], c[0]), reverse=True)
+                                for cand in launcher_cands:
+                                    mx_b, my_b, mz_b, m_idx = cand
+                                    collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.15 and abs(c[2] - mz_b) < 0.15]
+                                    if len(collinear) >= 2:
+                                        collinear.sort(key=lambda x: x[0])
+                                        breech_idx = collinear[0][3]
+                                        muzzle_idx = collinear[-1][3]
+                                        is_launcher = True
+                                        break
+                                if breech_idx == -1:
+                                    top = launcher_cands[0]
+                                    breech_idx = top[3]
+                                    muzzle_idx = top[3]
+                                    is_launcher = True
+
+                    if breech_idx != -1 and muzzle_idx != -1:
                         anim_wtm = t250 + 0x30
-
                         if current_info_ptr:
-                            scanner.model_barrel_cache[current_info_ptr] = (breech_idx, muzzle_idx)
+                            scanner.model_barrel_cache[current_info_ptr] = (breech_idx, muzzle_idx, is_launcher)
                         scanner.bone_cache[u_ptr] = {
                             "breech_idx": breech_idx,
                             "muzzle_idx": muzzle_idx,
+                            "is_launcher": is_launcher,
                             "anim_wtm_ptr": anim_wtm,
                             "info_ptr": current_info_ptr,
                             "fail_count": 0,
@@ -1224,9 +1271,14 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                             mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
                             fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
                             if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
-                                barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
-                                if breech_idx == muzzle_idx or barrel_len < 0.5:
-                                    bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
+                                if is_launcher:
+                                    mx = bx + fx * 4.0
+                                    my = by + fy * 4.0
+                                    mz = bz + fz * 4.0
+                                else:
+                                    barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                                    if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                        bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
                                 return to_world(bx, by, bz), to_world(mx, my, mz)
 
         # 4. Fallback (Legacy Scan สำหรับโมเดลรุ่นเก่า)

@@ -21,7 +21,7 @@ from src.utils.scanner import (
 )
 import src.utils.mul as mul
 
-def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bone_idx, bone_name, breech_idx=-1, muzzle_idx=-1, confidence=0.99):
+def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bone_idx, bone_name, breech_idx=-1, muzzle_idx=-1, is_launcher=False, confidence=0.99):
     """บันทึกค่า Barrel Offset ลง persistence พร้อม build fingerprint และนโยบาย Rate Overwrite ตาม Confidence"""
     if not _can_overwrite_persistence(BARREL_PERSISTENCE_PATH, confidence):
         print(f"  [*] ข้ามการบันทึก Barrel Persistence: ไฟล์เดิมมีค่า confidence สูงกว่า {confidence:.2f}")
@@ -36,6 +36,7 @@ def _write_barrel_persistence(animchar_off, bone_tree_off, sub_off, wtm_off, bon
         "bone_idx": int(bone_idx),
         "breech_idx": int(breech_idx if breech_idx != -1 else bone_idx),
         "muzzle_idx": int(muzzle_idx if muzzle_idx != -1 else bone_idx),
+        "is_launcher": bool(is_launcher),
         "bone_name": str(bone_name),
         "row0_forward_offset": 0x00,
         "row3_position_offset": 0x30,
@@ -95,10 +96,12 @@ def dump_barrel_offset(write_persistence=True):
                 if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
                     bmin = struct.unpack("<fff", bmin_data)
                     bmax = struct.unpack("<fff", bmax_data)
-                    y_min = bmin[1] + (bmax[1] - bmin[1]) * 0.35
+                    y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.52
                     y_max = bmax[1] + 0.6
+                    z_max = max(1.0, abs(bmax[2]) * 0.70)
                 else:
-                    y_min, y_max = 0.5, 4.0
+                    y_turret_min, y_max = 1.0, 4.0
+                    z_max = 1.4
 
                 candidates = []
                 for b in range(cnt208):
@@ -108,22 +111,54 @@ def dump_barrel_offset(write_persistence=True):
                     r3 = struct.unpack_from("<ffff", m_data, 0x30)
                     bx, by, bz = r3[0], r3[1], r3[2]
                     d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
-                    if d_fwd < 0.04 and y_min <= by <= y_max and abs(bz) < 0.6 and bx > -0.6:
+                    if d_fwd < 0.04 and y_turret_min <= by <= y_max and abs(bz) <= z_max and bx > -0.6:
                         candidates.append((bx, by, bz, b))
 
+                breech_idx = -1
+                muzzle_idx = -1
+                is_launcher = False
+
                 if candidates:
-                    candidates.sort(key=lambda x: x[0])
-                    muzzle = candidates[-1]
-                    mx_bind, my_bind, mz_bind, m_idx = muzzle
+                    candidates.sort(key=lambda x: x[0], reverse=True)
 
-                    # กรองเฉพาะโหนดที่อยู่บนแกนกระบอกปืนเดียวกับ Muzzle (Collinear along Gun Bore)
-                    barrel_nodes = [c for c in candidates if abs(c[1] - my_bind) < 0.20 and abs(c[2] - mz_bind) < 0.20]
-                    barrel_nodes.sort(key=lambda x: x[0])
-                    breech = barrel_nodes[0]
-                    bx_bind, by_bind, bz_bind, b_idx = breech
+                    # 1a. ตรวจหา Cannon Barrel มาตรฐาน (ปลายกระบอกยื่นไปใกล้/เกินหน้ารถ และยาว >= 1.2m)
+                    for cand in candidates:
+                        mx_b, my_b, mz_b, m_idx = cand
+                        front_limit = (bmax[0] - 0.6) if bmax_data else 1.5
+                        if mx_b >= front_limit:
+                            collinear = [c for c in candidates if abs(c[1] - my_b) < 0.20 and abs(c[2] - mz_b) < 0.20 and c[0] <= mx_b]
+                            if collinear:
+                                collinear.sort(key=lambda x: x[0])
+                                b_cand = collinear[0]
+                                c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
+                                if c_len >= 1.2:
+                                    breech_idx = b_cand[3]
+                                    muzzle_idx = m_idx
+                                    is_launcher = False
+                                    break
 
-                    breech_idx = b_idx
-                    muzzle_idx = m_idx
+                    # 1b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901)
+                    if breech_idx == -1 and bmin_data and bmax_data:
+                        upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.65
+                        launcher_cands = [c for c in candidates if c[1] >= upper_turret_min and abs(c[2]) < abs(bmax[2]) * 0.70]
+                        if launcher_cands:
+                            launcher_cands.sort(key=lambda c: (c[1], c[0]), reverse=True)
+                            for cand in launcher_cands:
+                                mx_b, my_b, mz_b, m_idx = cand
+                                collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.15 and abs(c[2] - mz_b) < 0.15]
+                                if len(collinear) >= 2:
+                                    collinear.sort(key=lambda x: x[0])
+                                    breech_idx = collinear[0][3]
+                                    muzzle_idx = collinear[-1][3]
+                                    is_launcher = True
+                                    break
+                            if breech_idx == -1:
+                                top = launcher_cands[0]
+                                breech_idx = top[3]
+                                muzzle_idx = top[3]
+                                is_launcher = True
+
+                if breech_idx != -1 and muzzle_idx != -1:
                     anim_wtm = t250 + 0x30
                     b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
                     m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
@@ -131,10 +166,18 @@ def dump_barrel_offset(write_persistence=True):
                         bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
                         mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
                         fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
-                        barrel_len = math.sqrt((mx-bx)**2 + (my-by)**2 + (mz-bz)**2)
-                        if breech_idx == muzzle_idx or barrel_len < 0.5:
-                            bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
-                            barrel_len = 2.5
+                        if is_launcher:
+                            mx = bx + fx * 4.0
+                            my = by + fy * 4.0
+                            mz = bz + fz * 4.0
+                            barrel_len = 4.0
+                            bone_name_str = "geometric_atgm_launcher"
+                        else:
+                            barrel_len = math.sqrt((mx-bx)**2 + (my-by)**2 + (mz-bz)**2)
+                            if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
+                                barrel_len = 2.5
+                            bone_name_str = "geometric_gun_barrel"
                         best_info = {
                             "animchar_off": 0x250,
                             "bone_tree_off": 0x208,
@@ -143,7 +186,8 @@ def dump_barrel_offset(write_persistence=True):
                             "bone_idx": muzzle_idx,
                             "breech_idx": breech_idx,
                             "muzzle_idx": muzzle_idx,
-                            "bone_name": "geometric_gun_barrel",
+                            "is_launcher": is_launcher,
+                            "bone_name": bone_name_str,
                             "pos": (mx, my, mz),
                             "breech_pos": (bx, by, bz),
                             "forward": (fx, fy, fz),
@@ -298,6 +342,7 @@ def dump_barrel_offset(write_persistence=True):
                 bone_name=best_info["bone_name"],
                 breech_idx=best_info.get("breech_idx", -1),
                 muzzle_idx=best_info.get("muzzle_idx", -1),
+                is_launcher=best_info.get("is_launcher", False),
                 confidence=best_info.get("confidence", 0.99)
             )
         return best_info
