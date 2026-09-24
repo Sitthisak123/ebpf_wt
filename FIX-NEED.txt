@@ -7,8 +7,7 @@
 - Barrel indicator:
     -Name: 
     -Type: SAM Rocket
-- missile detection: 
-    -EMA ghosting
 - leadmark:
     -Air-to-Air Head-On Leadmark range limit multipy = 1.6
     -Air turning Clamp
+    -Test Drive invalid Air VEL: fallback to low tickrate(5Hz)

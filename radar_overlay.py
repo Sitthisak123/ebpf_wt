@@ -269,8 +269,8 @@ COLOR_MISSILE_INFO_TEXT         = (255, 200, 80, 230)    # Missile info text
 MISSILE_SCAN_INTERVAL_S         = 0.10                   # Scan every 100ms
 MISSILE_WARNING_FLASH_HZ        = 3.0                    # Flash frequency
 OFFSCREEN_MISSILE_INDICATOR_MARGIN = 95.0               # Screen edge margin (avoids overlap with air indicator at 28px)
-MISSILE_TRACK_TIMEOUT_S         = 1.20                   # Persistence grace period to prevent blinking (1.2s)
-MISSILE_EXTRAPOLATION_MAX_S     = 1.20                   # Dead reckoning extrapolation max duration
+MISSILE_TRACK_TIMEOUT_S         = 0.20                   # Persistence grace period to prevent blinking (~2 scan cycles: 0.20s)
+MISSILE_EXTRAPOLATION_MAX_S     = 0.15                   # Dead reckoning extrapolation max duration (0.15s stops ghost flying)
 MISSILE_SMOOTH_LERP             = 0.45                   # Angular smoothing factor for edge indicator
 MISSILE_POS_EMA_ALPHA           = 0.35                   # EMA smoothing factor for missile position correction (0.35 = buttery smooth)
 MISSILE_VEL_EMA_ALPHA           = 0.45                   # EMA smoothing factor for missile velocity vector
@@ -7033,8 +7033,9 @@ class ESPOverlay(QOpenGLWidget):
                     else:
                         result = None
 
-                    if result is not None:
+                    if is_new_missile_scan and result is not None:
                         self.missile_cache = result
+                        current_scan_ptrs = set()
                         # Update missile tracks with new scan result
                         for m in result:
                             if not m.name or m.name == "":
@@ -7045,6 +7046,8 @@ class ESPOverlay(QOpenGLWidget):
                             m_trk = getattr(m, 'tracking', 0)
                             if m_trk == 255 or m_owner in (1, 0x1) or ((m_owner in (0, None)) and m_trk == 255):
                                 continue
+
+                            current_scan_ptrs.add(m.ptr)
 
                             cur_dist = 99999.0
                             closing_speed = 0.0
@@ -7167,6 +7170,7 @@ class ESPOverlay(QOpenGLWidget):
                                         )
 
                                 tr['last_seen'] = curr_t
+                                tr['missed_scans'] = 0
                                 tr['missile'] = m
                                 tr['owner_unit'] = owner_unit
                                 tr['weapon_name'] = m.name
@@ -7210,6 +7214,7 @@ class ESPOverlay(QOpenGLWidget):
                                     'last_meas_t': curr_t,
                                     'last_render_t': curr_t,
                                     'last_seen': curr_t,
+                                    'missed_scans': 0,
                                     'smooth_angle': None,
                                     'was_offscreen': False,
                                     'missile': m,
@@ -7223,8 +7228,22 @@ class ESPOverlay(QOpenGLWidget):
                                     'weapon_profile': getattr(m, 'profile', ''),
                                 }
 
-                    # Purge stale missile tracks (grace period exceeded)
-                    stale_ptrs = [ptr for ptr, tr in self.missile_tracks.items() if (curr_t - tr['last_seen']) > MISSILE_TRACK_TIMEOUT_S]
+                        # ตรวจสอบขีปนาวุธที่หายไปจากการสแกนรอบนี้ (Missed Scans / Detonated / Despawned)
+                        for ptr, tr in list(self.missile_tracks.items()):
+                            if ptr not in current_scan_ptrs:
+                                tr['missed_scans'] = tr.get('missed_scans', 0) + 1
+                                # หายไป 2 รอบสแกนติดกัน (~160ms) หรือเกิน Timeout -> ลบทันที ป้องกัน Ghosting
+                                if tr['missed_scans'] >= 2 or (curr_t - tr.get('last_meas_t', tr.get('last_seen', curr_t))) > MISSILE_TRACK_TIMEOUT_S:
+                                    del self.missile_tracks[ptr]
+                            else:
+                                tr['missed_scans'] = 0
+
+                    # Purge stale missile tracks (grace period exceeded or missed scans >= 2)
+                    stale_ptrs = [
+                        ptr for ptr, tr in self.missile_tracks.items()
+                        if (curr_t - tr.get('last_meas_t', tr.get('last_seen', 0.0))) > MISSILE_TRACK_TIMEOUT_S
+                        or tr.get('missed_scans', 0) >= 2
+                    ]
                     for ptr in stale_ptrs:
                         del self.missile_tracks[ptr]
 
@@ -7240,20 +7259,31 @@ class ESPOverlay(QOpenGLWidget):
                             del self.missile_tracks[ptr]
                             continue
 
+                        # ตรวจสอบขีดจำกัดเวลา Timeout และ Missed Scans
+                        time_since_meas = curr_t - tr.get('last_meas_t', curr_t)
+                        if time_since_meas > MISSILE_TRACK_TIMEOUT_S or tr.get('missed_scans', 0) >= 2:
+                            del self.missile_tracks[ptr]
+                            continue
+
                         # Frame dt for continuous per-frame extrapolation (capped between 1ms and 50ms)
                         last_r = tr.get('last_render_t', curr_t)
                         frame_dt = max(0.001, min(curr_t - last_r, 0.050))
                         tr['last_render_t'] = curr_t
 
+                        # อนุญาตให้คำนวณ Dead Reckoning เฉพาะช่วงเวลาที่ยังไม่เกินขีดจำกัด (0.15s)
+                        # เพื่อไม่ให้ขีปนาวุธที่ระเบิดแล้วบินหลอนต่อไปในอากาศ (Fix EMA ghosting)
+                        if time_since_meas <= MISSILE_EXTRAPOLATION_MAX_S:
+                            sv = tr.get('smooth_vel', tr.get('vel', (0.0, 0.0, 0.0)))
+                            sp = tr.get('smooth_pos', tr.get('base_pos', (0.0, 0.0, 0.0)))
+                            extrap_pos = (
+                                sp[0] + sv[0] * frame_dt,
+                                sp[1] + sv[1] * frame_dt,
+                                sp[2] + sv[2] * frame_dt,
+                            )
+                            tr['smooth_pos'] = extrap_pos
+
+                        smooth_pos = tr.get('smooth_pos', tr.get('base_pos', (0.0, 0.0, 0.0)))
                         sv = tr.get('smooth_vel', tr.get('vel', (0.0, 0.0, 0.0)))
-                        sp = tr.get('smooth_pos', tr.get('base_pos', (0.0, 0.0, 0.0)))
-                        extrap_pos = (
-                            sp[0] + sv[0] * frame_dt,
-                            sp[1] + sv[1] * frame_dt,
-                            sp[2] + sv[2] * frame_dt,
-                        )
-                        tr['smooth_pos'] = extrap_pos
-                        smooth_pos = extrap_pos
 
                         dx = smooth_pos[0] - my_pos[0]
                         dy = smooth_pos[1] - my_pos[1]

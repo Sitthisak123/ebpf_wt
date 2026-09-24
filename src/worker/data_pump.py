@@ -780,11 +780,11 @@ class DataPumpWorker(QThread):
         # Scan for missiles periodically in background thread (0ms in paintGL)
         if (now - self.last_missile_scan_t) >= self.missile_scan_interval:
             self.last_missile_scan_t = now
-            self.missile_scan_seq += 1
             try:
                 m_res = self.missile_scanner.scan(self.scanner, self.base_address)
                 if m_res is not None:
                     self.latest_missiles = m_res
+                    self.missile_scan_seq += 1
             except Exception:
                 pass
 

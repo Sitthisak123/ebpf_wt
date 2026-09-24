@@ -230,8 +230,8 @@ class MissileScanner:
         """
         now = time.time()
         
-        # Throttle: minimum 50ms between scans
-        if now - self._last_scan_time < 0.05:
+        # Throttle: minimum 30ms between scans
+        if now - self._last_scan_time < 0.03:
             return None
         self._last_scan_time = now
         
@@ -332,6 +332,8 @@ class MissileScanner:
         # Note: 0x420 is a flight timer/component pointer (float/ptr), NOT a detonation boolean flag.
         # Dead/stationary rockets are already filtered by _is_valid_missile_motion (speed >= 10.0 m/s).
         phase = struct.unpack_from("<I", header, OFF_RKT_PHASE)[0] if len(header) >= OFF_RKT_PHASE + 4 else 0
+        if phase == 6:
+            return None
         detonated = struct.unpack_from("<I", header, OFF_RKT_DETONATED)[0] if len(header) >= OFF_RKT_DETONATED + 4 else 0
         
         # Header metadata with fallback support
