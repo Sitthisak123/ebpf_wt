@@ -1189,7 +1189,7 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                     if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
                         bmin = struct.unpack("<fff", bmin_data)
                         bmax = struct.unpack("<fff", bmax_data)
-                        y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.52
+                        y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.48
                         y_max = bmax[1] + 0.6
                         z_max = max(1.0, abs(bmax[2]) * 0.70)
                     else:
@@ -1214,17 +1214,19 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                     if candidates:
                         candidates.sort(key=lambda x: x[0], reverse=True)
 
-                        # 3a. ตรวจหา Cannon Barrel มาตรฐาน (ปลายกระบอกยื่นไปใกล้/เกินหน้ารถ และยาว >= 1.2m)
+                        # 3a. ตรวจหา Cannon Barrel มาตรฐาน (ปลายกระบอกยื่นไปใกล้/เกินหน้ารถ และยาว >= 0.85m)
                         for cand in candidates:
                             mx_b, my_b, mz_b, m_idx = cand
                             front_limit = (bmax[0] - 0.6) if bmax_data else 1.5
                             if mx_b >= front_limit:
-                                collinear = [c for c in candidates if abs(c[1] - my_b) < 0.20 and abs(c[2] - mz_b) < 0.20 and c[0] <= mx_b]
+                                collinear = [c for c in candidates if abs(c[1] - my_b) < 0.08 and abs(c[2] - mz_b) < 0.08 and c[0] <= mx_b]
+                                if len(collinear) < 2:
+                                    collinear = [c for c in candidates if abs(c[1] - my_b) < 0.12 and abs(c[2] - mz_b) < 0.12 and c[0] <= mx_b]
                                 if collinear:
                                     collinear.sort(key=lambda x: x[0])
                                     b_cand = collinear[0]
                                     c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
-                                    if c_len >= 1.2:
+                                    if c_len >= 0.85:
                                         breech_idx = b_cand[3]
                                         muzzle_idx = m_idx
                                         is_launcher = False
@@ -1238,7 +1240,7 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                 launcher_cands.sort(key=lambda c: (c[1], c[0]), reverse=True)
                                 for cand in launcher_cands:
                                     mx_b, my_b, mz_b, m_idx = cand
-                                    collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.15 and abs(c[2] - mz_b) < 0.15]
+                                    collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.10 and abs(c[2] - mz_b) < 0.10]
                                     if len(collinear) >= 2:
                                         collinear.sort(key=lambda x: x[0])
                                         breech_idx = collinear[0][3]
