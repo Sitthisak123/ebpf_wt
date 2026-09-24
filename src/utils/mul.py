@@ -216,11 +216,16 @@ NON_PLAYABLE_PATH_BLOCKLIST = (
 )
 
 
-def reset_runtime_caches(clear_view=False):
+def reset_runtime_caches(clear_view=False, scanner=None):
     global LAST_CGAME_PTR, LAST_VIEW_MATRIX, LAST_VIEW_PROJECTION_MODE
     UNIT_KIND_CACHE.clear()
     UNIT_FILTER_CACHE.clear()
     _BBOX_FALLBACK_LOGGED.clear()
+    if scanner:
+        if hasattr(scanner, "bone_cache"):
+            scanner.bone_cache.clear()
+        if hasattr(scanner, "model_barrel_cache"):
+            scanner.model_barrel_cache.clear()
     if clear_view:
         LAST_CGAME_PTR = 0
         LAST_VIEW_MATRIX = None
@@ -1116,31 +1121,37 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                 if cache.get('info_ptr') and current_info_ptr and cache.get('info_ptr') != current_info_ptr:
                     del scanner.bone_cache[u_ptr]
                 else:
-                    anim_wtm = cache.get('anim_wtm_ptr', 0)
-                    breech_idx = cache.get('breech_idx', -1)
-                    muzzle_idx = cache.get('muzzle_idx', -1)
-                    is_launcher = cache.get('is_launcher', False)
-                    if anim_wtm and is_valid_ptr(anim_wtm) and breech_idx != -1 and muzzle_idx != -1:
-                        b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
-                        m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
-                        if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
-                            bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
-                            mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
-                            fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
-                            if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
-                                cache['fail_count'] = 0
-                                if is_launcher:
-                                    mx = bx + fx * 4.0
-                                    my = by + fy * 4.0
-                                    mz = bz + fz * 4.0
-                                else:
-                                    barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
-                                    if breech_idx == muzzle_idx or barrel_len < 0.5:
-                                        bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
-                                return to_world(bx, by, bz), to_world(mx, my, mz)
-                        cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
-                        if cache['fail_count'] >= 10:
-                            del scanner.bone_cache[u_ptr]
+                    # ตรวจสอบและดึง t250 ล่าสุดของยูนิตเสมอ เพื่อป้องกันการอ่าน Anim WTM จาก memory เก่าที่ถูกทำลาย/จัดสรรใหม่
+                    t250 = _read_ptr(scanner, u_ptr + 0x250)
+                    if not is_valid_ptr(t250):
+                        del scanner.bone_cache[u_ptr]
+                    else:
+                        anim_wtm = t250 + 0x30
+                        breech_idx = cache.get('breech_idx', -1)
+                        muzzle_idx = cache.get('muzzle_idx', -1)
+                        is_launcher = cache.get('is_launcher', False)
+                        if breech_idx != -1 and muzzle_idx != -1:
+                            b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
+                            m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
+                            if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
+                                bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
+                                mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
+                                fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                                if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
+                                    cache['fail_count'] = 0
+                                    cache['anim_wtm_ptr'] = anim_wtm
+                                    if is_launcher:
+                                        mx = bx + fx * 4.0
+                                        my = by + fy * 4.0
+                                        mz = bz + fz * 4.0
+                                    else:
+                                        barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                                        if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                            bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
+                                    return to_world(bx, by, bz), to_world(mx, my, mz)
+                            cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
+                            if cache['fail_count'] >= 5:
+                                del scanner.bone_cache[u_ptr]
 
         # 2. ตรวจสอบ model_barrel_cache (Per-Vehicle Model)
         cached_model = scanner.model_barrel_cache.get(current_info_ptr) if current_info_ptr else None

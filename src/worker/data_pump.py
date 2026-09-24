@@ -317,6 +317,7 @@ class DataPumpWorker(QThread):
             self.active_targets.clear()
             self.last_cgame_base = 0
             self.last_my_unit = 0
+            mul.reset_runtime_caches(clear_view=True, scanner=self.scanner)
             snap.is_valid = False
             return snap
 
@@ -324,6 +325,7 @@ class DataPumpWorker(QThread):
             self.last_cgame_base = cgame_base
             self.profile_cache.clear()
             self.active_targets.clear()
+            mul.reset_runtime_caches(clear_view=False, scanner=self.scanner)
         snap.cgame_base = cgame_base
 
         # --- 2. View Matrix ---
@@ -767,6 +769,13 @@ class DataPumpWorker(QThread):
                 last_seen_val = item.get("last_seen", 0.0) if isinstance(item, dict) else item[2]
                 if (now - last_seen_val) > 10.0:
                     del self.unit_id_cache[ptr]
+
+        # Clean bone_cache in scanner for despawned units (5-second grace period)
+        if hasattr(self.scanner, "bone_cache") and self.scanner.bone_cache:
+            for ptr in list(self.scanner.bone_cache.keys()):
+                if ptr != snap.my_unit and ptr not in current_seen_ptrs:
+                    if ptr not in self.profile_cache:
+                        del self.scanner.bone_cache[ptr]
 
         # Scan for missiles periodically in background thread (0ms in paintGL)
         if (now - self.last_missile_scan_t) >= self.missile_scan_interval:
