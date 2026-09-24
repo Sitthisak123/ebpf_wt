@@ -125,9 +125,12 @@ def dump_barrel_offset(write_persistence=True):
                     cannon_pairs = []
                     for cand in candidates:
                         mx_b, my_b, mz_b, m_idx = cand
-                        collinear = [c for c in candidates if abs(c[1] - my_b) < 0.08 and abs(c[2] - mz_b) < 0.08 and c[0] <= mx_b]
+                        # ใช้ tolerance แบบ tiered (0.04m -> 0.06m -> 0.10m) เพื่อให้ได้จุดแกนปืนจริง ไม่หลุดไปหยิบชิ้นส่วนหลังคาป้อม
+                        collinear = [c for c in candidates if abs(c[1] - my_b) < 0.04 and abs(c[2] - mz_b) < 0.04 and c[0] <= mx_b]
                         if len(collinear) < 2:
-                            collinear = [c for c in candidates if abs(c[1] - my_b) < 0.12 and abs(c[2] - mz_b) < 0.12 and c[0] <= mx_b]
+                            collinear = [c for c in candidates if abs(c[1] - my_b) < 0.06 and abs(c[2] - mz_b) < 0.06 and c[0] <= mx_b]
+                        if len(collinear) < 2:
+                            collinear = [c for c in candidates if abs(c[1] - my_b) < 0.10 and abs(c[2] - mz_b) < 0.10 and c[0] <= mx_b]
                         if len(collinear) >= 2:
                             collinear.sort(key=lambda x: x[0])
                             b_cand = collinear[0]
