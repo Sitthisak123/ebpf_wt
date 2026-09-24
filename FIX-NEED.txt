@@ -11,7 +11,7 @@
     -Name: 
     -Type: SAM Rocket
 - missile detection: 
+    -ignore: Onwer=0x1 || None, tracking=255
+    -DontPanic: tracking=0
     -detected [Bomb] as [Beam Riding Missile]
-    -Onwer: 0x1
-
 
