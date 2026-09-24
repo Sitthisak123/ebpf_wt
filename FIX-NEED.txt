@@ -7,8 +7,11 @@
 - add air ghost filter [if air_unit_vel > 0 and pos == prev_pos]
 - target lock cuase ground Hitpoint simulation: make this feature specific for Air Unit and can be lock ground unit only
 - Barrel indicator:
-    -Name: PUMA, Sd,Kfz. 6/2, Wiesel 1A2, BMP's, BTR's, AA's
-    -Type: ATGM, Rocket
-- missile detection: detected [Bomb] as [Beam Riding Missile]
-- 
+    -Cache issue
+    -Name: 
+    -Type: SAM Rocket
+- missile detection: 
+    -detected [Bomb] as [Beam Riding Missile]
+    -Onwer: 0x1
+
 
