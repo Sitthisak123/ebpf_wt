@@ -92,6 +92,7 @@ COUNTERMEASURE_KEYWORDS = (
     "flare", "chaff", "countermeasure", "decoy", "dispenser",
     "cm_", "cartridge", "split_launcher", "bullet_flare",
     "flares", "bol_pod", "anti_radar", "infrared_decoy",
+    "bomb", "fab_", "ofab_", "kab_", "gbu",
 )
 
 def _is_valid_vec3(v):
@@ -123,14 +124,30 @@ def _is_valid_missile_motion(pos, vel):
     return True, spd
 
 
+def classify_seeker_type(wep_name: str) -> str:
+    """ระบุชนิดหัวค้นหาเป้าหมาย (Weapon Profile) จากชื่ออาวุธแบบ Real-time"""
+    w = (wep_name or "").lower()
+    if any(k in w for k in ("aim_7", "r_27r", "r_27er", "r_23r", "r_24r", "super_530", "aspide", "skyflash")):
+        return "SARH"
+    if any(k in w for k in ("aim_120", "r_77", "mica", "aam_4", "pl_12", "derby", "phoenix", "aim_54")):
+        return "ARH"
+    if any(k in w for k in ("aim_9", "r_60", "r_73", "magic", "pl_5", "pl_7", "sraam", "strela", "mistral", "ty_90", "stinger", "igla", "9m39", "9m38")):
+        return "IR"
+    if any(k in w for k in ("roland", "adats", "9m311", "vt_1", "vt1", "starstreak", "hellfire", "vikhr", "mim146", "mim-146", "pantsir", "tor", "9m331")):
+        return "SACLOS"
+    if any(k in w for k in ("agm_65", "kh_29", "pars", "spike", "q-5")):
+        return "TV/IIR"
+    return "GUIDED"
+
+
 # ====================================================================
 # MissileInfo Container
 # ====================================================================
 class MissileInfo:
     __slots__ = (
         'ptr', 'pos', 'vel', 'speed', 'owner', 'state',
-        'entity_id', 'guidance_ptr', 'name',
-        'is_locked', 'is_tracking', 'target_id',
+        'entity_id', 'guidance_ptr', 'name', 'profile',
+        'is_locked', 'is_tracking', 'tracking', 'target_id',
         'entry_idx', 'launch_pos',
     )
     
@@ -144,15 +161,18 @@ class MissileInfo:
         self.entity_id = 0
         self.guidance_ptr = 0
         self.name = ""
+        self.profile = ""
         self.is_locked = False
         self.is_tracking = False
+        self.tracking = 0
         self.target_id = -1
         self.entry_idx = -1
         self.launch_pos = (0.0, 0.0, 0.0)
     
     def __repr__(self):
-        return (f"<Missile '{self.name}' pos=({self.pos[0]:.0f},{self.pos[1]:.0f},{self.pos[2]:.0f}) "
-                f"spd={self.speed:.0f} lock={self.is_locked} trk={self.is_tracking} tgt={self.target_id}>")
+        prof_str = f" [{self.profile}]" if self.profile else ""
+        return (f"<Missile '{self.name}'{prof_str} pos=({self.pos[0]:.0f},{self.pos[1]:.0f},{self.pos[2]:.0f}) "
+                f"spd={self.speed:.0f} lock={self.is_locked} trk={self.is_tracking}({self.tracking}) tgt={self.target_id}>")
 
 
 # ====================================================================
@@ -369,8 +389,9 @@ class MissileScanner:
         
         # Priority A: props pointer
         if _is_valid_ptr(props):
-            if props in self._props_name_cache:
-                name = self._props_name_cache[props]
+            cached_n = self._props_name_cache.get(props)
+            if cached_n and cached_n not in ("guided_missile.blk", "missile.blk"):
+                name = cached_n
             else:
                 found_cm = False
                 cand_name = ""
@@ -454,6 +475,7 @@ class MissileScanner:
         m.entity_id = eid
         m.guidance_ptr = guid
         m.name = name
+        m.profile = classify_seeker_type(name)
         m.entry_idx = entry_idx
         
         # Read original launch position at +0xc0 (if valid 3D float)
@@ -463,9 +485,18 @@ class MissileScanner:
                 m.launch_pos = lpos
         
         # Read guidance details if valid pointer
+        raw_tracking = 0
+        is_locked = False
+        is_tracking = False
+        tgt = 0
         if _is_valid_ptr(guid):
-            m.is_locked = (_r8(scanner, guid + OFF_GUID_LOCKED) == 1) or (_r8(scanner, guid + 0x50) == 1)
-            m.is_tracking = (_r8(scanner, guid + OFF_GUID_TRACKING) == 1) or (_r8(scanner, guid + 0x51) == 1)
+            l1 = _r8(scanner, guid + OFF_GUID_LOCKED)
+            l2 = _r8(scanner, guid + 0x50)
+            t1 = _r8(scanner, guid + OFF_GUID_TRACKING)
+            t2 = _r8(scanner, guid + 0x51)
+            raw_tracking = t1 if t1 != 0 else t2
+            is_locked = (l1 == 1) or (l2 == 1)
+            is_tracking = (raw_tracking == 1)
             tgt_raw = scanner.read_mem(guid + OFF_GUID_TARGET_ID, 2)
             tgt = struct.unpack("<H", tgt_raw)[0] if tgt_raw and len(tgt_raw) == 2 else 0
             if tgt == 0xFFFF:
@@ -478,7 +509,19 @@ class MissileScanner:
                         tgt = fb
                     else:
                         tgt = 0
-            m.target_id = tgt
+
+        # 🚫 FILTER: Ignore invalid entities / bombs (Owner=0x1 || None, tracking=255)
+        if raw_tracking == 255:
+            return None
+        if owner in (1, 0x1):
+            return None
+        if (owner == 0 or owner is None) and raw_tracking == 255:
+            return None
+
+        m.is_locked = is_locked
+        m.is_tracking = is_tracking
+        m.tracking = raw_tracking
+        m.target_id = tgt
         
         return m
 
@@ -505,7 +548,7 @@ def get_incoming_missiles(scanner, base, my_unit_id):
     missiles = get_all_missiles(scanner, base)
     if missiles is None:
         return None
-    return [m for m in missiles if m.target_id == my_unit_id and m.is_tracking]
+    return [m for m in missiles if m.target_id == my_unit_id and (m.is_tracking or getattr(m, 'tracking', 0) == 1)]
 
 
 def reset_missile_scanner():

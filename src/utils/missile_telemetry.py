@@ -277,7 +277,7 @@ class RawECSScanner:
 
         # 6. Diagnostic Filter Verdict (เทียบกับเกณฑ์มาตรฐานของ ESP)
         verdict, reject_reason = self._evaluate_esp_verdict(
-            pos, vel, spd, state, phase, detonated, eid, found_wep, is_cm
+            pos, vel, spd, state, phase, detonated, eid, found_wep, is_cm, owner, g_tracking
         )
 
         heading, pitch = calculate_heading_pitch(vel)
@@ -307,7 +307,7 @@ class RawECSScanner:
             "g_locked": g_locked,
             "g_tracking": g_tracking,
             "g_target_id": g_target_id,
-            "is_guided": bool(g_locked or g_tracking or g_target_id > 0 or "sam" in (found_wep or "").lower()),
+            "is_guided": bool((g_locked or (g_tracking != 0 and g_tracking != 255) or g_target_id > 0 or "sam" in (found_wep or "").lower()) and g_tracking != 255),
             "seeker_type": classify_seeker_type(found_wep),
             "props_ptr": props_ptr,
             "hex_preview": hex_preview,
@@ -316,10 +316,16 @@ class RawECSScanner:
         }
 
     @staticmethod
-    def _evaluate_esp_verdict(pos, vel, spd, state, phase, detonated, eid, name, is_cm) -> Tuple[str, str]:
+    def _evaluate_esp_verdict(pos, vel, spd, state, phase, detonated, eid, name, is_cm, owner=0, tracking=0) -> Tuple[str, str]:
         """ประเมินว่า Entity นี้จะผ่านตัวกรองของ ESP หรือถูกคัดทิ้งด้วยสาเหตุใด"""
         if is_cm:
             return "REJECTED", "COUNTERMEASURE_FLARE_OR_CHAFF"
+        if tracking == 255:
+            return "REJECTED", "TRACKING_255_INVALID_GUIDANCE"
+        if owner in (1, 0x1):
+            return "REJECTED", "OWNER_0X1_INVALID_OR_BOMB"
+        if (owner == 0 or owner is None) and tracking == 255:
+            return "REJECTED", "OWNER_NONE_TRACKING_255"
         if not all(math.isfinite(x) for x in pos) or not all(math.isfinite(x) for x in vel):
             return "REJECTED", "NON_FINITE_COORDS"
         if (pos[0]*pos[0] + pos[1]*pos[1] + pos[2]*pos[2]) < 2500.0:

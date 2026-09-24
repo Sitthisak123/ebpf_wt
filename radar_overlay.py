@@ -3333,6 +3333,29 @@ class ESPOverlay(QOpenGLWidget):
                 self.unit_team_by_ptr.update(snapshot.unit_team_by_ptr)
                 self.unit_is_air_by_ptr.update(snapshot.unit_is_air_by_ptr)
 
+            # 🚀 Real-time Missile Track Metadata Update per FrameSnapshot
+            if hasattr(self, 'missile_tracks') and self.missile_tracks:
+                for ptr, tr in self.missile_tracks.items():
+                    m = tr.get('missile')
+                    if not m:
+                        continue
+                    # 1. Update Shooter Name in Real-Time
+                    u_owner = tr.get('owner_unit', 0)
+                    if u_owner:
+                        s_name = snapshot.unit_name_by_ptr.get(u_owner)
+                        if s_name:
+                            tr['shooter_name'] = s_name
+                    # 2. Update Target Name in Real-Time
+                    if 0 < m.target_id < 20000 and m.target_id != 65280:
+                        t_name = snapshot.unit_name_by_id.get(m.target_id)
+                        if t_name:
+                            tr['tracked_tgt_name'] = t_name
+                            tr['last_tgt_id'] = m.target_id
+                    # 3. Update Weapon Profile in Real-Time
+                    m_prof = getattr(m, 'profile', '')
+                    if m_prof:
+                        tr['weapon_profile'] = m_prof
+
 
     def _play_alert_sound(self, sound_key, sound_path, curr_t):
         if not ALERT_AUDIO_ON:
@@ -7017,6 +7040,12 @@ class ESPOverlay(QOpenGLWidget):
                             if not m.name or m.name == "":
                                 continue
 
+                            # 🚫 กรองข้าม entity ที่ผิดปกติ / ระเบิด / dummy: Owner=0x1 || None, tracking=255
+                            m_owner = getattr(m, 'owner', 0)
+                            m_trk = getattr(m, 'tracking', 0)
+                            if m_trk == 255 or m_owner in (1, 0x1) or ((m_owner in (0, None)) and m_trk == 255):
+                                continue
+
                             cur_dist = 99999.0
                             closing_speed = 0.0
                             if my_pos:
@@ -7033,7 +7062,20 @@ class ESPOverlay(QOpenGLWidget):
                             # 🎯 DIRECT TAGGED UNIT POINTER CHECK & RESOLUTION (m.owner & ~1 == unit_ptr)
                             # ใน Dagor Engine ฟิลด์ Owner ของขีปนาวุธคือ Unit Pointer ที่ถูก Tag บิต 0 (u_ptr | 1)
                             owner_unit = (m.owner & ~1) if m.owner else 0
-                            owner_name, owner_team, owner_is_air = self.resolve_unit_by_ptr(owner_unit) if owner_unit else ("", 0, False)
+                            owner_name = ""
+                            owner_team = 0
+                            owner_is_air = False
+                            if owner_unit:
+                                if snapshot and hasattr(snapshot, 'unit_name_by_ptr') and owner_unit in snapshot.unit_name_by_ptr:
+                                    owner_name = snapshot.unit_name_by_ptr[owner_unit]
+                                    owner_team = snapshot.unit_team_by_ptr.get(owner_unit, 0)
+                                    owner_is_air = snapshot.unit_is_air_by_ptr.get(owner_unit, False)
+                                elif owner_unit in self.unit_name_by_ptr:
+                                    owner_name = self.unit_name_by_ptr[owner_unit]
+                                    owner_team = self.unit_team_by_ptr.get(owner_unit, 0)
+                                    owner_is_air = self.unit_is_air_by_ptr.get(owner_unit, False)
+                                else:
+                                    owner_name, owner_team, owner_is_air = self.resolve_unit_by_ptr(owner_unit)
 
                             is_owner_me = bool(
                                 (my_unit and owner_unit == my_unit) or
@@ -7127,6 +7169,8 @@ class ESPOverlay(QOpenGLWidget):
                                 tr['last_seen'] = curr_t
                                 tr['missile'] = m
                                 tr['owner_unit'] = owner_unit
+                                tr['weapon_name'] = m.name
+                                tr['weapon_profile'] = getattr(m, 'profile', '')
                                 if owner_name:
                                     tr['shooter_name'] = owner_name
                                 if is_owner_me:
@@ -7175,6 +7219,8 @@ class ESPOverlay(QOpenGLWidget):
                                     'is_friendly_missile': is_friendly,
                                     'owner_unit': owner_unit,
                                     'shooter_name': owner_name,
+                                    'weapon_name': m.name,
+                                    'weapon_profile': getattr(m, 'profile', ''),
                                 }
 
                     # Purge stale missile tracks (grace period exceeded)
@@ -7185,6 +7231,15 @@ class ESPOverlay(QOpenGLWidget):
                     # 🚀 Extrapolate active missile positions at 60 FPS via Continuous Dead Reckoning
                     active_missile_entries = []
                     for ptr, tr in list(self.missile_tracks.items()):
+                        m = tr['missile']
+
+                        # 🚫 กรองข้าม entity ที่ผิดปกติ / ระเบิด / dummy: Owner=0x1 || None, tracking=255
+                        m_owner = getattr(m, 'owner', 0)
+                        m_trk = getattr(m, 'tracking', 0)
+                        if m_trk == 255 or m_owner in (1, 0x1) or ((m_owner in (0, None)) and m_trk == 255):
+                            del self.missile_tracks[ptr]
+                            continue
+
                         # Frame dt for continuous per-frame extrapolation (capped between 1ms and 50ms)
                         last_r = tr.get('last_render_t', curr_t)
                         frame_dt = max(0.001, min(curr_t - last_r, 0.050))
@@ -7199,7 +7254,6 @@ class ESPOverlay(QOpenGLWidget):
                         )
                         tr['smooth_pos'] = extrap_pos
                         smooth_pos = extrap_pos
-                        m = tr['missile']
 
                         dx = smooth_pos[0] - my_pos[0]
                         dy = smooth_pos[1] - my_pos[1]
@@ -7207,11 +7261,11 @@ class ESPOverlay(QOpenGLWidget):
                         dist = math.sqrt(dx*dx + dy*dy + dz*dz)
                         if dist < 100000:
                             if MISSILE_ESP_ONLY_GUIDED:
-                                # ข้ามจรวด unguided ที่ไม่มีระบบนำวิถีเลย
+                                # ข้ามจรวด unguided ที่ไม่มีระบบนำวิถีเลย (tracking=0 หรือ 255 และไม่มีการล็อก)
                                 has_guid = bool(
-                                    (m.guidance_ptr and is_valid_ptr(m.guidance_ptr)) or
-                                    m.is_tracking or m.is_locked or (m.target_id > 0) or
-                                    is_sam_name
+                                    (m_trk != 0 and m_trk != 255 and (m.is_tracking or m.is_locked or m_trk == 1)) or
+                                    (m.target_id > 0 and m.target_id != 65280 and m_trk != 0 and m_trk != 255) or
+                                    (is_sam_name and m_trk != 0 and m_trk != 255)
                                 )
                                 if not has_guid:
                                     continue
@@ -7258,23 +7312,31 @@ class ESPOverlay(QOpenGLWidget):
                                     continue
 
                             # ตรวจสอบสถานะ Guidance
+                            m_trk = getattr(m, 'tracking', 0)
+
                             # 1) Exact Seeker Lock on ME (100% Seeker Lock Match with Unit ID)
-                            is_exact_locked_me = bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
+                            # ต้องมีระบบ tracking หรือ lock ทำงานจริง (ไม่ใช่ tracking=0 หรือ tracking=255)
+                            is_exact_locked_me = bool(
+                                my_unit_id > 0 and m.target_id == my_unit_id and
+                                m_trk != 0 and m_trk != 255 and
+                                (m.is_tracking or m.is_locked or m_trk == 1)
+                            )
 
                             # 2) ขีปนาวุธล็อกเครื่องอื่น: ต้องเป็น Target ID ของผู้เล่นอื่นที่มีตัวตนจริง (0 < id < 20000 และไม่ใช่ Sentinel 65280/0xFF00)
                             has_real_other_target = bool(
                                 0 < m.target_id < 20000 and m.target_id != 65280 and
                                 my_unit_id > 0 and m.target_id != my_unit_id and
-                                (m.is_tracking or m.is_locked)
+                                m_trk != 0 and m_trk != 255 and
+                                (m.is_tracking or m.is_locked or m_trk == 1)
                             )
                             is_guided_to_other = has_real_other_target
 
                             # 3) SAM / SACLOS / Laser Beam-Riding / Command Guidance (เช่น MIM-146 ADATS, Roland, VT-1, Pantsir, Tunguska, Tor)
                             # ขีปนาวุธเหล่านี้ไม่มี Seeker Head ล็อก Unit ID แยกรายตัว (target_id มักเป็น 65280/0xFF00 หรือ 0)
-                            # หากมีระบบนำวิถี (locked=1, tracking=1 หรือ guidance_ptr หรือชื่อ SAM) + ไม่ได้ล็อกผู้เล่นอื่น + กำลังบินพุ่งตรงเข้าหาเครื่องเรา (is_heading_to_me)
+                            # หาก tracking=0 หรือ 255 หมายถึงไม่มีการนำวิถี (no guided / lost tracking / unguided / ballistic) -> DontPanic
                             has_guidance = bool(
-                                (m.guidance_ptr and is_valid_ptr(m.guidance_ptr)) or
-                                m.is_tracking or m.is_locked or is_sam_name
+                                m_trk != 0 and m_trk != 255 and
+                                (m.is_tracking or m.is_locked or m_trk == 1 or (is_sam_name and m.guidance_ptr and is_valid_ptr(m.guidance_ptr)))
                             )
                             is_sam_guided_me = bool(
                                 has_guidance and
@@ -7306,6 +7368,12 @@ class ESPOverlay(QOpenGLWidget):
                         auto_cm_highest_stage = 0
                         if incoming and my_can_auto_cm and ENABLE_AUTO_COUNTERMEASURE:
                             for m_inc, _, d_inc, tti_inc, _, inc_guided, inc_exact_locked in incoming:
+                                m_inc_trk = getattr(m_inc, 'tracking', 0)
+
+                                # 🛡️ DontPanic: tracking=0, no guided -> ห้าม Panic (ห้ามยิงเป้าลวง Stage 2 หรือหากไม่มี guided ห้าม trigger auto-cm)
+                                if m_inc_trk == 0 or not (inc_guided or inc_exact_locked):
+                                    continue
+
                                 # ถ้า REQUIRE_EXACT_LOCK เป็น True ต้องเป็น Guided==myUnit หรือ Exact Locked เท่านั้น
                                 if AUTO_CM_REQUIRE_EXACT_LOCK and not (inc_guided or inc_exact_locked):
                                     continue
@@ -7365,42 +7433,68 @@ class ESPOverlay(QOpenGLWidget):
                             is_incoming = m.ptr in incoming_ptrs
                             is_my = bool(tr.get('is_my_missile') or tr.get('is_owner_me_verified'))
                             is_friendly = False if is_my else bool(tr.get('is_friendly_missile') and not is_incoming)
+                            m_trk = getattr(m, 'tracking', 0)
                             is_exact_locked_me = False if (is_my or is_friendly) else bool(
-                                my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked)
+                                my_unit_id > 0 and m.target_id == my_unit_id and
+                                m_trk != 0 and m_trk != 255 and
+                                (m.is_tracking or m.is_locked or m_trk == 1)
                             )
                             is_guided_me = False if (is_my or is_friendly) else (
                                 is_exact_locked_me or (m.ptr in incoming_guided_ptrs)
                             )
                             has_real_other_tgt = bool(0 < m.target_id < 20000 and m.target_id != 65280)
                             is_guided_other = False if (is_my or is_friendly) else bool(
-                                has_real_other_tgt and my_unit_id > 0 and m.target_id != my_unit_id and (m.is_tracking or m.is_locked) and not is_guided_me and not is_incoming
+                                has_real_other_tgt and my_unit_id > 0 and m.target_id != my_unit_id and
+                                m_trk != 0 and m_trk != 255 and
+                                (m.is_tracking or m.is_locked or m_trk == 1) and
+                                not is_guided_me and not is_incoming
                             )
 
-                            # 🎯 TARGET TRACKING: ค้นหาชื่อยูนิตเป้าหมายจาก target_id (เฉพาะ ID จริง ไม่รวม Sentinel 65280)
+                            # 🎯 REAL-TIME TARGET RESOLUTION (per FrameSnapshot)
                             if has_real_other_tgt:
-                                if 'tracked_tgt_name' not in tr or tr.get('last_tgt_id') != m.target_id:
+                                tgt_name = None
+                                if snapshot and hasattr(snapshot, 'unit_name_by_id') and m.target_id in snapshot.unit_name_by_id:
+                                    tgt_name = snapshot.unit_name_by_id[m.target_id]
+                                elif m.target_id in self.unit_id_to_name:
+                                    tgt_name = self.unit_id_to_name[m.target_id]
+                                
+                                if not tgt_name:
                                     tgt_name, _ = self.resolve_unit_by_id(m.target_id)
+                                
+                                if tgt_name:
                                     tr['tracked_tgt_name'] = tgt_name
                                     tr['last_tgt_id'] = m.target_id
                                 tracked_tgt_name = tr.get('tracked_tgt_name')
                             else:
                                 tracked_tgt_name = None
+                                tr['tracked_tgt_name'] = None
 
                             dist_km = dist / 1000.0
                             speed_label = f"{speed:.0f}m/s"
                             dist_label = f"{dist_km:.1f}km" if dist_km >= 1 else f"{dist:.0f}m"
 
-                            short_name = "🚀 Missile"
+                            # 🎯 REAL-TIME WEAPON NAME & PROFILE (per FrameSnapshot)
+                            w_profile = getattr(m, 'profile', '') or tr.get('weapon_profile', '')
+                            prof_badge = f" [{w_profile}]" if w_profile else ""
+                            short_name = f"🚀 Missile{prof_badge}"
                             if m.name:
-                                short_name = "🚀 " + m.name.split('^')[-1].replace('.blk','').replace('_default','')
+                                clean_name = m.name.split('^')[-1].replace('.blk','').replace('_default','')
+                                short_name = f"🚀 {clean_name}{prof_badge}"
 
-                            owner_u = tr.get('owner_unit', 0)
-                            if 'shooter_name' not in tr:
-                                if owner_u:
+                            # 🎯 REAL-TIME SHOOTER RESOLUTION (per FrameSnapshot)
+                            owner_u = tr.get('owner_unit', 0) or ((m.owner & ~1) if m.owner else 0)
+                            if owner_u:
+                                s_name = None
+                                if snapshot and hasattr(snapshot, 'unit_name_by_ptr') and owner_u in snapshot.unit_name_by_ptr:
+                                    s_name = snapshot.unit_name_by_ptr[owner_u]
+                                elif owner_u in self.unit_name_by_ptr:
+                                    s_name = self.unit_name_by_ptr[owner_u]
+                                
+                                if not s_name:
                                     s_name, _, _ = self.resolve_unit_by_ptr(owner_u)
-                                    tr['shooter_name'] = s_name or ""
-                                else:
-                                    tr['shooter_name'] = ""
+                                
+                                if s_name:
+                                    tr['shooter_name'] = s_name
                             shooter_name = tr.get('shooter_name', '')
                             by_str = f" [by {shooter_name}]" if shooter_name else ""
 
@@ -7737,7 +7831,12 @@ class ESPOverlay(QOpenGLWidget):
                                 is_inc = m.ptr in inc_set
                                 is_m = bool(tr.get('is_my_missile') or tr.get('is_owner_me_verified'))
                                 is_fr = False if is_m else bool(tr.get('is_friendly_missile') and not is_inc)
-                                is_ex_lock = False if (is_m or is_fr) else bool(my_unit_id > 0 and m.target_id == my_unit_id and (m.is_tracking or m.is_locked))
+                                m_trk = getattr(m, 'tracking', 0)
+                                is_ex_lock = False if (is_m or is_fr) else bool(
+                                    my_unit_id > 0 and m.target_id == my_unit_id and
+                                    m_trk != 0 and m_trk != 255 and
+                                    (m.is_tracking or m.is_locked or m_trk == 1)
+                                )
                                 is_guid_me = False if (is_m or is_fr) else (is_ex_lock or (m.ptr in inc_guid_set))
 
                                 t_level = "CRITICAL" if is_ex_lock else ("HIGH" if is_guid_me else ("WARNING" if is_inc else "NORMAL"))
@@ -7758,6 +7857,7 @@ class ESPOverlay(QOpenGLWidget):
                                     "on_screen": on_scr,
                                     "target_id": m.target_id,
                                     "threat_level": t_level,
+                                    "profile": getattr(m, 'profile', '') or tr.get('weapon_profile', ''),
                                     "shooter_name": tr.get('shooter_name', ''),
                                     "target_name": tr.get('tracked_tgt_name', ''),
                                 })
