@@ -2306,4 +2306,142 @@ def is_unit_air_fast(scanner, u_ptr) -> bool:
         return False
 
 
+# ===================================================
+# ✈️ Air Unit Watch Filter Constants & Tracker
+# ===================================================
+AIR_WATCH_SPAWN_WINDOW_SEC = 3.0
+AIR_WATCH_POS_EPS_METERS = 0.1
+AIR_WATCH_ANCHOR_EPS_METERS = 0.5
+AIR_WATCH_VEL_EPS = 0.1
+AIR_WATCH_INVUL_EPS = 1e-4
+AIR_WATCH_CLEANUP_TIMEOUT_SEC = 2.5
+
+
+class AirUnitWatchTracker:
+    """
+    Air Unit Spawn Watch Filter:
+    - ในช่วง 3 วินาทีแรกที่ตรวจพบ (first seen 3sec):
+      หาก Air units มี AirVEL != 0 และ invulTime == PrevInvulTime และ POS == prevPOS
+      จะจัดให้อยู่ในสถานะ Watch unit (ESP ยังตรวจไม่พบ / ไม่แสดงผล)
+    - หากอยู่ในช่วงแรก แต่ไม่เข้าเงื่อนไขนี้ (เช่น AirVEL == 0, POS ขยับ หรือ invulTime เปลี่ยน):
+      ปรับให้เป็น instant valid ทันที
+    - ยูนิตที่อยู่ใน Watch ไม่ใช่ invalid ถาวร; จะกู้คืนกลับมาเป็น valid ทันทีหาก POS ขยับ
+    """
+
+    def __init__(
+        self,
+        window_sec: float = AIR_WATCH_SPAWN_WINDOW_SEC,
+        pos_eps_meters: float = AIR_WATCH_POS_EPS_METERS,
+        anchor_eps_meters: float = AIR_WATCH_ANCHOR_EPS_METERS,
+        vel_eps: float = AIR_WATCH_VEL_EPS,
+        invul_eps: float = AIR_WATCH_INVUL_EPS,
+    ):
+        self.window_sec = window_sec
+        self.pos_eps = pos_eps_meters
+        self.anchor_eps = anchor_eps_meters
+        self.vel_eps = vel_eps
+        self.invul_eps = invul_eps
+        self.watch: Dict[int, dict] = {}
+
+    def is_in_watch(
+        self,
+        u_ptr: int,
+        is_air: bool,
+        pos: Optional[Tuple[float, float, float]],
+        vel: Optional[Tuple[float, float, float]],
+        invul_timer: Optional[float],
+        curr_t: float,
+    ) -> bool:
+        if not u_ptr or not is_air or not pos:
+            return False
+
+        curr_pos = (float(pos[0]), float(pos[1]), float(pos[2]))
+        curr_invul = float(invul_timer) if invul_timer is not None else 0.0
+
+        if vel and len(vel) >= 3:
+            vel_mag = math.sqrt(vel[0] ** 2 + vel[1] ** 2 + vel[2] ** 2)
+        else:
+            vel_mag = 0.0
+        vel_nonzero = (vel_mag > self.vel_eps)
+
+        entry = self.watch.get(u_ptr)
+
+        # 1. หากยูนิตได้รับการยืนยันเป็น VALID แล้ว ให้คงสถานะ VALID ตลอดไป
+        if entry is not None and entry.get("status") == "VALID":
+            entry["last_seen"] = curr_t
+            entry["prev_pos"] = curr_pos
+            entry["prev_invul"] = curr_invul
+            return False
+
+        # 2. First seen: ตรวจพบครั้งแรก
+        if entry is None:
+            # หาก AirVEL == 0 (เช่น จอดนิ่งบนรันเวย์) ไม่เข้าเงื่อนไข (AirVEL != 0 and ...) -> Instant valid!
+            if not vel_nonzero:
+                self.watch[u_ptr] = {
+                    "first_seen": curr_t,
+                    "last_seen": curr_t,
+                    "anchor_pos": curr_pos,
+                    "prev_pos": curr_pos,
+                    "prev_invul": curr_invul,
+                    "status": "VALID",
+                }
+                return False
+
+            # หาก AirVEL != 0 มีความเร็วเริ่มต้น: พักไว้ใน Watch เพื่อรอ sample ถัดไป
+            # ทำให้แน่ใจว่า ESP ยังตรวจไม่พบในเฟรมแรกนี้
+            self.watch[u_ptr] = {
+                "first_seen": curr_t,
+                "last_seen": curr_t,
+                "anchor_pos": curr_pos,
+                "prev_pos": curr_pos,
+                "prev_invul": curr_invul,
+                "status": "WATCH",
+            }
+            return True
+
+        # 3. Subsequent seen: เคยตรวจพบแล้วและอยู่ในสถานะ WATCH
+        entry["last_seen"] = curr_t
+        prev_pos = entry.get("prev_pos", curr_pos)
+        anchor_pos = entry.get("anchor_pos", curr_pos)
+        prev_invul = entry.get("prev_invul", curr_invul)
+
+        dist_prev = math.sqrt(sum((curr_pos[i] - prev_pos[i]) ** 2 for i in range(3)))
+        dist_anchor = math.sqrt(sum((curr_pos[i] - anchor_pos[i]) ** 2 for i in range(3)))
+        pos_changed = (dist_prev >= self.pos_eps) or (dist_anchor >= self.anchor_eps)
+
+        invul_changed = abs(curr_invul - prev_invul) >= self.invul_eps
+
+        # เงื่อนไขกู้คืน: not is invalid recovery it to valid if POS these unit are changed
+        if pos_changed:
+            entry["status"] = "VALID"
+            entry["prev_pos"] = curr_pos
+            entry["prev_invul"] = curr_invul
+            return False
+
+        # เช็คเงื่อนไข: AirVEL != 0 and invulTime == PrevInvulTime and POS == prevPOS
+        in_condition = vel_nonzero and (not invul_changed) and (not pos_changed)
+
+        # หากไม่อยู่ในเงื่อนไขนี้แล้ว (เช่น ความเร็วกลายเป็น 0 หรือตัวจับเวลาอมตะเริ่มนับถอยหลัง) -> Instant valid!
+        if not in_condition:
+            entry["status"] = "VALID"
+            entry["prev_pos"] = curr_pos
+            entry["prev_invul"] = curr_invul
+            return False
+
+        # ยังคงอยู่ในเงื่อนไข: คงสถานะ Watch unit (ESP ยังตรวจไม่พบ)
+        entry["status"] = "WATCH"
+        entry["prev_pos"] = curr_pos
+        entry["prev_invul"] = curr_invul
+        return True
+
+    def cleanup(self, curr_t: float, timeout_sec: float = AIR_WATCH_CLEANUP_TIMEOUT_SEC):
+        for ptr in list(self.watch.keys()):
+            if (curr_t - float(self.watch[ptr].get("last_seen", curr_t))) > timeout_sec:
+                del self.watch[ptr]
+
+    def clear(self):
+        self.watch.clear()
+
+
+
 

@@ -42,6 +42,8 @@ from src.utils.mul import (
     get_weapon_barrel,
     get_local_axes_from_rotation,
     get_my_air_velocity,
+    get_air_velocity,
+    AirUnitWatchTracker,
     get_my_air_omega,
     get_sight_compensation_factor,
     world_to_screen,
@@ -197,6 +199,7 @@ class DataPumpWorker(QThread):
         is_recon_drone_fn=None,
         is_fixed_recon_ghost_fn=None,
         is_recon_alert_ready_fn=None,
+        is_air_unit_in_watch_fn=None,
         filter_constants=None,
     ):
         super().__init__()
@@ -216,12 +219,14 @@ class DataPumpWorker(QThread):
         self._is_recon_drone = is_recon_drone_fn
         self._is_fixed_recon_ghost = is_fixed_recon_ghost_fn
         self._is_recon_alert_ready = is_recon_alert_ready_fn
+        self._is_air_unit_in_watch = is_air_unit_in_watch_fn
         self._filter_constants = filter_constants or {}
 
         # ----- Worker-owned caches -----
         self.profile_cache: Dict[int, dict] = {}
         self.unit_id_cache: Dict[int, Tuple[int, str, float]] = {}  # u_ptr -> (unit_id, name, last_seen)
         self.active_targets: Dict[int, dict] = {}  # u_ptr -> {"snapshot": t_snap, "last_seen": now}
+        self.air_spawn_watch = AirUnitWatchTracker()
 
         self.last_my_unit: int = 0
         self.last_my_team: int = 0
@@ -315,6 +320,7 @@ class DataPumpWorker(QThread):
         if cgame_base == 0:
             self.profile_cache.clear()
             self.active_targets.clear()
+            self.air_spawn_watch.clear()
             self.last_cgame_base = 0
             self.last_my_unit = 0
             mul.reset_runtime_caches(clear_view=True, scanner=self.scanner)
@@ -325,6 +331,7 @@ class DataPumpWorker(QThread):
             self.last_cgame_base = cgame_base
             self.profile_cache.clear()
             self.active_targets.clear()
+            self.air_spawn_watch.clear()
             mul.reset_runtime_caches(clear_view=False, scanner=self.scanner)
         snap.cgame_base = cgame_base
 
@@ -366,6 +373,7 @@ class DataPumpWorker(QThread):
             self.profile_cache.clear()
             self.unit_id_cache.clear()
             self.active_targets.clear()
+            self.air_spawn_watch.clear()
             self.clear_missile_cache()
             self.last_my_unit = 0
             snap.all_unit_ptrs = set()
@@ -378,6 +386,7 @@ class DataPumpWorker(QThread):
             self.profile_cache.clear()
             self.unit_id_cache.clear()
             self.active_targets.clear()
+            self.air_spawn_watch.clear()
             self.clear_missile_cache()
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
@@ -624,6 +633,18 @@ class DataPumpWorker(QThread):
             if is_recon_drone and self._is_fixed_recon_ghost and self._is_fixed_recon_ghost(u_ptr, pos, now):
                 continue
 
+            # ✈️ Air spawn watch filter (ghost air units with AirVEL != 0, frozen POS & invul)
+            if resolved_is_air:
+                air_vel = get_air_velocity(self.scanner, u_ptr)
+                is_watch = False
+                if self._is_air_unit_in_watch:
+                    is_watch = self._is_air_unit_in_watch(u_ptr, resolved_is_air, pos, air_vel, invul_timer, now)
+                elif hasattr(self, 'air_spawn_watch'):
+                    is_watch = self.air_spawn_watch.is_in_watch(u_ptr, resolved_is_air, pos, air_vel, invul_timer, now)
+                if is_watch:
+                    self.active_targets.pop(u_ptr, None)
+                    continue
+
             # Origin ghost
             pos_origin_dist = math.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2)
             if pos_origin_dist <= ORIGIN_GHOST_RADIUS:
@@ -762,6 +783,9 @@ class DataPumpWorker(QThread):
                 last_seen = self.profile_cache[ptr].get("last_seen", 0.0)
                 if (now - last_seen) > 5.0:
                     del self.profile_cache[ptr]
+
+        if hasattr(self, 'air_spawn_watch'):
+            self.air_spawn_watch.cleanup(now)
 
         # Clean unit_id cache (10-second grace period for despawned units)
         for ptr, item in list(self.unit_id_cache.items()):

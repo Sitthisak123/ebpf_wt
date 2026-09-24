@@ -3113,6 +3113,7 @@ class ESPOverlay(QOpenGLWidget):
         self.console_initialized = False
         self.air_alert_seen = {}
         self.recon_spawn_watch = {}
+        self.air_spawn_watch = AirUnitWatchTracker()
         self.offscreen_indicator_alpha = {}
         self.offscreen_indicator_state = {}
         self.last_air_alert_sound_at = 0.0
@@ -3211,6 +3212,7 @@ class ESPOverlay(QOpenGLWidget):
             is_recon_drone_fn=_is_recon_drone_like,
             is_fixed_recon_ghost_fn=self._is_fixed_recon_ghost,
             is_recon_alert_ready_fn=self._is_recon_alert_ready,
+            is_air_unit_in_watch_fn=self._is_air_unit_in_watch,
             filter_constants={
                 "NON_PLAYABLE_RUNTIME_HINTS": NON_PLAYABLE_RUNTIME_HINTS,
                 "MAX_GROUND_TARGET_DISTANCE": MAX_GROUND_TARGET_DISTANCE,
@@ -3250,6 +3252,8 @@ class ESPOverlay(QOpenGLWidget):
             self.air_alert_seen.clear()
         if hasattr(self, 'recon_spawn_watch'):
             self.recon_spawn_watch.clear()
+        if hasattr(self, 'air_spawn_watch'):
+            self.air_spawn_watch.clear()
         if hasattr(self, 'offscreen_indicator_alpha'):
             self.offscreen_indicator_alpha.clear()
         if hasattr(self, 'offscreen_indicator_state'):
@@ -3263,6 +3267,8 @@ class ESPOverlay(QOpenGLWidget):
             self._data_pump.profile_cache.clear()
             self._data_pump.active_targets.clear()
             self._data_pump.unit_id_cache.clear()
+            if hasattr(self._data_pump, 'air_spawn_watch'):
+                self._data_pump.air_spawn_watch.clear()
             self._data_pump.last_my_unit = 0
             self._data_pump.last_cgame_base = 0
         reset_runtime_caches(clear_view=True)
@@ -3704,6 +3710,11 @@ class ESPOverlay(QOpenGLWidget):
         if watch.get("moved"):
             return True
         return (curr_t - float(watch.get("first_seen", curr_t))) >= RECON_GHOST_SPAWN_WINDOW_SEC
+
+    def _is_air_unit_in_watch(self, u_ptr, is_air, pos, vel, invul_timer, curr_t):
+        if not hasattr(self, 'air_spawn_watch'):
+            self.air_spawn_watch = AirUnitWatchTracker()
+        return self.air_spawn_watch.is_in_watch(u_ptr, is_air, pos, vel, invul_timer, curr_t)
 
     def _update_screen_metrics(self):
         screen = self.screen() or QApplication.primaryScreen()
@@ -4240,6 +4251,7 @@ class ESPOverlay(QOpenGLWidget):
                 self.last_velocity_meta = {}
                 self.ai_ghost_queue = []
                 self.recon_spawn_watch = {}
+                self.air_spawn_watch.clear()
                 self.live_velocity_debug = None
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
@@ -4580,6 +4592,11 @@ class ESPOverlay(QOpenGLWidget):
                     if not pos: continue
                     if is_recon_drone and self._is_fixed_recon_ghost(u_ptr, pos, curr_t):
                         continue
+                    if resolved_is_air:
+                        air_vel = get_air_velocity(self.scanner, u_ptr)
+                        inv_t = dna.get('invul_timer', 0.0)
+                        if self._is_air_unit_in_watch(u_ptr, resolved_is_air, pos, air_vel, inv_t, curr_t):
+                            continue
                     pre_vel = None
                     if not resolved_is_air:
                         pre_vel = self._stabilize_velocity(u_ptr, False, pos, curr_t)
@@ -4621,12 +4638,32 @@ class ESPOverlay(QOpenGLWidget):
             for ptr in list(self.recon_spawn_watch.keys()):
                 if (curr_t - float(self.recon_spawn_watch[ptr].get("last_seen", curr_t))) > 5.0:
                     del self.recon_spawn_watch[ptr]
+            if hasattr(self, 'air_spawn_watch'):
+                self.air_spawn_watch.cleanup(curr_t)
             for ptr in list(self.offscreen_indicator_alpha.keys()):
                 if ptr not in current_seen_ptrs:
                     del self.offscreen_indicator_alpha[ptr]
             for ptr in list(self.offscreen_indicator_state.keys()):
                 if ptr not in current_seen_ptrs:
                     del self.offscreen_indicator_state[ptr]
+
+            # ✈️ Filter Air spawn watch units (ghosts)
+            if valid_targets:
+                cleaned_valid_targets = []
+                for tgt in valid_targets:
+                    u_id = tgt[0] if isinstance(tgt, (tuple, list)) else getattr(tgt, 'u_ptr', None)
+                    is_air_tgt = tgt[3] if isinstance(tgt, (tuple, list)) else getattr(tgt, 'is_air', False)
+                    if is_air_tgt and u_id:
+                        t_snap = target_snapshot_map.get(u_id) if 'target_snapshot_map' in locals() else None
+                        inv_t = getattr(t_snap, 'invul_timer', 0.0) if t_snap else 0.0
+                        t_pos = tgt[4] if isinstance(tgt, (tuple, list)) else getattr(tgt, 'pos', None)
+                        t_vel = tgt[12] if isinstance(tgt, (tuple, list)) and len(tgt) > 12 else getattr(tgt, 'vel', None)
+                        if t_vel is None:
+                            t_vel = get_air_velocity(self.scanner, u_id)
+                        if self._is_air_unit_in_watch(u_id, is_air_tgt, t_pos, t_vel, inv_t, curr_t):
+                            continue
+                    cleaned_valid_targets.append(tgt)
+                valid_targets = cleaned_valid_targets
             
             dprint_frame_stats(
                 self.current_fps, 
@@ -7506,10 +7543,12 @@ class ESPOverlay(QOpenGLWidget):
                             # 🎯 REAL-TIME WEAPON NAME & PROFILE (per FrameSnapshot)
                             w_profile = getattr(m, 'profile', '') or tr.get('weapon_profile', '')
                             prof_badge = f" [{w_profile}]" if w_profile else ""
-                            short_name = f"🚀 Missile{prof_badge}"
+                            is_bomb = any(k in (m.name or "").lower() for k in ("bomb", "fab", "ofab", "kab", "gbu", "betab", "mk_8", "mk8")) or "bomb" in w_profile.lower()
+                            icon = "💣" if is_bomb else "🚀"
+                            short_name = f"{icon} {'Bomb' if is_bomb else 'Missile'}{prof_badge}"
                             if m.name:
                                 clean_name = m.name.split('^')[-1].replace('.blk','').replace('_default','')
-                                short_name = f"🚀 {clean_name}{prof_badge}"
+                                short_name = f"{icon} {clean_name}{prof_badge}"
 
                             # 🎯 REAL-TIME SHOOTER RESOLUTION (per FrameSnapshot)
                             owner_u = tr.get('owner_unit', 0) or ((m.owner & ~1) if m.owner else 0)

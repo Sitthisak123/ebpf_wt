@@ -92,7 +92,6 @@ COUNTERMEASURE_KEYWORDS = (
     "flare", "chaff", "countermeasure", "decoy", "dispenser",
     "cm_", "cartridge", "split_launcher", "bullet_flare",
     "flares", "bol_pod", "anti_radar", "infrared_decoy",
-    "bomb", "fab_", "ofab_", "kab_", "gbu",
 )
 
 def _is_valid_vec3(v):
@@ -107,7 +106,7 @@ def _is_valid_vec3(v):
     return True
 
 def _is_valid_missile_motion(pos, vel):
-    """Ensure coordinates and velocity represent a real 3D flying projectile"""
+    """Ensure coordinates and velocity represent a real 3D flying projectile or bomb (allows vel=0)"""
     if not _is_valid_vec3(pos) or not _is_valid_vec3(vel):
         return False, 0.0
     if any(abs(x) > 250000.0 for x in pos):
@@ -118,8 +117,8 @@ def _is_valid_missile_motion(pos, vel):
         return False, 0.0
     
     spd = _vlen(vel)
-    # Detect missiles from 10.0 m/s (e.g. freshly launched from hovering helicopters or stationary SAMs) up to hypersonic 4500 m/s
-    if not (10.0 < spd < 4500.0):
+    # Detect missiles and bombs from 0.0 m/s (stationary on pylon/rail, pre-launch, released bomb, etc.) up to hypersonic 4500 m/s
+    if not (0.0 <= spd < 4500.0):
         return False, 0.0
     return True, spd
 
@@ -135,6 +134,10 @@ def classify_seeker_type(wep_name: str) -> str:
         return "IR"
     if any(k in w for k in ("roland", "adats", "9m311", "vt_1", "vt1", "starstreak", "hellfire", "vikhr", "mim146", "mim-146", "pantsir", "tor", "9m331")):
         return "SACLOS"
+    if any(k in w for k in ("gbu", "kab", "walleye")):
+        return "GUIDED BOMB"
+    if any(k in w for k in ("bomb", "fab", "ofab", "betab", "mk_8", "mk8")):
+        return "BOMB"
     if any(k in w for k in ("agm_65", "kh_29", "pars", "spike", "q-5")):
         return "TV/IIR"
     return "GUIDED"
@@ -408,9 +411,9 @@ class MissileScanner:
                         if any(ign in s_lower for ign in COUNTERMEASURE_KEYWORDS):
                             found_cm = True
                             break
-                        # ตรวจหาชื่อไฟล์ .blk หรือคีย์เวิร์ดอาวุธจรวด/ขีปนาวุธ
+                        # ตรวจหาชื่อไฟล์ .blk หรือคีย์เวิร์ดอาวุธจรวด/ขีปนาวุธ/ลูกระเบิด
                         if not cand_name:
-                            if s.endswith(".blk") or any(k in s_lower for k in ("missile", "rocket", "aim", "sam", "agm", "r_", "aam")):
+                            if s.endswith(".blk") or any(k in s_lower for k in ("missile", "rocket", "aim", "sam", "agm", "r_", "aam", "bomb", "fab", "ofab", "kab", "gbu", "betab", "mk_")):
                                 clean_s = s.split("/")[-1].split("\\")[-1]
                                 cand_name = clean_s
                 
@@ -434,7 +437,7 @@ class MissileScanner:
                             raw_str = s.split(b"\x00")[0].split(b"*")[0].decode("utf-8", errors="ignore").strip()
                             if any(ign in raw_str.lower() for ign in COUNTERMEASURE_KEYWORDS):
                                 return None
-                            if any(k in raw_str.lower() for k in ("missile", "rocket", "sam", "aim", "agm", "r_", "aam")):
+                            if any(k in raw_str.lower() for k in ("missile", "rocket", "sam", "aim", "agm", "r_", "aam", "bomb", "fab", "ofab", "kab", "gbu", "betab", "mk_")):
                                 name = raw_str + ".blk" if not raw_str.endswith(".blk") else raw_str
                                 break
 
@@ -443,7 +446,7 @@ class MissileScanner:
             for soff in (0x230, 0x240, 0x380):
                 if len(header) >= soff + 40:
                     s_bytes = header[soff : soff + 40]
-                    for kw in (b"aim_", b"rocket", b"missile", b".blk", b"sam_", b"agm_", b"r_"):
+                    for kw in (b"aim_", b"rocket", b"missile", b".blk", b"sam_", b"agm_", b"r_", b"bomb", b"fab_", b"kab_", b"gbu_"):
                         if kw in s_bytes:
                             raw_str = s_bytes.split(b"\x00")[0].decode("utf-8", errors="ignore").strip()
                             if raw_str and not any(ign in raw_str.lower() for ign in COUNTERMEASURE_KEYWORDS):
@@ -452,12 +455,14 @@ class MissileScanner:
                     if name:
                         break
 
-        # Priority D: Fallback name for SAM / SPAA / Enemy missiles without string
+        # Priority D: Fallback name for SAM / SPAA / Enemy missiles / Bombs without string
         if not name:
             if _is_valid_ptr(guid):
                 name = "guided_missile.blk"
             elif speed > 100.0:
                 name = "missile.blk"
+            elif eid > 0:
+                name = "bomb.blk" if speed < 50.0 else "missile.blk"
             else:
                 return None
         
