@@ -117,8 +117,9 @@ def _is_valid_missile_motion(pos, vel):
         return False, 0.0
     
     spd = _vlen(vel)
-    # Detect missiles and bombs from 0.0 m/s (stationary on pylon/rail, pre-launch, released bomb, etc.) up to hypersonic 4500 m/s
-    if not (0.0 <= spd < 4500.0):
+    # Detect missiles and bombs from 0.0 m/s up to realistic max in War Thunder (1800.0 m/s ~ Mach 5.3)
+    # Rejects impossible hypersonic spikes (e.g. 2593 m/s) from corrupted memory vectors or raycasts
+    if not (0.0 <= spd <= 1800.0):
         return False, 0.0
     return True, spd
 
@@ -347,19 +348,23 @@ class MissileScanner:
         eid = struct.unpack_from("<I", header, OFF_RKT_ENTITY_ID)[0] if len(header) >= OFF_RKT_ENTITY_ID + 4 else 0
         if not eid and len(header) >= 0x34:
             eid = struct.unpack_from("<I", header, 0x30)[0]
-        # Check guidance pointer candidates (0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698)
+        # Check guidance pointer candidates (0x680, 0x670) with flag validation
         guid = 0
-        for goff in (OFF_RKT_GUIDANCE, 0x680, 0x670, 0x638, 0x648, 0x6C8, 0x698):
+        for goff in (OFF_RKT_GUIDANCE, 0x680, 0x670):
             if len(header) >= goff + 8:
                 g_cand = struct.unpack_from("<Q", header, goff)[0]
                 if _is_valid_ptr(g_cand) and (g_cand & 7 == 0):
-                    guid = g_cand
-                    break
+                    l_val = _r8(scanner, g_cand + OFF_GUID_LOCKED)
+                    t_val = _r8(scanner, g_cand + OFF_GUID_TRACKING)
+                    if l_val in (0, 1) and t_val in (0, 1, 2, 255):
+                        guid = g_cand
+                        break
         
         # 🛡️ VALIDATION: Filter out fake/garbage entities and non-rocket objects
         # 1. Entity ID: Active projectile IDs are normal positive integers (< 50,000,000).
-        # Rejects 0 and ASCII string garbage (e.g. 1802396020 = "tblk").
-        if eid == 0 or eid > 50_000_000:
+        # Dynamic match projectiles have IDs >= 32. Rejects 0..31 (engine root/internal nodes, e.g. EntityID 7)
+        # and ASCII string garbage (e.g. 1802396020 = "tblk").
+        if eid < 32 or eid > 50_000_000:
             return None
 
         # 2. State: In-flight missiles typically have states 0..11.
@@ -455,14 +460,16 @@ class MissileScanner:
                     if name:
                         break
 
-        # Priority D: Fallback name for SAM / SPAA / Enemy missiles / Bombs without string
+        # Priority D: Fallback name for SAM / SPAA / Enemy missiles without string
+        # 🛡️ STRICT ANTI-GHOSTING RULES:
+        # Priority D: Fallback name ONLY for real guided missiles (with valid guidance struct)
+        # 🛡️ STRICT ANTI-GHOSTING RULES:
+        # All real unguided rockets (S-8, Hydra, Tiny Tim, etc.) HAVE proper .blk names in memory.
+        # If an entity has NO weapon string in memory AND NO guidance struct:
+        # It is an internal engine dummy node, particle emitter, debris, or memory garbage -> REJECT!
         if not name:
-            if _is_valid_ptr(guid):
+            if speed > 100.0 and state in (0, 1, 2, 3) and _is_valid_ptr(guid):
                 name = "guided_missile.blk"
-            elif speed > 100.0:
-                name = "missile.blk"
-            elif eid > 0:
-                name = "bomb.blk" if speed < 50.0 else "missile.blk"
             else:
                 return None
         
@@ -517,8 +524,10 @@ class MissileScanner:
                     else:
                         tgt = 0
 
-        # 🚫 FILTER: Ignore invalid entities / bombs (Owner=0x1 || None, tracking=255)
-        if owner in (0, 0x0) or raw_tracking == 255:
+        # 🚫 FILTER: Ignore invalid entities / dummies / particles (Owner=0x0 || None, tracking=255)
+        if raw_tracking == 255 or owner in (1, 0x1):
+            return None
+        if owner in (0, 0x0) and (not _is_valid_ptr(guid) or not (is_tracking or is_locked or raw_tracking in (1, 2))):
             return None
 
         m.is_locked = is_locked

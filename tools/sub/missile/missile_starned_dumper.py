@@ -78,7 +78,7 @@ def is_valid_missile_motion(pos, vel):
     if (pos[0]*pos[0] + pos[1]*pos[1] + pos[2]*pos[2]) < 2500.0:
         return False, 0.0
     spd = vlen(vel)
-    if not (25.0 < spd < 4500.0):
+    if not (25.0 < spd <= 1800.0):
         return False, 0.0
     if sum(1 for x in vel if abs(x) > 0.05) < 2:
         return False, 0.0
@@ -182,7 +182,7 @@ def check_ptr_is_rocket(sc, ptr):
                 continue
 
             # 2. Entity ID: Active projectile IDs are normal positive integers (< 50,000,000).
-            if eid == 0 or eid > 50_000_000:
+            if eid < 32 or eid > 50_000_000:
                 continue
 
             # 3. Owner: If valid pointer, mask out tag bit (u_ptr | 1)
@@ -195,14 +195,17 @@ def check_ptr_is_rocket(sc, ptr):
             if guid != 0 and not (is_valid_ptr(guid) and (guid & 0x7 == 0)):
                 guid = 0
 
-            # ถ้ายังไม่มีชื่อ blk ให้ fallback เป็น sam_missile.blk หรือ missile.blk
+            # ถ้ายังไม่มีชื่อ blk ให้ยอมรับเฉพาะกรณีที่มี guidance pointer ชัดเจน (เช่น SAM / AAM ที่ string ตกหล่น)
+            # ส่วนจรวดไม่นำวิถี (Unguided) หากไม่มีชื่อใน memory ถือว่าเป็น dummy/debris ให้ตัดทิ้งทันที
             if not found_wep:
                 if is_valid_ptr(guid):
                     found_wep = "sam_missile.blk"
-                elif speed > 250.0:
-                    found_wep = "missile.blk"
                 else:
                     continue
+
+            # กรอง entity ที่ไม่มี owner และไม่มี guidance
+            if owner in (0, 0x0) and not is_valid_ptr(guid):
+                continue
             
             return {
                 "ptr": ptr,

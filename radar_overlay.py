@@ -37,7 +37,7 @@ from src.utils.mul import *
 _is_valid_ptr = is_valid_ptr
 from src.utils.debug import *
 from src.utils.kalman import KinematicKalmanFilter
-from src.utils.ammo_family import resolve_ammo_family, classify_weapon_caliber
+from src.utils.ammo_family import resolve_ammo_family, classify_weapon_caliber, get_unarmed_ballistic_profile
 from src.utils.missile import MissileScanner, get_all_missiles
 from src.utils.missile_telemetry import MissileTelemetryBridge
 from src.worker.data_pump import DataPumpWorker, FrameSnapshot, TargetSnapshot
@@ -2426,21 +2426,39 @@ def _air_density_from_altitude(altitude):
     return 1.225 * math.pow(max(1.0 - (2.25577e-5 * alt), 0.0), 4.2561)
 
 
-def _read_ballistic_profile(scanner, cgame_base):
-    profile = {
-        "weapon_ptr": 0,
-        "bullet_type_idx": -1,
-        "model_enum": 0,
-        "speed": 0.0,
-        "mass": 0.0,
-        "caliber": 0.0,
-        "cx": 0.0,
-        "max_distance": 0.0,
-        "vel_range": (0.0, 0.0),
-        "vel_range_addr": 0,
-        "drag_valid": False,
-        "is_valid": False,
+_BALLISTIC_SIM_CACHE = {}
+
+_BALLISTIC_DEBOUNCE_STATE = {
+    "active_profile": None,
+    "candidate_speed": 0.0,
+    "candidate_frames": 0,
+    "last_switch_time": 0.0,
+}
+
+
+def reset_ballistic_cache():
+    """ล้างแคชสถานะของระบบขีปนาวุธ (Debounce และ Simulation Cache) ให้รีเซ็ตกลับสู่สถานะเริ่มต้นทันที"""
+    global _BALLISTIC_DEBOUNCE_STATE, _BALLISTIC_SIM_CACHE
+    _BALLISTIC_DEBOUNCE_STATE = {
+        "active_profile": None,
+        "candidate_speed": 0.0,
+        "candidate_frames": 0,
+        "last_switch_time": 0.0,
     }
+    if "_BALLISTIC_SIM_CACHE" in globals() and isinstance(_BALLISTIC_SIM_CACHE, dict):
+        _BALLISTIC_SIM_CACHE.clear()
+
+
+# ผูกเข้ากับระบบ Runtime Cache Reset ส่วนกลาง
+register_cache_reset_hook(reset_ballistic_cache)
+
+
+def _read_ballistic_profile(scanner, cgame_base, my_unit=None):
+    if my_unit is not None and not my_unit:
+        reset_ballistic_cache()
+        return get_unarmed_ballistic_profile()
+
+    profile = get_unarmed_ballistic_profile()
     weapon_ptr = _read_ptr_fast(scanner, cgame_base + OFF_WEAPON_PTR)
     if not is_valid_ptr(weapon_ptr):
         return profile
@@ -2554,19 +2572,11 @@ def _read_ballistic_profile(scanner, cgame_base):
     # ป้องกันการสลับค่าความเร็วลูกปืนไปมา (Flip-Flop เช่น 730 <-> 750 m/s ในเครื่องบินที่มีปืนหลายขนาด)
     # ซึ่งเป็นสาเหตุอันดับ 1 ที่ทำให้ TOF กระโดด 200-500ms และ Leadmark กระตุก 40-50 พิกเซล
     global _BALLISTIC_DEBOUNCE_STATE
-    if '_BALLISTIC_DEBOUNCE_STATE' not in globals():
-        _BALLISTIC_DEBOUNCE_STATE = {
-            "active_profile": None,
-            "candidate_speed": 0.0,
-            "candidate_frames": 0,
-            "last_switch_time": 0.0,
-        }
-
     now_t = time.time()
     if not is_valid:
         if _BALLISTIC_DEBOUNCE_STATE["active_profile"] and (now_t - _BALLISTIC_DEBOUNCE_STATE["last_switch_time"]) < 2.0:
             return _BALLISTIC_DEBOUNCE_STATE["active_profile"]
-        return profile
+        return get_unarmed_ballistic_profile()
 
     active_prof = _BALLISTIC_DEBOUNCE_STATE["active_profile"]
     if active_prof is None or not active_prof.get("is_valid", False):
@@ -2737,7 +2747,8 @@ def _drag_band_factor(model, speed):
     return max(DRAG_FACTOR_MIN, min(DRAG_FACTOR_MAX, factor))
 
 
-_BALLISTIC_SIM_CACHE = {}
+if "_BALLISTIC_SIM_CACHE" not in globals():
+    _BALLISTIC_SIM_CACHE = {}
 
 def _simulate_projectile_range(horizontal_range, model, zero_pitch=0.0):
     if not model or not model.get("is_armed", False):
@@ -3203,6 +3214,7 @@ class ESPOverlay(QOpenGLWidget):
             base_address=base_address,
             target_fps=MAX_FPS,
             read_ballistic_profile_fn=_read_ballistic_profile,
+            reset_ballistic_fn=reset_ballistic_cache,
             get_dynamic_target_box_data_fn=_get_dynamic_target_box_data,
             get_dynamic_my_geometry_fn=_get_dynamic_my_geometry,
             stabilize_velocity_fn=None,
@@ -3270,7 +3282,10 @@ class ESPOverlay(QOpenGLWidget):
             if hasattr(self._data_pump, 'air_spawn_watch'):
                 self._data_pump.air_spawn_watch.clear()
             self._data_pump.last_my_unit = 0
-            self._data_pump.last_cgame_base = 0
+        reset_ballistic_cache()
+        if hasattr(self, 'ballistic_zero_cache'):
+            self.ballistic_zero_cache.clear()
+        self.current_gun_info = classify_weapon_caliber(0.0, 0.0)
         reset_runtime_caches(clear_view=True)
 
     def _fatal_shutdown(self, reason, detail=""):
@@ -4144,38 +4159,6 @@ class ESPOverlay(QOpenGLWidget):
             self.invalid_runtime_frames = 0
 
             snapshot = self._data_pump.get_latest_snapshot() if hasattr(self, '_data_pump') and self._data_pump else self._latest_snapshot
-            if snapshot and getattr(snapshot, 'ballistic_profile', None):
-                ballistic_profile = snapshot.ballistic_profile
-            else:
-                ballistic_profile = _read_ballistic_profile(self.scanner, cgame_base)
-            leadmark_range_limit = _get_leadmark_range_limit(ballistic_profile)
-            current_bullet_speed = ballistic_profile.get("speed", 0.0)
-            current_zeroing = (getattr(snapshot, 'current_zeroing', 0.0) if snapshot and snapshot.is_valid else None) or get_sight_compensation_factor(self.scanner, self.base_address)
-            current_bullet_mass = ballistic_profile.get("mass", 0.0)
-            current_bullet_cd = ballistic_profile.get("cx", 0.0)
-            current_bullet_caliber = ballistic_profile.get("caliber", 0.0)
-            worker_fps_str = f" (Pump: {int(snapshot.worker_fps)})" if (snapshot and snapshot.is_valid and snapshot.worker_fps > 0) else ""
-            painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
-            painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}{worker_fps_str}")
-            # 🎯 Caliber & Ammunition Classification (Replaces AI Tracking on HUD)
-            current_vehicle_name = getattr(snapshot, 'my_name', '') if snapshot else ''
-            current_is_air = bool(getattr(snapshot, 'my_is_air', False)) if snapshot else False
-            gun_info = classify_weapon_caliber(
-                current_bullet_speed,
-                current_bullet_caliber,
-                current_bullet_mass,
-                current_bullet_cd,
-                vehicle_name=current_vehicle_name,
-                is_air=current_is_air,
-                length=current_bullet_cd,
-            )
-            self.current_gun_info = gun_info
-            painter.setPen(QColor(100, 220, 255))
-            painter.drawText(20, 115, gun_info["hud_str"])
-            active_m_count = len(self.missile_tracks) if hasattr(self, 'missile_tracks') and self.missile_tracks else (len(self.missile_cache) if hasattr(self, 'missile_cache') and self.missile_cache else 0)
-            if active_m_count > 0:
-                painter.setPen(QColor(255, 140, 40))
-                painter.drawText(20, 140, f"🚀 Active Missiles : {active_m_count}")
 
             if snapshot and snapshot.is_valid:
                 all_units_data = []
@@ -4236,9 +4219,18 @@ class ESPOverlay(QOpenGLWidget):
             my_is_recon = _is_recon_drone_like(f"{my_name} {my_name_key}")
             my_can_auto_cm = bool(my_is_air and not my_is_recon)
 
-            # Cache reset on my_unit change
-            if my_unit and self.last_my_unit and my_unit != self.last_my_unit:
+            # Cache reset on my_unit change or when no my_unit
+            if not my_unit:
+                if self.last_my_unit != 0:
+                    reset_ballistic_cache()
+                    if hasattr(self, 'ballistic_zero_cache'):
+                        self.ballistic_zero_cache.clear()
+                    self.last_my_unit = 0
+            elif self.last_my_unit and my_unit != self.last_my_unit:
                 reset_runtime_caches(clear_view=True)
+                reset_ballistic_cache()
+                if hasattr(self, 'ballistic_zero_cache'):
+                    self.ballistic_zero_cache.clear()
                 self.unit_id_to_name.clear()
                 self.unit_id_to_ptr.clear()
                 self.unit_name_by_ptr.clear()
@@ -4266,6 +4258,47 @@ class ESPOverlay(QOpenGLWidget):
                 self.auto_cm_trigger_count = 0
             elif my_unit and not self.last_my_unit:
                 self.last_my_unit = my_unit
+
+            # 🎯 Ballistics Profile Resolution: หากไม่มี my_unit ให้รีเซ็ตเป็น UNARMED ทันที
+            if not my_unit:
+                ballistic_profile = get_unarmed_ballistic_profile()
+                reset_ballistic_cache()
+                if hasattr(self, 'ballistic_zero_cache'):
+                    self.ballistic_zero_cache.clear()
+            elif snapshot and snapshot.is_valid and getattr(snapshot, 'ballistic_profile', None):
+                ballistic_profile = snapshot.ballistic_profile
+            else:
+                ballistic_profile = _read_ballistic_profile(self.scanner, cgame_base, my_unit=my_unit)
+
+            leadmark_range_limit = _get_leadmark_range_limit(ballistic_profile)
+            current_bullet_speed = ballistic_profile.get("speed", 0.0)
+            current_zeroing = (getattr(snapshot, 'current_zeroing', 0.0) if snapshot and snapshot.is_valid else None) or get_sight_compensation_factor(self.scanner, self.base_address)
+            current_bullet_mass = ballistic_profile.get("mass", 0.0)
+            current_bullet_cd = ballistic_profile.get("cx", 0.0)
+            current_bullet_caliber = ballistic_profile.get("caliber", 0.0)
+            worker_fps_str = f" (Pump: {int(snapshot.worker_fps)})" if (snapshot and snapshot.is_valid and snapshot.worker_fps > 0) else ""
+            painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
+            painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}{worker_fps_str}")
+
+            # 🎯 Caliber & Ammunition Classification (Replaces AI Tracking on HUD)
+            current_vehicle_name = getattr(snapshot, 'my_name', '') if (snapshot and snapshot.is_valid) else my_name
+            current_is_air = bool(getattr(snapshot, 'my_is_air', False)) if (snapshot and snapshot.is_valid) else my_is_air
+            gun_info = classify_weapon_caliber(
+                current_bullet_speed,
+                current_bullet_caliber,
+                current_bullet_mass,
+                current_bullet_cd,
+                vehicle_name=current_vehicle_name,
+                is_air=current_is_air,
+                length=current_bullet_cd,
+            )
+            self.current_gun_info = gun_info
+            painter.setPen(QColor(100, 220, 255))
+            painter.drawText(20, 115, gun_info["hud_str"])
+            active_m_count = len(self.missile_tracks) if hasattr(self, 'missile_tracks') and self.missile_tracks else (len(self.missile_cache) if hasattr(self, 'missile_cache') and self.missile_cache else 0)
+            if active_m_count > 0:
+                painter.setPen(QColor(255, 140, 40))
+                painter.drawText(20, 140, f"🚀 Active Missiles : {active_m_count}")
             
             my_spawn_in_grace = curr_t < self.my_unit_spawn_grace_until
             my_acc = (0.0, 0.0, 0.0)
@@ -7078,11 +7111,34 @@ class ESPOverlay(QOpenGLWidget):
                             if not m.name or m.name == "":
                                 continue
 
-                            # 🚫 กรองข้าม entity ที่ผิดปกติ / ระเบิด / dummy: Owner=0x1 || None, tracking=255
+                            # 🚫 กรองข้าม entity ความเร็วผิดปกติ (เร็วเกิน 1800 m/s ไม่มีใน War Thunder หรือช้าเกินไป)
+                            if m.speed > 1800.0 or m.speed < 20.0:
+                                continue
+
+                            # 🚫 กรองข้าม Entity ID ผิดปกติ (EntityID < 32 เป็น engine internal dummy/anchor)
+                            if getattr(m, 'entity_id', 0) < 32:
+                                continue
+
+                            # 🚫 กรองข้าม entity ที่ผิดปกติ / ระเบิด / dummy: Owner=0x0 || None, tracking=255
                             m_owner = getattr(m, 'owner', 0)
                             m_trk = getattr(m, 'tracking', 0)
-                            if m_trk == 255 or m_owner in (1, 0x1) or ((m_owner in (0, None)) and m_trk == 255):
+                            m_guid = getattr(m, 'guidance_ptr', 0)
+                            m_is_locked = getattr(m, 'is_locked', False)
+                            m_is_tracking = getattr(m, 'is_tracking', False)
+
+                            if m_trk == 255 or ((m_owner in (0, None)) and m_trk == 255):
                                 continue
+
+                            # 🚫 กรองข้าม entity ที่ไม่มี Owner และไม่มี Guidance นำวิถี
+                            if m_owner in (0, 0x0) and (not m_guid or not (m_is_tracking or m_trk in (1, 2) or m_is_locked)):
+                                continue
+
+                            # 🚫 กรองข้าม fallback ghost missiles ("missile.blk") ที่ไม่มีชื่อจริงและไม่มี guidance
+                            if (m.name in ("guided_missile.blk", "missile.blk") or not m.name):
+                                if not m_guid or (m_trk == 0 and not m_is_locked and not m_is_tracking):
+                                    continue
+                                if m.speed < 100.0:
+                                    continue
 
                             current_scan_ptrs.add(m.ptr)
 
@@ -7289,12 +7345,34 @@ class ESPOverlay(QOpenGLWidget):
                     for ptr, tr in list(self.missile_tracks.items()):
                         m = tr['missile']
 
-                        # 🚫 กรองข้าม entity ที่ผิดปกติ / ระเบิด / dummy: Owner=0x1 || None, tracking=255
-                        m_owner = getattr(m, 'owner', 0)
-                        m_trk = getattr(m, 'tracking', 0)
-                        if m_trk == 255 or m_owner in (1, 0x1) or ((m_owner in (0, None)) and m_trk == 255):
+                        # 🚫 กรองข้าม entity ความเร็วผิดปกติ หรือ EntityID ผิดปกติ
+                        if m.speed > 1800.0 or getattr(m, 'entity_id', 0) < 32:
                             del self.missile_tracks[ptr]
                             continue
+
+                        # 🚫 กรองข้าม entity ที่ผิดปกติ / ระเบิด / dummy
+                        m_owner = getattr(m, 'owner', 0)
+                        m_trk = getattr(m, 'tracking', 0)
+                        m_guid = getattr(m, 'guidance_ptr', 0)
+                        m_is_locked = getattr(m, 'is_locked', False)
+                        m_is_tracking = getattr(m, 'is_tracking', False)
+
+                        if m_trk == 255 or ((m_owner in (0, None)) and m_trk == 255):
+                            del self.missile_tracks[ptr]
+                            continue
+
+                        if m_owner in (0, 0x0) and (not m_guid or not (m_is_tracking or m_trk in (1, 2) or m_is_locked)):
+                            del self.missile_tracks[ptr]
+                            continue
+
+                        # 🚫 กรองข้าม fallback ghost missiles ("missile.blk") ที่ไม่มีชื่อจริงและไม่มี guidance
+                        if (m.name in ("guided_missile.blk", "missile.blk") or not m.name):
+                            if not m_guid or (m_trk == 0 and not m_is_locked and not m_is_tracking):
+                                del self.missile_tracks[ptr]
+                                continue
+                            if m.speed < 100.0:
+                                del self.missile_tracks[ptr]
+                                continue
 
                         # ตรวจสอบขีดจำกัดเวลา Timeout และ Missed Scans
                         time_since_meas = curr_t - tr.get('last_meas_t', curr_t)

@@ -61,6 +61,7 @@ from src.utils.mul import (
 )
 from src.utils.debug import dprint
 from src.utils.missile import MissileScanner
+from src.utils.ammo_family import get_unarmed_ballistic_profile
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +144,7 @@ class FrameSnapshot:
     my_rot: Any = None
 
     # Ballistic profile
-    ballistic_profile: Dict = field(default_factory=dict)
+    ballistic_profile: Dict = field(default_factory=get_unarmed_ballistic_profile)
     current_zeroing: float = 0.0
 
     # All valid enemy targets (pre-filtered, pre-fetched)
@@ -190,6 +191,7 @@ class DataPumpWorker(QThread):
         # Pass references to overlay helper functions that are defined
         # in radar_overlay.py (to avoid circular imports)
         read_ballistic_profile_fn=None,
+        reset_ballistic_fn=None,
         get_dynamic_target_box_data_fn=None,
         get_dynamic_my_geometry_fn=None,
         stabilize_velocity_fn=None,
@@ -210,6 +212,7 @@ class DataPumpWorker(QThread):
 
         # External function references (injected from radar_overlay)
         self._read_ballistic_profile = read_ballistic_profile_fn
+        self._reset_ballistic = reset_ballistic_fn
         self._get_dynamic_target_box_data = get_dynamic_target_box_data_fn
         self._get_dynamic_my_geometry = get_dynamic_my_geometry_fn
         self._stabilize_velocity = stabilize_velocity_fn
@@ -324,6 +327,9 @@ class DataPumpWorker(QThread):
             self.last_cgame_base = 0
             self.last_my_unit = 0
             mul.reset_runtime_caches(clear_view=True, scanner=self.scanner)
+            if self._reset_ballistic:
+                self._reset_ballistic()
+            snap.ballistic_profile = get_unarmed_ballistic_profile()
             snap.is_valid = False
             return snap
 
@@ -333,6 +339,8 @@ class DataPumpWorker(QThread):
             self.active_targets.clear()
             self.air_spawn_watch.clear()
             mul.reset_runtime_caches(clear_view=False, scanner=self.scanner)
+            if self._reset_ballistic:
+                self._reset_ballistic()
         snap.cgame_base = cgame_base
 
         # --- 2. View Matrix ---
@@ -342,20 +350,11 @@ class DataPumpWorker(QThread):
         except Exception:
             pass
 
-        # --- 3. Ballistic Profile ---
-        if self._read_ballistic_profile:
-            snap.ballistic_profile = self._read_ballistic_profile(
-                self.scanner, cgame_base
-            )
-        snap.current_zeroing = get_sight_compensation_factor(
-            self.scanner, self.base_address
-        )
-
-        # --- 4. All Units ---
+        # --- 3. All Units ---
         all_units_data = get_all_units(self.scanner, cgame_base)
         snap.all_unit_ptrs = {u_ptr for u_ptr, _ in all_units_data}
 
-        # --- 5. My Unit ---
+        # --- 4. My Unit ---
         my_unit, my_team = get_local_team(self.scanner, self.base_address)
         if my_team:
             self.last_my_team = my_team
@@ -376,8 +375,11 @@ class DataPumpWorker(QThread):
             self.air_spawn_watch.clear()
             self.clear_missile_cache()
             self.last_my_unit = 0
+            if self._reset_ballistic:
+                self._reset_ballistic()
             snap.all_unit_ptrs = set()
             snap.valid_targets = []
+            snap.ballistic_profile = get_unarmed_ballistic_profile()
             snap.is_valid = False
             return snap
 
@@ -388,10 +390,25 @@ class DataPumpWorker(QThread):
             self.active_targets.clear()
             self.air_spawn_watch.clear()
             self.clear_missile_cache()
+            if self._reset_ballistic:
+                self._reset_ballistic()
             self.last_my_unit = my_unit
             self.my_unit_spawn_grace_until = now + 0.40
         elif my_unit and not self.last_my_unit:
             self.last_my_unit = my_unit
+
+        # --- 5. Ballistic Profile ---
+        if self._read_ballistic_profile and my_unit:
+            snap.ballistic_profile = self._read_ballistic_profile(
+                self.scanner, cgame_base, my_unit=my_unit
+            )
+        else:
+            if self._reset_ballistic:
+                self._reset_ballistic()
+            snap.ballistic_profile = get_unarmed_ballistic_profile()
+        snap.current_zeroing = get_sight_compensation_factor(
+            self.scanner, self.base_address
+        )
 
         # Determine my_is_air
         my_is_air = False

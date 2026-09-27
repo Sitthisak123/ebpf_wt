@@ -216,6 +216,15 @@ NON_PLAYABLE_PATH_BLOCKLIST = (
 )
 
 
+CACHE_RESET_HOOKS: List[Any] = []
+
+
+def register_cache_reset_hook(hook):
+    """ลงทะเบียน callback hook เมื่อมีการล้าง runtime caches"""
+    if callable(hook) and hook not in CACHE_RESET_HOOKS:
+        CACHE_RESET_HOOKS.append(hook)
+
+
 def reset_runtime_caches(clear_view=False, scanner=None):
     global LAST_CGAME_PTR, LAST_VIEW_MATRIX, LAST_VIEW_PROJECTION_MODE
     UNIT_KIND_CACHE.clear()
@@ -226,6 +235,11 @@ def reset_runtime_caches(clear_view=False, scanner=None):
             scanner.bone_cache.clear()
         if hasattr(scanner, "model_barrel_cache"):
             scanner.model_barrel_cache.clear()
+    for hook in list(CACHE_RESET_HOOKS):
+        try:
+            hook()
+        except Exception:
+            pass
     if clear_view:
         LAST_CGAME_PTR = 0
         LAST_VIEW_MATRIX = None

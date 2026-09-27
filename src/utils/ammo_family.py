@@ -76,6 +76,10 @@ def resolve_ammo_family(doc):
         bucket = "other"
         family = "air_gun"
         reason = "aircraft_gun"
+    elif ammo_type == "UNARMED":
+        bucket = "unarmed"
+        family = "unarmed"
+        reason = "unarmed_no_unit_or_cleared"
     else:
         bucket = "other"
         family = "kinetic_light_like" if (speed >= 850.0 and caliber <= 0.06) else "other"
@@ -337,4 +341,25 @@ def classify_weapon_caliber(speed, caliber, mass=0.0, cx=0.0, vehicle_name="", i
         "is_subcaliber": is_subcaliber,
         "hud_str": hud_str,
     }
+
+
+def get_unarmed_ballistic_profile():
+    """
+    คืนค่า Ballistics Profile สำหรับสถานะมือเปล่า / ไม่มียูนิต / ล้างแคช (UNARMED)
+    """
+    return {
+        "weapon_ptr": 0,
+        "bullet_type_idx": -1,
+        "model_enum": 0,
+        "speed": 0.0,
+        "mass": 0.0,
+        "caliber": 0.0,
+        "cx": 0.0,
+        "max_distance": 0.0,
+        "vel_range": (0.0, 0.0),
+        "vel_range_addr": 0,
+        "drag_valid": False,
+        "is_valid": False,
+    }
+
 
