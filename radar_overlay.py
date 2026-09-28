@@ -4374,7 +4374,8 @@ class ESPOverlay(QOpenGLWidget):
                 try:
                     my_box_data = get_unit_3d_box_data(self.scanner, my_unit, False)
                     if my_box_data:
-                        my_barrel_data = get_weapon_barrel(self.scanner, my_unit, my_box_data[0], my_box_data[3], should_log=False)
+                        my_barrel_data = (snapshot.my_barrel_data if (snapshot and hasattr(snapshot, "my_barrel_data") and snapshot.my_barrel_data)
+                                          else get_weapon_barrel(self.scanner, my_unit, my_box_data[0], my_box_data[3], should_log=False))
                         if my_barrel_data:
                             my_ground_shot_origin = my_barrel_data[1] or my_barrel_data[0] or my_pos
                             b_start, b_end = my_barrel_data

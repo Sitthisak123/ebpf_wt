@@ -2,7 +2,10 @@ import struct
 import math
 import os
 import time
+import threading
 from typing import Tuple, Optional, Dict, List, Any
+
+_BARREL_CACHE_LOCK = threading.Lock()
 
 try:
     from src.utils.debug import dprint
@@ -231,10 +234,11 @@ def reset_runtime_caches(clear_view=False, scanner=None):
     UNIT_FILTER_CACHE.clear()
     _BBOX_FALLBACK_LOGGED.clear()
     if scanner:
-        if hasattr(scanner, "bone_cache"):
-            scanner.bone_cache.clear()
-        if hasattr(scanner, "model_barrel_cache"):
-            scanner.model_barrel_cache.clear()
+        with _BARREL_CACHE_LOCK:
+            if hasattr(scanner, "bone_cache"):
+                scanner.bone_cache.clear()
+            if hasattr(scanner, "model_barrel_cache"):
+                scanner.model_barrel_cache.clear()
     for hook in list(CACHE_RESET_HOOKS):
         try:
             hook()
@@ -244,6 +248,16 @@ def reset_runtime_caches(clear_view=False, scanner=None):
         LAST_CGAME_PTR = 0
         LAST_VIEW_MATRIX = None
         LAST_VIEW_PROJECTION_MODE = None
+
+
+def cleanup_weapon_barrel_cache(scanner, active_ptrs):
+    """ทำความสะอาด bone_cache สำหรับยูนิตที่ despawn หรือหายไปแล้วอย่างปลอดภัย (Thread-safe)"""
+    if not scanner or not hasattr(scanner, "bone_cache"):
+        return
+    with _BARREL_CACHE_LOCK:
+        for ptr in list(scanner.bone_cache.keys()):
+            if ptr not in active_ptrs:
+                del scanner.bone_cache[ptr]
 
 
 def _projection_mode_by_name(name):
@@ -1108,6 +1122,64 @@ def world_to_screen(matrix, pos_x, pos_y, pos_z, screen_width, screen_height):
     except:
         return None
 
+def _get_unit_model_name(scanner, u_ptr, info_ptr):
+    """ดึงชื่อโมเดล .blk ของยูนิต (เช่น gameData/units/tankModels/ussr_bmp_2.blk) เพื่อใช้เป็น Unique Cache Key ที่คงทนข้ามรอบเกม"""
+    if not is_valid_ptr(info_ptr):
+        return None
+    pstr = _read_ptr(scanner, info_ptr + 0x18)
+    if is_valid_ptr(pstr):
+        raw = scanner.read_mem(pstr, 64)
+        if raw:
+            n = raw.split(b'\x00')[0].decode('utf-8', errors='ignore')
+            if n and ('tank' in n or 'flight' in n or 'unit' in n or '.blk' in n):
+                return n
+    raw = scanner.read_mem(info_ptr + 0x18, 32)
+    if raw:
+        n = raw.split(b'\x00')[0].decode('utf-8', errors='ignore')
+        if n and n.isprintable() and len(n) > 3:
+            return n
+    pstr = _read_ptr(scanner, info_ptr + 0x28)
+    if is_valid_ptr(pstr):
+        raw = scanner.read_mem(pstr, 64)
+        if raw:
+            n = raw.split(b'\x00')[0].decode('utf-8', errors='ignore')
+            if n:
+                return n
+    return None
+
+
+def _score_barrel_pair(pair, raw_anim, bmin, bmax):
+    """ให้คะแนนคู่ Breech-Muzzle เพื่อป้องกันการหยิบผิดชิ้นส่วน เช่น กันชนหน้า หรือโครงหลังคา"""
+    b_idx, m_idx, is_launcher, c_len, cand, b_cand, tol = pair
+    score = 0.0
+    m_anim = raw_anim[m_idx * 64:(m_idx + 1) * 64]
+    b_anim = raw_anim[b_idx * 64:(b_idx + 1) * 64]
+    m_pos_a = struct.unpack_from('<fff', m_anim, 0x30)
+    b_pos_a = struct.unpack_from('<fff', b_anim, 0x30)
+    d_anim_m = math.sqrt((m_pos_a[0] - cand[0])**2 + (m_pos_a[1] - cand[1])**2 + (m_pos_a[2] - cand[2])**2)
+    d_anim_b = math.sqrt((b_pos_a[0] - b_cand[0])**2 + (b_pos_a[1] - b_cand[1])**2 + (b_pos_a[2] - b_cand[2])**2)
+
+    # 1) โบนัสสูงมากหากปลายปืนหรือโคนปืนมีการเคลื่อนไหวเทียบกับ Bind Pose (ป้อมหมุนหรือกระดกปืน)
+    if d_anim_m > 0.05 or d_anim_b > 0.05:
+        score += 500.0 + d_anim_m * 50.0
+    # 2) โบนัสความแม่นยำ Tolerance (+70 สำหรับ 0.03m, +50 สำหรับ 0.05m, +20 สำหรับ 0.08m)
+    score += (0.10 - tol) * 1000.0
+    # 3) โบนัสการเรียงตัวในแนวแกน Y-Z (Radial distance Breech vs Muzzle)
+    dr = math.sqrt((cand[1] - b_cand[1])**2 + (cand[2] - b_cand[2])**2)
+    score += max(0.0, (0.08 - dr)) * 500.0
+    # 4) โบนัสความยาวลำกล้อง (สูงสุด 5.0m)
+    score += min(5.0, c_len) * 30.0
+    # 5) โบนัสการอยู่ใกล้กึ่งกลางตัวรถแกน Z (ปืนหลักมักอยู่ใกล้ Z=0)
+    score += max(0.0, (1.2 - abs(cand[2]))) * 40.0
+    # 6) โบนัสความสูง (ปืนหลักอยู่บนป้อมปืน สูงกว่ากันชน/แชสซี)
+    if bmax[1] > bmin[1]:
+        h_ratio = (cand[1] - bmin[1]) / (bmax[1] - bmin[1])
+        score += h_ratio * 50.0
+    # 7) โบนัสตำแหน่งยื่นไปข้างหน้า
+    score += cand[0] * 10.0
+    return score
+
+
 def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=False):
     if u_ptr == 0: return None
     if not hasattr(scanner, "bone_cache"): scanner.bone_cache = {}
@@ -1120,85 +1192,87 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
 
     try:
         current_info_ptr = _read_ptr(scanner, u_ptr + OFF_UNIT_INFO) if OFF_UNIT_INFO else 0
+        model_key = _get_unit_model_name(scanner, u_ptr, current_info_ptr) if current_info_ptr else None
 
-        # 1. ตรวจสอบ bone_cache ก่อน (Per-Unit Cache)
-        if u_ptr in scanner.bone_cache:
-            cache = scanner.bone_cache[u_ptr]
-            if cache.get('no_barrel'):
-                if current_info_ptr and cache.get('info_ptr') and cache.get('info_ptr') != current_info_ptr:
-                    del scanner.bone_cache[u_ptr]
-                elif (time.time() - cache.get('failed_at', 0)) > 5.0:
-                    del scanner.bone_cache[u_ptr]
-                else:
-                    return None
-            else:
-                if cache.get('info_ptr') and current_info_ptr and cache.get('info_ptr') != current_info_ptr:
-                    del scanner.bone_cache[u_ptr]
-                else:
-                    # ตรวจสอบและดึง t250 ล่าสุดของยูนิตเสมอ เพื่อป้องกันการอ่าน Anim WTM จาก memory เก่าที่ถูกทำลาย/จัดสรรใหม่
-                    t250 = _read_ptr(scanner, u_ptr + 0x250)
-                    if not is_valid_ptr(t250):
+        with _BARREL_CACHE_LOCK:
+            # 1. ตรวจสอบ bone_cache ก่อน (Per-Unit Cache)
+            if u_ptr in scanner.bone_cache:
+                cache = scanner.bone_cache[u_ptr]
+                if cache.get('no_barrel'):
+                    if (time.time() - cache.get('failed_at', 0)) > 5.0 or (cache.get('model_key') and model_key and cache.get('model_key') != model_key):
                         del scanner.bone_cache[u_ptr]
                     else:
-                        anim_wtm = t250 + 0x30
-                        breech_idx = cache.get('breech_idx', -1)
-                        muzzle_idx = cache.get('muzzle_idx', -1)
-                        is_launcher = cache.get('is_launcher', False)
-                        if breech_idx != -1 and muzzle_idx != -1:
-                            b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
-                            m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
-                            if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
-                                bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
-                                mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
-                                fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
-                                if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
-                                    cache['fail_count'] = 0
-                                    cache['anim_wtm_ptr'] = anim_wtm
-                                    if is_launcher:
-                                        mx = bx + fx * 4.0
-                                        my = by + fy * 4.0
-                                        mz = bz + fz * 4.0
-                                    else:
-                                        barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
-                                        if breech_idx == muzzle_idx or barrel_len < 0.5:
-                                            bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
-                                    return to_world(bx, by, bz), to_world(mx, my, mz)
-                            cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
-                            if cache['fail_count'] >= 5:
-                                del scanner.bone_cache[u_ptr]
-
-        # 2. ตรวจสอบ model_barrel_cache (Per-Vehicle Model)
-        cached_model = scanner.model_barrel_cache.get(current_info_ptr) if current_info_ptr else None
-        if cached_model:
-            breech_idx, muzzle_idx = cached_model[0], cached_model[1]
-            is_launcher = cached_model[2] if len(cached_model) > 2 else False
-            t250 = _read_ptr(scanner, u_ptr + 0x250)
-            if is_valid_ptr(t250):
-                anim_wtm = t250 + 0x30
-                b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
-                m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
-                if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
-                    bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
-                    mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
-                    fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
-                    if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
-                        scanner.bone_cache[u_ptr] = {
-                            "breech_idx": breech_idx,
-                            "muzzle_idx": muzzle_idx,
-                            "is_launcher": is_launcher,
-                            "anim_wtm_ptr": anim_wtm,
-                            "info_ptr": current_info_ptr,
-                            "fail_count": 0,
-                        }
-                        if is_launcher:
-                            mx = bx + fx * 4.0
-                            my = by + fy * 4.0
-                            mz = bz + fz * 4.0
+                        return None
+                else:
+                    if (cache.get('model_key') and model_key and cache.get('model_key') != model_key) or \
+                       (cache.get('info_ptr') and current_info_ptr and cache.get('info_ptr') != current_info_ptr and not model_key):
+                        del scanner.bone_cache[u_ptr]
+                    else:
+                        t250 = _read_ptr(scanner, u_ptr + 0x250)
+                        if not is_valid_ptr(t250):
+                            del scanner.bone_cache[u_ptr]
                         else:
-                            barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
-                            if breech_idx == muzzle_idx or barrel_len < 0.5:
-                                bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
-                        return to_world(bx, by, bz), to_world(mx, my, mz)
+                            anim_wtm = t250 + 0x30
+                            breech_idx = cache.get('breech_idx', -1)
+                            muzzle_idx = cache.get('muzzle_idx', -1)
+                            is_launcher = cache.get('is_launcher', False)
+                            if breech_idx != -1 and muzzle_idx != -1:
+                                b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
+                                m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
+                                if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
+                                    bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
+                                    mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
+                                    fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                                    if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
+                                        cache['fail_count'] = 0
+                                        cache['anim_wtm_ptr'] = anim_wtm
+                                        if is_launcher:
+                                            mx = bx + fx * 4.0
+                                            my = by + fy * 4.0
+                                            mz = bz + fz * 4.0
+                                        else:
+                                            barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                                            if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                                bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
+                                        return to_world(bx, by, bz), to_world(mx, my, mz)
+                                cache['fail_count'] = int(cache.get('fail_count', 0) or 0) + 1
+                                if cache['fail_count'] >= 5:
+                                    del scanner.bone_cache[u_ptr]
+
+            # 2. ตรวจสอบ model_barrel_cache (Per-Vehicle Model Unique Key)
+            cache_key = model_key or current_info_ptr
+            cached_model = scanner.model_barrel_cache.get(cache_key) if cache_key else None
+            if cached_model:
+                breech_idx, muzzle_idx = cached_model[0], cached_model[1]
+                is_launcher = cached_model[2] if len(cached_model) > 2 else False
+                t250 = _read_ptr(scanner, u_ptr + 0x250)
+                if is_valid_ptr(t250):
+                    anim_wtm = t250 + 0x30
+                    b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
+                    m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
+                    if b_bytes and m_bytes and len(b_bytes) == 64 and len(m_bytes) == 64:
+                        bx, by, bz = struct.unpack_from("<fff", b_bytes, 0x30)
+                        mx, my, mz = struct.unpack_from("<fff", m_bytes, 0x30)
+                        fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                        if math.isfinite(bx) and math.isfinite(mx) and abs(bx) < 50.0 and abs(mx) < 50.0:
+                            scanner.bone_cache[u_ptr] = {
+                                "breech_idx": breech_idx,
+                                "muzzle_idx": muzzle_idx,
+                                "is_launcher": is_launcher,
+                                "anim_wtm_ptr": anim_wtm,
+                                "info_ptr": current_info_ptr,
+                                "model_key": model_key,
+                                "fail_count": 0,
+                            }
+                            if is_launcher:
+                                mx = bx + fx * 4.0
+                                my = by + fy * 4.0
+                                mz = bz + fz * 4.0
+                            else:
+                                barrel_len = math.sqrt((mx - bx)**2 + (my - by)**2 + (mz - bz)**2)
+                                if breech_idx == muzzle_idx or barrel_len < 0.5:
+                                    bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
+                            return to_world(bx, by, bz), to_world(mx, my, mz)
 
         # 3. Geometric Scan บน Dagor GeomNodeTree (Bind Pose 0x208 vs Animated Pose 0x250)
         t208 = _read_ptr(scanner, u_ptr + 0x208)
@@ -1208,91 +1282,99 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
             cnt208 = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
             if 0 < cnt208 < 1000:
                 raw_mats = scanner.read_mem(t208 + 0x30, cnt208 * 64)
-                if raw_mats and len(raw_mats) == cnt208 * 64:
+                raw_anim = scanner.read_mem(t250 + 0x30, cnt208 * 64)
+                if raw_mats and raw_anim and len(raw_mats) == cnt208 * 64 and len(raw_anim) == cnt208 * 64:
                     bmin_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 12) if OFF_UNIT_BBMIN else None
                     bmax_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMAX, 12) if OFF_UNIT_BBMAX else None
                     if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
                         bmin = struct.unpack("<fff", bmin_data)
                         bmax = struct.unpack("<fff", bmax_data)
-                        y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.55
+                        y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.40
                         y_max = bmax[1] + 0.6
-                        z_max = min(1.0, max(0.40, abs(bmax[2]) * 0.65))
+                        z_max = max(1.2, abs(bmax[2]) * 0.85)
                     else:
-                        y_turret_min, y_max = 1.0, 4.0
-                        z_max = 1.0
+                        bmin = (-2.0, 0.0, -1.5)
+                        bmax = (3.0, 2.5, 1.5)
+                        y_turret_min, y_max, z_max = 0.8, 4.0, 1.4
 
                     candidates = []
                     for b in range(cnt208):
                         m_data = raw_mats[b*64:(b+1)*64]
                         r0 = struct.unpack_from("<ffff", m_data, 0x00)
-                        r1 = struct.unpack_from("<ffff", m_data, 0x10)
                         r3 = struct.unpack_from("<ffff", m_data, 0x30)
                         bx, by, bz = r3[0], r3[1], r3[2]
-                        d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
-                        if d_fwd < 0.04 and y_turret_min <= by <= y_max and abs(bz) <= z_max and bx > -0.6:
-                            candidates.append((bx, by, bz, b))
+                        is_x_aligned = (r0[0] > 0.85 and (r0[1]**2 + r0[2]**2) < 0.15) or (r0[0] < -0.85 and (r0[1]**2 + r0[2]**2) < 0.15)
+                        if is_x_aligned and y_turret_min <= by <= y_max and abs(bz) <= z_max:
+                            candidates.append((bx, by, bz, b, r0[0]))
 
                     breech_idx = -1
                     muzzle_idx = -1
                     is_launcher = False
 
                     if candidates:
-                        candidates.sort(key=lambda x: x[0], reverse=True)
-
-                        # 3a. ตรวจหา Cannon Barrel มาตรฐาน / IFV Autocannon (ค้นหาคู่ collinear ทั้งหมดที่มี c_len >= 0.85m แล้วเลือกคู่ที่ปลายกระบอกยื่นไปข้างหน้ามากที่สุด)
+                        # 3a. ตรวจหา Cannon Barrel มาตรฐาน / IFV Autocannon
                         cannon_pairs = []
                         for cand in candidates:
-                            mx_b, my_b, mz_b, m_idx = cand
-                            # ใช้ tolerance แบบ tiered (0.04m -> 0.06m -> 0.10m) เพื่อให้ได้จุดแกนปืนจริง ไม่หลุดไปหยิบชิ้นส่วนหลังคาป้อม
-                            collinear = [c for c in candidates if abs(c[1] - my_b) < 0.04 and abs(c[2] - mz_b) < 0.04 and c[0] <= mx_b]
-                            if len(collinear) < 2:
-                                collinear = [c for c in candidates if abs(c[1] - my_b) < 0.06 and abs(c[2] - mz_b) < 0.06 and c[0] <= mx_b]
-                            if len(collinear) < 2:
-                                collinear = [c for c in candidates if abs(c[1] - my_b) < 0.10 and abs(c[2] - mz_b) < 0.10 and c[0] <= mx_b]
-                            if len(collinear) >= 2:
-                                collinear.sort(key=lambda x: x[0])
-                                b_cand = collinear[0]
-                                c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
-                                if c_len >= 0.85:
-                                    cannon_pairs.append((b_cand[3], m_idx, False, c_len, cand))
+                            mx_b, my_b, mz_b, m_idx, fwd_dir = cand
+                            for tol in (0.03, 0.05, 0.08):
+                                if fwd_dir > 0:
+                                    collinear = [c for c in candidates if abs(c[1] - my_b) < tol and abs(c[2] - mz_b) < tol and c[0] <= mx_b]
+                                else:
+                                    collinear = [c for c in candidates if abs(c[1] - my_b) < tol and abs(c[2] - mz_b) < tol and c[0] >= mx_b]
+
+                                if len(collinear) >= 2:
+                                    if fwd_dir > 0:
+                                        collinear.sort(key=lambda x: x[0])
+                                    else:
+                                        collinear.sort(key=lambda x: x[0], reverse=True)
+                                    b_cand = collinear[0]
+                                    c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
+                                    if c_len >= 0.50:
+                                        cannon_pairs.append((b_cand[3], m_idx, False, c_len, cand, b_cand, tol))
+                                    break
 
                         if cannon_pairs:
-                            best_cannon = max(cannon_pairs, key=lambda p: p[4][0])
+                            best_cannon = max(cannon_pairs, key=lambda p: _score_barrel_pair(p, raw_anim, bmin, bmax))
                             breech_idx, muzzle_idx, is_launcher = best_cannon[0], best_cannon[1], best_cannon[2]
 
-                        # 3b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901)
+                        # 3b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901, Shturm-S)
                         if breech_idx == -1 and bmin_data and bmax_data:
-                            upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.65
-                            launcher_cands = [c for c in candidates if c[1] >= upper_turret_min and abs(c[2]) < abs(bmax[2]) * 0.70]
+                            upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.55
+                            launcher_cands = [c for c in candidates if c[1] >= upper_turret_min]
                             if launcher_cands:
-                                launcher_cands.sort(key=lambda c: (c[1], c[0]), reverse=True)
                                 for cand in launcher_cands:
-                                    mx_b, my_b, mz_b, m_idx = cand
-                                    collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.10 and abs(c[2] - mz_b) < 0.10]
+                                    mx_b, my_b, mz_b, m_idx, fwd_dir = cand
+                                    collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.12 and abs(c[2] - mz_b) < 0.12]
                                     if len(collinear) >= 2:
-                                        collinear.sort(key=lambda x: x[0])
+                                        if fwd_dir > 0:
+                                            collinear.sort(key=lambda x: x[0])
+                                        else:
+                                            collinear.sort(key=lambda x: x[0], reverse=True)
                                         breech_idx = collinear[0][3]
                                         muzzle_idx = collinear[-1][3]
                                         is_launcher = True
                                         break
                                 if breech_idx == -1:
-                                    top = launcher_cands[0]
-                                    breech_idx = top[3]
-                                    muzzle_idx = top[3]
+                                    launcher_cands.sort(key=lambda c: c[1], reverse=True)
+                                    breech_idx = launcher_cands[0][3]
+                                    muzzle_idx = launcher_cands[0][3]
                                     is_launcher = True
 
                     if breech_idx != -1 and muzzle_idx != -1:
                         anim_wtm = t250 + 0x30
-                        if current_info_ptr:
-                            scanner.model_barrel_cache[current_info_ptr] = (breech_idx, muzzle_idx, is_launcher)
-                        scanner.bone_cache[u_ptr] = {
-                            "breech_idx": breech_idx,
-                            "muzzle_idx": muzzle_idx,
-                            "is_launcher": is_launcher,
-                            "anim_wtm_ptr": anim_wtm,
-                            "info_ptr": current_info_ptr,
-                            "fail_count": 0,
-                        }
+                        with _BARREL_CACHE_LOCK:
+                            cache_key = model_key or current_info_ptr
+                            if cache_key:
+                                scanner.model_barrel_cache[cache_key] = (breech_idx, muzzle_idx, is_launcher)
+                            scanner.bone_cache[u_ptr] = {
+                                "breech_idx": breech_idx,
+                                "muzzle_idx": muzzle_idx,
+                                "is_launcher": is_launcher,
+                                "anim_wtm_ptr": anim_wtm,
+                                "info_ptr": current_info_ptr,
+                                "model_key": model_key,
+                                "fail_count": 0,
+                            }
 
                         b_bytes = scanner.read_mem(anim_wtm + breech_idx * 64, 64)
                         m_bytes = scanner.read_mem(anim_wtm + muzzle_idx * 64, 64)
@@ -1311,76 +1393,73 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                                         bx, by, bz = mx - fx * 2.5, my - fy * 2.5, mz - fz * 2.5
                                 return to_world(bx, by, bz), to_world(mx, my, mz)
 
-        # 4. Fallback (Legacy Scan สำหรับโมเดลรุ่นเก่า)
-        best_score, best_idx = -1, -1
-        u_ptr_tree = 0
-        best_wtm_off = 0x00
-        for off in [0x250, 0x208, 0x238, 0x1F0, 0x1FD8, 0x2E20, 0x2F38, 0x1E8, 0x1E0, 0x1D8]:
-            raw_ptr = scanner.read_mem(u_ptr + off, 8)
-            if not raw_ptr: continue
-            tree_ptr = struct.unpack("<Q", raw_ptr)[0]
-            if not is_valid_ptr(tree_ptr): continue
-            
-            cnt_raw = scanner.read_mem(tree_ptr + 0x08, 4)
-            bone_cnt = struct.unpack("<I", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 4 else 400
-            if bone_cnt <= 0 or bone_cnt > 1000: bone_cnt = 400
-
-            for sub_off in [0x40, 0x20, 0xB0]:
-                raw_name = scanner.read_mem(tree_ptr + sub_off, 8)
-                if not raw_name: continue
-                name_ptr = struct.unpack("<Q", raw_name)[0]
-                if not is_valid_ptr(name_ptr): continue
-                names_block = scanner.read_mem(name_ptr, max(0x4000, bone_cnt * 32))
-                if not names_block: continue
-                    
-                for i in range(min(bone_cnt, 512)):
-                    try:
-                        str_offset = struct.unpack_from("<H", names_block, i * 2)[0]
-                        if str_offset == 0 or str_offset >= len(names_block): continue
-                        end_idx = names_block.find(b'\x00', str_offset)
-                        if end_idx != -1:
-                            bone_name = names_block[str_offset:end_idx].decode('utf-8', errors='ignore').lower().strip()
+        # 4. Fallback (Safe Dagor GeomNodeTree String Search บน t250)
+        if is_valid_ptr(t250):
+            raw_tree = scanner.read_mem(t250, 0x18000)
+            if raw_tree:
+                s_idx_found = raw_tree.find(b"root\x00")
+                if s_idx_found == -1:
+                    s_idx_found = raw_tree.find(b"\x00root\x00")
+                    if s_idx_found != -1:
+                        s_idx_found += 1
+                if s_idx_found != -1:
+                    strings = raw_tree[s_idx_found:].split(b"\x00")
+                    best_score, best_idx = -1, -1
+                    cnt_raw = scanner.read_mem(t250 + 0x10, 2)
+                    cnt = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
+                    for s_idx in range(min(cnt, len(strings))):
+                        try:
+                            s_str = strings[s_idx].decode("utf-8", errors="ignore").lower().strip()
+                            if not s_str: continue
                             score = -1
-                            if "bone_gun_barrel" in bone_name: score = 100
-                            elif "gun_barrel" in bone_name: score = 80
-                            elif bone_name == "bone_gun": score = 70
-                            elif "bone_gun" in bone_name: score = 60
-                            elif "barrel" in bone_name: score = 40
-                            if any(b in bone_name for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root"]): score = -100
+                            if "bone_gun_barrel" in s_str: score = 100
+                            elif "gun_barrel" in s_str and not s_str.endswith("_dm"): score = 80
+                            elif s_str == "bone_gun": score = 70
+                            elif "bone_gun" in s_str: score = 60
+                            elif "barrel" in s_str and not s_str.endswith("_dm"): score = 40
+                            elif any(k in s_str for k in ["rocket_launcher", "launcher_dm", "missile_rail"]): score = 35
+                            if any(b in s_str for b in ["mg", "machine", "smoke", "fuel", "water", "camera", "optic", "antenna", "suspension", "wheel", "track", "root", "roller", "drive", "ammo", "cls_"]):
+                                score = -100
                             if score > best_score:
-                                best_score = score
-                                best_idx = i
-                                u_ptr_tree = tree_ptr
-                                best_wtm_off = 0x00
-                            if best_score >= 100: break
-                    except: pass
-                if best_score >= 100: break
-            if best_score >= 100: break
+                                m_bytes = scanner.read_mem(t250 + 0x30 + s_idx * 64, 64)
+                                if m_bytes and len(m_bytes) == 64:
+                                    fx, fy, fz = struct.unpack_from("<fff", m_bytes, 0x00)
+                                    bx, by, bz = struct.unpack_from("<fff", m_bytes, 0x30)
+                                    fl = (fx*fx + fy*fy + fz*fz) ** 0.5
+                                    if 0.5 < fl < 2.0 and (abs(bx) > 0.05 or abs(by) > 0.05 or abs(bz) > 0.05):
+                                        best_score = score
+                                        best_idx = s_idx
+                        except Exception:
+                            pass
 
-        if best_idx != -1 and u_ptr_tree:
-            wtm_base_raw = scanner.read_mem(u_ptr_tree + best_wtm_off, 8)
-            if wtm_base_raw:
-                w_ptr = struct.unpack("<Q", wtm_base_raw)[0]
-                if is_valid_ptr(w_ptr):
-                    matrix_data = scanner.read_mem(w_ptr + (best_idx * 64), 64)
-                    if matrix_data and len(matrix_data) == 64:
-                        fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00)
-                        bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
-                        if math.isfinite(bx) and math.isfinite(fx):
-                            scanner.bone_cache[u_ptr] = {
-                                "breech_idx": best_idx,
-                                "muzzle_idx": best_idx,
-                                "anim_wtm_ptr": w_ptr,
-                                "info_ptr": current_info_ptr,
-                                "fail_count": 0,
-                            }
-                            length = 6.0
-                            return to_world(bx, by, bz), to_world(bx + fx * length, by + fy * length, bz + fz * length)
+                    if best_idx != -1:
+                        anim_wtm = t250 + 0x30
+                        matrix_data = scanner.read_mem(anim_wtm + best_idx * 64, 64)
+                        if matrix_data and len(matrix_data) == 64:
+                            fx, fy, fz = struct.unpack_from("<fff", matrix_data, 0x00)
+                            bx, by, bz = struct.unpack_from("<fff", matrix_data, 0x30)
+                            if math.isfinite(bx) and math.isfinite(fx):
+                                with _BARREL_CACHE_LOCK:
+                                    cache_key = model_key or current_info_ptr
+                                    if cache_key:
+                                        scanner.model_barrel_cache[cache_key] = (best_idx, best_idx, False)
+                                    scanner.bone_cache[u_ptr] = {
+                                        "breech_idx": best_idx,
+                                        "muzzle_idx": best_idx,
+                                        "is_launcher": False,
+                                        "anim_wtm_ptr": anim_wtm,
+                                        "info_ptr": current_info_ptr,
+                                        "model_key": model_key,
+                                        "fail_count": 0,
+                                    }
+                                length = 4.0
+                                return to_world(bx, by, bz), to_world(bx + fx * length, by + fy * length, bz + fz * length)
 
-        if u_ptr not in scanner.bone_cache:
+        with _BARREL_CACHE_LOCK:
             scanner.bone_cache[u_ptr] = {
                 "no_barrel": True,
                 "info_ptr": current_info_ptr,
+                "model_key": model_key,
                 "failed_at": time.time(),
             }
     except Exception:

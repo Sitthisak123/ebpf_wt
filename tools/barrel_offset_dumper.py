@@ -90,77 +90,81 @@ def dump_barrel_offset(write_persistence=True):
         cnt208 = struct.unpack("<H", cnt_raw)[0] if cnt_raw and len(cnt_raw) == 2 else 0
         if 0 < cnt208 < 1000:
             raw_mats = scanner.read_mem(t208 + 0x30, cnt208 * 64)
-            if raw_mats and len(raw_mats) == cnt208 * 64:
+            raw_anim = scanner.read_mem(t250 + 0x30, cnt208 * 64)
+            if raw_mats and raw_anim and len(raw_mats) == cnt208 * 64 and len(raw_anim) == cnt208 * 64:
                 bmin_data = scanner.read_mem(my_unit + mul.OFF_UNIT_BBMIN, 12) if mul.OFF_UNIT_BBMIN else None
                 bmax_data = scanner.read_mem(my_unit + mul.OFF_UNIT_BBMAX, 12) if mul.OFF_UNIT_BBMAX else None
                 if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
                     bmin = struct.unpack("<fff", bmin_data)
                     bmax = struct.unpack("<fff", bmax_data)
-                    y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.55
+                    y_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.40
                     y_max = bmax[1] + 0.6
-                    z_max = min(1.0, max(0.40, abs(bmax[2]) * 0.65))
+                    z_max = max(1.2, abs(bmax[2]) * 0.85)
                 else:
-                    y_turret_min, y_max = 1.0, 4.0
-                    z_max = 1.0
+                    bmin = (-2.0, 0.0, -1.5)
+                    bmax = (3.0, 2.5, 1.5)
+                    y_turret_min, y_max, z_max = 0.8, 4.0, 1.4
 
                 candidates = []
                 for b in range(cnt208):
                     m_data = raw_mats[b*64:(b+1)*64]
                     r0 = struct.unpack_from("<ffff", m_data, 0x00)
-                    r1 = struct.unpack_from("<ffff", m_data, 0x10)
                     r3 = struct.unpack_from("<ffff", m_data, 0x30)
                     bx, by, bz = r3[0], r3[1], r3[2]
-                    d_fwd = (r0[0]-1.0)**2 + r0[1]**2 + r0[2]**2
-                    if d_fwd < 0.04 and y_turret_min <= by <= y_max and abs(bz) <= z_max and bx > -0.6:
-                        candidates.append((bx, by, bz, b))
+                    is_x_aligned = (r0[0] > 0.85 and (r0[1]**2 + r0[2]**2) < 0.15) or (r0[0] < -0.85 and (r0[1]**2 + r0[2]**2) < 0.15)
+                    if is_x_aligned and y_turret_min <= by <= y_max and abs(bz) <= z_max:
+                        candidates.append((bx, by, bz, b, r0[0]))
 
                 breech_idx = -1
                 muzzle_idx = -1
                 is_launcher = False
 
                 if candidates:
-                    candidates.sort(key=lambda x: x[0], reverse=True)
-
-                    # 1a. ตรวจหา Cannon Barrel มาตรฐาน / IFV Autocannon (ค้นหาคู่ collinear ทั้งหมดที่มี c_len >= 0.85m แล้วเลือกคู่ที่ปลายกระบอกยื่นไปข้างหน้ามากที่สุด)
                     cannon_pairs = []
                     for cand in candidates:
-                        mx_b, my_b, mz_b, m_idx = cand
-                        # ใช้ tolerance แบบ tiered (0.04m -> 0.06m -> 0.10m) เพื่อให้ได้จุดแกนปืนจริง ไม่หลุดไปหยิบชิ้นส่วนหลังคาป้อม
-                        collinear = [c for c in candidates if abs(c[1] - my_b) < 0.04 and abs(c[2] - mz_b) < 0.04 and c[0] <= mx_b]
-                        if len(collinear) < 2:
-                            collinear = [c for c in candidates if abs(c[1] - my_b) < 0.06 and abs(c[2] - mz_b) < 0.06 and c[0] <= mx_b]
-                        if len(collinear) < 2:
-                            collinear = [c for c in candidates if abs(c[1] - my_b) < 0.10 and abs(c[2] - mz_b) < 0.10 and c[0] <= mx_b]
-                        if len(collinear) >= 2:
-                            collinear.sort(key=lambda x: x[0])
-                            b_cand = collinear[0]
-                            c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
-                            if c_len >= 0.85:
-                                cannon_pairs.append((b_cand[3], m_idx, False, c_len, cand))
+                        mx_b, my_b, mz_b, m_idx, fwd_dir = cand
+                        for tol in (0.03, 0.05, 0.08):
+                            if fwd_dir > 0:
+                                collinear = [c for c in candidates if abs(c[1] - my_b) < tol and abs(c[2] - mz_b) < tol and c[0] <= mx_b]
+                            else:
+                                collinear = [c for c in candidates if abs(c[1] - my_b) < tol and abs(c[2] - mz_b) < tol and c[0] >= mx_b]
+
+                            if len(collinear) >= 2:
+                                if fwd_dir > 0:
+                                    collinear.sort(key=lambda x: x[0])
+                                else:
+                                    collinear.sort(key=lambda x: x[0], reverse=True)
+                                b_cand = collinear[0]
+                                c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
+                                if c_len >= 0.50:
+                                    cannon_pairs.append((b_cand[3], m_idx, False, c_len, cand, b_cand, tol))
+                                break
 
                     if cannon_pairs:
-                        best_cannon = max(cannon_pairs, key=lambda p: p[4][0])
+                        best_cannon = max(cannon_pairs, key=lambda p: mul._score_barrel_pair(p, raw_anim, bmin, bmax))
                         breech_idx, muzzle_idx, is_launcher = best_cannon[0], best_cannon[1], best_cannon[2]
 
-                    # 1b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901)
+                    # 1b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901, Shturm-S)
                     if breech_idx == -1 and bmin_data and bmax_data:
-                        upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.65
-                        launcher_cands = [c for c in candidates if c[1] >= upper_turret_min and abs(c[2]) < abs(bmax[2]) * 0.70]
+                        upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.55
+                        launcher_cands = [c for c in candidates if c[1] >= upper_turret_min]
                         if launcher_cands:
-                            launcher_cands.sort(key=lambda c: (c[1], c[0]), reverse=True)
                             for cand in launcher_cands:
-                                mx_b, my_b, mz_b, m_idx = cand
-                                collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.10 and abs(c[2] - mz_b) < 0.10]
+                                mx_b, my_b, mz_b, m_idx, fwd_dir = cand
+                                collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.12 and abs(c[2] - mz_b) < 0.12]
                                 if len(collinear) >= 2:
-                                    collinear.sort(key=lambda x: x[0])
+                                    if fwd_dir > 0:
+                                        collinear.sort(key=lambda x: x[0])
+                                    else:
+                                        collinear.sort(key=lambda x: x[0], reverse=True)
                                     breech_idx = collinear[0][3]
                                     muzzle_idx = collinear[-1][3]
                                     is_launcher = True
                                     break
                             if breech_idx == -1:
-                                top = launcher_cands[0]
-                                breech_idx = top[3]
-                                muzzle_idx = top[3]
+                                launcher_cands.sort(key=lambda c: c[1], reverse=True)
+                                breech_idx = launcher_cands[0][3]
+                                muzzle_idx = launcher_cands[0][3]
                                 is_launcher = True
 
                 if breech_idx != -1 and muzzle_idx != -1:

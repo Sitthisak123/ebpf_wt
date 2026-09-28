@@ -40,6 +40,7 @@ from src.utils.mul import (
     get_unit_bbox,
     get_unit_rotation,
     get_weapon_barrel,
+    cleanup_weapon_barrel_cache,
     get_local_axes_from_rotation,
     get_my_air_velocity,
     get_air_velocity,
@@ -811,12 +812,12 @@ class DataPumpWorker(QThread):
                 if (now - last_seen_val) > 10.0:
                     del self.unit_id_cache[ptr]
 
-        # Clean bone_cache in scanner for despawned units (5-second grace period)
+        # Clean bone_cache in scanner for despawned units (Thread-safe)
         if hasattr(self.scanner, "bone_cache") and self.scanner.bone_cache:
-            for ptr in list(self.scanner.bone_cache.keys()):
-                if ptr != snap.my_unit and ptr not in current_seen_ptrs:
-                    if ptr not in self.profile_cache:
-                        del self.scanner.bone_cache[ptr]
+            active_ptrs = set(current_seen_ptrs)
+            if snap.my_unit:
+                active_ptrs.add(snap.my_unit)
+            cleanup_weapon_barrel_cache(self.scanner, active_ptrs)
 
         # Scan for missiles periodically in background thread (0ms in paintGL)
         if (now - self.last_missile_scan_t) >= self.missile_scan_interval:
