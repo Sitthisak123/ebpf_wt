@@ -1,12 +1,13 @@
 {
-  "updated_at": "2026-09-20T17:41:19.890060",
+  "updated_at": "2026-09-30T11:36:37.777125",
   "animchar_off": 592,
   "bone_tree_off": 520,
   "sub_off": 48,
   "wtm_off": 48,
-  "bone_idx": 189,
-  "breech_idx": 190,
-  "muzzle_idx": 189,
+  "bone_idx": 178,
+  "breech_idx": 155,
+  "muzzle_idx": 178,
+  "is_launcher": false,
   "bone_name": "geometric_gun_barrel",
   "row0_forward_offset": 0,
   "row3_position_offset": 48,
@@ -15,7 +16,7 @@
   "confidence": 0.99,
   "build_fingerprint": {
     "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
-    "size": 180147520,
-    "mtime_ns": 1789705518000000000
+    "size": 180197088,
+    "mtime_ns": 1790566928000000000
   }
 }

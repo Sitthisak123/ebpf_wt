@@ -92,6 +92,13 @@ def dump_barrel_offset(write_persistence=True):
             raw_mats = scanner.read_mem(t208 + 0x30, cnt208 * 64)
             raw_anim = scanner.read_mem(t250 + 0x30, cnt208 * 64)
             if raw_mats and raw_anim and len(raw_mats) == cnt208 * 64 and len(raw_anim) == cnt208 * 64:
+                raw_tree = scanner.read_mem(t250, 0x18000)
+                s_idx = raw_tree.find(b"root\x00") if raw_tree else -1
+                if s_idx == -1 and raw_tree:
+                    s_idx = raw_tree.find(b"\x00root\x00")
+                    if s_idx != -1: s_idx += 1
+                node_strings = raw_tree[s_idx:].split(b"\x00") if s_idx != -1 else []
+
                 bmin_data = scanner.read_mem(my_unit + mul.OFF_UNIT_BBMIN, 12) if mul.OFF_UNIT_BBMIN else None
                 bmax_data = scanner.read_mem(my_unit + mul.OFF_UNIT_BBMAX, 12) if mul.OFF_UNIT_BBMAX else None
                 if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
@@ -107,6 +114,10 @@ def dump_barrel_offset(write_persistence=True):
 
                 candidates = []
                 for b in range(cnt208):
+                    if b < len(node_strings):
+                        b_name = node_strings[b].decode("utf-8", errors="ignore").strip().lower()
+                        if any(bad in b_name for bad in mul.BAD_BONE_SUBSTRINGS):
+                            continue
                     m_data = raw_mats[b*64:(b+1)*64]
                     r0 = struct.unpack_from("<ffff", m_data, 0x00)
                     r3 = struct.unpack_from("<ffff", m_data, 0x30)
@@ -146,25 +157,26 @@ def dump_barrel_offset(write_persistence=True):
 
                     # 1b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901, Shturm-S)
                     if breech_idx == -1 and bmin_data and bmax_data:
-                        upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.55
-                        launcher_cands = [c for c in candidates if c[1] >= upper_turret_min]
+                        upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.65
+                        launcher_cands = [c for c in candidates if c[1] >= upper_turret_min and abs(c[2]) < abs(bmax[2]) * 0.85]
                         if launcher_cands:
+                            launcher_cands.sort(key=lambda c: (c[1], c[0]), reverse=True)
                             for cand in launcher_cands:
                                 mx_b, my_b, mz_b, m_idx, fwd_dir = cand
-                                collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.12 and abs(c[2] - mz_b) < 0.12]
+                                collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.10 and abs(c[2] - mz_b) < 0.10 and c[0] <= mx_b]
                                 if len(collinear) >= 2:
-                                    if fwd_dir > 0:
-                                        collinear.sort(key=lambda x: x[0])
-                                    else:
-                                        collinear.sort(key=lambda x: x[0], reverse=True)
-                                    breech_idx = collinear[0][3]
-                                    muzzle_idx = collinear[-1][3]
-                                    is_launcher = True
-                                    break
+                                    collinear.sort(key=lambda x: x[0])
+                                    b_cand = collinear[0]
+                                    c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
+                                    if c_len >= 0.30:
+                                        breech_idx = b_cand[3]
+                                        muzzle_idx = m_idx
+                                        is_launcher = True
+                                        break
                             if breech_idx == -1:
-                                launcher_cands.sort(key=lambda c: c[1], reverse=True)
-                                breech_idx = launcher_cands[0][3]
-                                muzzle_idx = launcher_cands[0][3]
+                                top = launcher_cands[0]
+                                breech_idx = top[3]
+                                muzzle_idx = top[3]
                                 is_launcher = True
 
                 if breech_idx != -1 and muzzle_idx != -1:

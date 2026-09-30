@@ -1148,8 +1148,16 @@ def _get_unit_model_name(scanner, u_ptr, info_ptr):
     return None
 
 
+BAD_BONE_SUBSTRINGS = (
+    'wheel', 'track', 'suspension', 'ammo', 'fuel', 'engine', 'armor', 'cls_', 
+    'body_', 'ex_decor', 'superstructure', 'exhaust', 'lantern', 'phx', 'camera', 
+    'optic', 'seat', 'driver', 'loader', 'commander_dm', 'gunner_dm', 'radiator', 
+    'transmission', 'radio_station', 'dmg', 'fire', 'antenna', 'roll'
+)
+
+
 def _score_barrel_pair(pair, raw_anim, bmin, bmax):
-    """ให้คะแนนคู่ Breech-Muzzle เพื่อป้องกันการหยิบผิดชิ้นส่วน เช่น กันชนหน้า หรือโครงหลังคา"""
+    """ให้คะแนนคู่ Breech-Muzzle เพื่อป้องกันการหยิบผิดชิ้นส่วน เช่น ปืนกลบนหลังคา หรือกันชนหน้า"""
     b_idx, m_idx, is_launcher, c_len, cand, b_cand, tol = pair
     score = 0.0
     m_anim = raw_anim[m_idx * 64:(m_idx + 1) * 64]
@@ -1159,22 +1167,36 @@ def _score_barrel_pair(pair, raw_anim, bmin, bmax):
     d_anim_m = math.sqrt((m_pos_a[0] - cand[0])**2 + (m_pos_a[1] - cand[1])**2 + (m_pos_a[2] - cand[2])**2)
     d_anim_b = math.sqrt((b_pos_a[0] - b_cand[0])**2 + (b_pos_a[1] - b_cand[1])**2 + (b_pos_a[2] - b_cand[2])**2)
 
-    # 1) โบนัสสูงมากหากปลายปืนหรือโคนปืนมีการเคลื่อนไหวเทียบกับ Bind Pose (ป้อมหมุนหรือกระดกปืน)
-    if d_anim_m > 0.05 or d_anim_b > 0.05:
-        score += 500.0 + d_anim_m * 50.0
+    # 1) โบนัสการเคลื่อนไหวเทียบกับ Bind Pose (ปรับให้สมดุลสูงสุด +150 ไม่ให้ปืนกลหลังคากระดกแล้วชนะปืนใหญ่ 5 เมตร)
+    d_anim_max = max(d_anim_m, d_anim_b)
+    if d_anim_max > 0.05:
+        score += min(150.0, 50.0 + d_anim_max * 100.0)
+
     # 2) โบนัสความแม่นยำ Tolerance (+70 สำหรับ 0.03m, +50 สำหรับ 0.05m, +20 สำหรับ 0.08m)
     score += (0.10 - tol) * 1000.0
+
     # 3) โบนัสการเรียงตัวในแนวแกน Y-Z (Radial distance Breech vs Muzzle)
     dr = math.sqrt((cand[1] - b_cand[1])**2 + (cand[2] - b_cand[2])**2)
     score += max(0.0, (0.08 - dr)) * 500.0
-    # 4) โบนัสความยาวลำกล้อง (สูงสุด 5.0m)
-    score += min(5.0, c_len) * 30.0
-    # 5) โบนัสการอยู่ใกล้กึ่งกลางตัวรถแกน Z (ปืนหลักมักอยู่ใกล้ Z=0)
-    score += max(0.0, (1.2 - abs(cand[2]))) * 40.0
-    # 6) โบนัสความสูง (ปืนหลักอยู่บนป้อมปืน สูงกว่ากันชน/แชสซี)
+
+    # 4) โบนัสความยาวลำกล้อง (ให้ความสำคัญสูงกับปืนหลักของรถถัง)
+    score += min(6.0, c_len) * 80.0
+
+    # 5) โบนัสการอยู่ใกล้กึ่งกลางตัวรถแกน Z (ปืนหลักมักอยู่ตรงกลาง |Z| < 0.15m)
+    abs_z = abs(cand[2])
+    if abs_z < 0.15:
+        score += (0.15 - abs_z) * 1200.0  # สูงสุด +180 เมื่อ Z=0
+    elif abs_z < 0.60:
+        score += max(0.0, (0.60 - abs_z)) * 50.0
+
+    # 6) โบนัสความสูง (ปืนหลักอยู่บนป้อมปืน สูงกว่ากันชน/แชสซี แต่ตัดคะแนนปืนกลต่อสู้อากาศยานบนคิวโปลาหลังคาที่สั้น)
     if bmax[1] > bmin[1]:
         h_ratio = (cand[1] - bmin[1]) / (bmax[1] - bmin[1])
-        score += h_ratio * 50.0
+        if h_ratio > 0.90 and c_len < 2.0:
+            score -= 150.0
+        else:
+            score += h_ratio * 40.0
+
     # 7) โบนัสตำแหน่งยื่นไปข้างหน้า
     score += cand[0] * 10.0
     return score
@@ -1284,6 +1306,13 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                 raw_mats = scanner.read_mem(t208 + 0x30, cnt208 * 64)
                 raw_anim = scanner.read_mem(t250 + 0x30, cnt208 * 64)
                 if raw_mats and raw_anim and len(raw_mats) == cnt208 * 64 and len(raw_anim) == cnt208 * 64:
+                    raw_tree = scanner.read_mem(t250, 0x18000)
+                    s_idx = raw_tree.find(b"root\x00") if raw_tree else -1
+                    if s_idx == -1 and raw_tree:
+                        s_idx = raw_tree.find(b"\x00root\x00")
+                        if s_idx != -1: s_idx += 1
+                    node_strings = raw_tree[s_idx:].split(b"\x00") if s_idx != -1 else []
+
                     bmin_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 12) if OFF_UNIT_BBMIN else None
                     bmax_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMAX, 12) if OFF_UNIT_BBMAX else None
                     if bmin_data and bmax_data and len(bmin_data) == 12 and len(bmax_data) == 12:
@@ -1299,6 +1328,10 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
 
                     candidates = []
                     for b in range(cnt208):
+                        if b < len(node_strings):
+                            b_name = node_strings[b].decode("utf-8", errors="ignore").strip().lower()
+                            if any(bad in b_name for bad in BAD_BONE_SUBSTRINGS):
+                                continue
                         m_data = raw_mats[b*64:(b+1)*64]
                         r0 = struct.unpack_from("<ffff", m_data, 0x00)
                         r3 = struct.unpack_from("<ffff", m_data, 0x30)
@@ -1339,25 +1372,26 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
 
                         # 3b. ตรวจหา ATGM / Rocket Launcher สำหรับรถถังมิสไซล์ (เช่น IT-1, M901, Shturm-S)
                         if breech_idx == -1 and bmin_data and bmax_data:
-                            upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.55
-                            launcher_cands = [c for c in candidates if c[1] >= upper_turret_min]
+                            upper_turret_min = bmin[1] + (bmax[1] - bmin[1]) * 0.65
+                            launcher_cands = [c for c in candidates if c[1] >= upper_turret_min and abs(c[2]) < abs(bmax[2]) * 0.85]
                             if launcher_cands:
+                                launcher_cands.sort(key=lambda c: (c[1], c[0]), reverse=True)
                                 for cand in launcher_cands:
                                     mx_b, my_b, mz_b, m_idx, fwd_dir = cand
-                                    collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.12 and abs(c[2] - mz_b) < 0.12]
+                                    collinear = [c for c in launcher_cands if abs(c[1] - my_b) < 0.10 and abs(c[2] - mz_b) < 0.10 and c[0] <= mx_b]
                                     if len(collinear) >= 2:
-                                        if fwd_dir > 0:
-                                            collinear.sort(key=lambda x: x[0])
-                                        else:
-                                            collinear.sort(key=lambda x: x[0], reverse=True)
-                                        breech_idx = collinear[0][3]
-                                        muzzle_idx = collinear[-1][3]
-                                        is_launcher = True
-                                        break
+                                        collinear.sort(key=lambda x: x[0])
+                                        b_cand = collinear[0]
+                                        c_len = math.sqrt((mx_b - b_cand[0])**2 + (my_b - b_cand[1])**2 + (mz_b - b_cand[2])**2)
+                                        if c_len >= 0.30:
+                                            breech_idx = b_cand[3]
+                                            muzzle_idx = m_idx
+                                            is_launcher = True
+                                            break
                                 if breech_idx == -1:
-                                    launcher_cands.sort(key=lambda c: c[1], reverse=True)
-                                    breech_idx = launcher_cands[0][3]
-                                    muzzle_idx = launcher_cands[0][3]
+                                    top = launcher_cands[0]
+                                    breech_idx = top[3]
+                                    muzzle_idx = top[3]
                                     is_launcher = True
 
                     if breech_idx != -1 and muzzle_idx != -1:
