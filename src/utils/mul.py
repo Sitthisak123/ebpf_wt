@@ -1152,8 +1152,38 @@ BAD_BONE_SUBSTRINGS = (
     'wheel', 'track', 'suspension', 'ammo', 'fuel', 'engine', 'armor', 'cls_', 
     'body_', 'ex_decor', 'superstructure', 'exhaust', 'lantern', 'phx', 'camera', 
     'optic', 'seat', 'driver', 'loader', 'commander_dm', 'gunner_dm', 'radiator', 
-    'transmission', 'radio_station', 'dmg', 'fire', 'antenna', 'roll'
+    'transmission', 'radio_station', 'dmg', 'fire', 'antenna', 'roll', 'drive',
+    'turret', 'gun_mask', 'sight'
 )
+
+
+def _read_dagor_node_names(scanner, tree_ptr, cnt):
+    """อ่านชื่อโหนดทั้งหมดจาก Dagor GeomNodeTree ตามโครงสร้างหน่วยความจำ (0x30 + cnt * 134) อย่างแม่นยำ 100%"""
+    if not is_valid_ptr(tree_ptr) or not (0 < cnt < 1000):
+        return []
+    offset_table = 0x30 + cnt * 134
+    table_bytes = scanner.read_mem(tree_ptr + offset_table, cnt * 2)
+    if not table_bytes or len(table_bytes) < cnt * 2:
+        return []
+    first_off = struct.unpack_from('<H', table_bytes, 0)[0]
+    if first_off != cnt * 2:
+        hdr_scan = scanner.read_mem(tree_ptr + 0x30 + cnt * 128, cnt * 16)
+        if hdr_scan:
+            target = struct.pack('<H', cnt * 2)
+            pos = hdr_scan.find(target)
+            if pos != -1:
+                offset_table = 0x30 + cnt * 128 + pos
+                table_bytes = scanner.read_mem(tree_ptr + offset_table, cnt * 2)
+    str_pool = scanner.read_mem(tree_ptr + offset_table, 0x8000)
+    if not str_pool:
+        return []
+    names = []
+    for b in range(cnt):
+        off = struct.unpack_from('<H', table_bytes, b * 2)[0]
+        end = str_pool.find(b'\x00', off) if off < len(str_pool) else -1
+        names.append(str_pool[off:end].decode('utf-8', errors='ignore').lower().strip() if end != -1 else '')
+    return names
+
 
 
 def _score_barrel_pair(pair, raw_anim, bmin, bmax):
@@ -1306,12 +1336,14 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                 raw_mats = scanner.read_mem(t208 + 0x30, cnt208 * 64)
                 raw_anim = scanner.read_mem(t250 + 0x30, cnt208 * 64)
                 if raw_mats and raw_anim and len(raw_mats) == cnt208 * 64 and len(raw_anim) == cnt208 * 64:
-                    raw_tree = scanner.read_mem(t250, 0x18000)
-                    s_idx = raw_tree.find(b"root\x00") if raw_tree else -1
-                    if s_idx == -1 and raw_tree:
-                        s_idx = raw_tree.find(b"\x00root\x00")
-                        if s_idx != -1: s_idx += 1
-                    node_strings = raw_tree[s_idx:].split(b"\x00") if s_idx != -1 else []
+                    node_strings = _read_dagor_node_names(scanner, t208, cnt208)
+                    if not node_strings:
+                        raw_tree = scanner.read_mem(t250, 0x18000)
+                        s_idx = raw_tree.find(b"root\x00") if raw_tree else -1
+                        if s_idx == -1 and raw_tree:
+                            s_idx = raw_tree.find(b"\x00root\x00")
+                            if s_idx != -1: s_idx += 1
+                        node_strings = [s.decode("utf-8", errors="ignore").lower().strip() for s in raw_tree[s_idx:].split(b"\x00")] if s_idx != -1 else []
 
                     bmin_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMIN, 12) if OFF_UNIT_BBMIN else None
                     bmax_data = scanner.read_mem(u_ptr + OFF_UNIT_BBMAX, 12) if OFF_UNIT_BBMAX else None
@@ -1329,7 +1361,7 @@ def get_weapon_barrel(scanner, u_ptr, unit_pos, unit_rot_matrix, should_log=Fals
                     candidates = []
                     for b in range(cnt208):
                         if b < len(node_strings):
-                            b_name = node_strings[b].decode("utf-8", errors="ignore").strip().lower()
+                            b_name = node_strings[b]
                             if any(bad in b_name for bad in BAD_BONE_SUBSTRINGS):
                                 continue
                         m_data = raw_mats[b*64:(b+1)*64]

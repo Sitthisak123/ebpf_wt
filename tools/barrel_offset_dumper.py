@@ -92,12 +92,14 @@ def dump_barrel_offset(write_persistence=True):
             raw_mats = scanner.read_mem(t208 + 0x30, cnt208 * 64)
             raw_anim = scanner.read_mem(t250 + 0x30, cnt208 * 64)
             if raw_mats and raw_anim and len(raw_mats) == cnt208 * 64 and len(raw_anim) == cnt208 * 64:
-                raw_tree = scanner.read_mem(t250, 0x18000)
-                s_idx = raw_tree.find(b"root\x00") if raw_tree else -1
-                if s_idx == -1 and raw_tree:
-                    s_idx = raw_tree.find(b"\x00root\x00")
-                    if s_idx != -1: s_idx += 1
-                node_strings = raw_tree[s_idx:].split(b"\x00") if s_idx != -1 else []
+                node_strings = mul._read_dagor_node_names(scanner, t208, cnt208)
+                if not node_strings:
+                    raw_tree = scanner.read_mem(t250, 0x18000)
+                    s_idx = raw_tree.find(b"root\x00") if raw_tree else -1
+                    if s_idx == -1 and raw_tree:
+                        s_idx = raw_tree.find(b"\x00root\x00")
+                        if s_idx != -1: s_idx += 1
+                    node_strings = [s.decode("utf-8", errors="ignore").lower().strip() for s in raw_tree[s_idx:].split(b"\x00")] if s_idx != -1 else []
 
                 bmin_data = scanner.read_mem(my_unit + mul.OFF_UNIT_BBMIN, 12) if mul.OFF_UNIT_BBMIN else None
                 bmax_data = scanner.read_mem(my_unit + mul.OFF_UNIT_BBMAX, 12) if mul.OFF_UNIT_BBMAX else None
@@ -115,7 +117,7 @@ def dump_barrel_offset(write_persistence=True):
                 candidates = []
                 for b in range(cnt208):
                     if b < len(node_strings):
-                        b_name = node_strings[b].decode("utf-8", errors="ignore").strip().lower()
+                        b_name = node_strings[b]
                         if any(bad in b_name for bad in mul.BAD_BONE_SUBSTRINGS):
                             continue
                     m_data = raw_mats[b*64:(b+1)*64]
