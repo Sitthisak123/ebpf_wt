@@ -68,7 +68,7 @@ OFF_MY_AIR_OMEGA    = 0x0098      # 🌪️ My air angular velocity: DOUBLE vec3
 
 # 🚀 Missile/Rocket Projectile & ECS Offsets (confirmed 2026-09)
 OFF_PROJ_LIST       = 0xac02ab8   # base + this → pointer to active projectile table (Tab<Projectile>)
-OFF_ECS_MANAGER     = 0x8ccd918   # base + this → ECS manager ptr (fallback/multiplayer confirmed 2026-09)
+OFF_ECS_MANAGER     = 0x8cd5940   # base + this → ECS manager ptr (confirmed active 2026-10 match)
 OFF_ECS_NODE_TABLE  = 0x178       # manager + this → node_table ptr
 OFF_ECS_CLASS_TABLE = 0x5E8       # manager + this → class_table ptr
 OFF_RKT_ENTITY_ID   = 0x40        # rocket + this → entity id (u32)

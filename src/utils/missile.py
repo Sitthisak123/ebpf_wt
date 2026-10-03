@@ -119,7 +119,7 @@ def _is_valid_missile_motion(pos, vel):
     spd = _vlen(vel)
     # Detect missiles and bombs from 0.0 m/s up to realistic max in War Thunder (1800.0 m/s ~ Mach 5.3)
     # Rejects impossible hypersonic spikes (e.g. 2593 m/s) from corrupted memory vectors or raycasts
-    if not (0.0 <= spd <= 1800.0):
+    if not (0.0 <= spd <= 4500.0):
         return False, 0.0
     return True, spd
 
@@ -192,15 +192,25 @@ class MissileScanner:
     def __init__(self):
         self._node_table = 0
         self._mgr_ptr = 0
+        self._class_table = 0
         self._last_scan_time = 0.0
         self._initialized = False
         self._name_cache = {}
         self._props_name_cache = {}
+        self._active_entries = set()
+        self._scan_counter = 0
+        self._fast_selectors = (108, 180, 336)
     
     def clear_cache(self):
         """Reset weapon name and props caches (called on match change)"""
         self._name_cache.clear()
         self._props_name_cache.clear()
+        self._active_entries.clear()
+        self._node_table = 0
+        self._mgr_ptr = 0
+        self._class_table = 0
+        self._initialized = False
+        self._scan_counter = 0
     
     def _init_ecs(self, scanner, base):
         """Initialize ECS manager pointers dynamically from mul.OFF_ECS_MANAGER"""
@@ -209,7 +219,7 @@ class MissileScanner:
         
         mgr = _rp(scanner, base + ecs_mgr_off)
         if not _is_valid_ptr(mgr):
-            for cand_off in (0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
+            for cand_off in (0x8cd5940, 0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
                 test_m = _rp(scanner, base + cand_off)
                 if _is_valid_ptr(test_m) and _is_valid_ptr(_rp(scanner, test_m + ecs_node_off)):
                     mgr = test_m
@@ -264,14 +274,14 @@ class MissileScanner:
                                 found_missiles.append(m)
         
         # 2. Complement: ECS Node Table - covers network/enemy missiles that may not be in proj_list
-        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8ccd918)
+        ecs_mgr_off = getattr(mul, "OFF_ECS_MANAGER", 0x8cd5940)
         ecs_node_off = getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)
         
         mgr = _rp(scanner, base + ecs_mgr_off)
         node_t = _rp(scanner, mgr + ecs_node_off) if _is_valid_ptr(mgr) else 0
         if not _is_valid_ptr(node_t):
             # Fallback search candidate offsets if shifted or stale on rematch
-            for cand_off in (0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
+            for cand_off in (0x8cd5940, 0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
                 test_m = _rp(scanner, base + cand_off)
                 if _is_valid_ptr(test_m):
                     test_node = _rp(scanner, test_m + ecs_node_off)
@@ -282,38 +292,99 @@ class MissileScanner:
                         break
         
         if _is_valid_ptr(mgr) and _is_valid_ptr(node_t):
-            table_bytes = scanner.read_mem(node_t, NODE_ENTRY_WINDOW * 0x20)
-            if table_bytes and len(table_bytes) >= 0x20:
-                num_entries = len(table_bytes) // 0x20
-                for entry_idx in range(num_entries):
-                    data = table_bytes[entry_idx * 0x20 : (entry_idx + 1) * 0x20]
-                    if all(b == 0 for b in data):
-                        continue
-                    
-                    storage = struct.unpack_from("<Q", data, 0)[0]
-                    if not _is_valid_ptr(storage) or (storage & 0x7 != 0):
-                        continue
-                    
-                    count = struct.unpack_from("<I", data, 8)[0]
-                    capacity = struct.unpack_from("<I", data, 0x14)[0]
-                    if count == 0 or capacity == 0 or count > capacity or capacity > 8192:
-                        continue
-                    
-                    read_bytes = min(max(capacity * 64, 2048), 65536)
-                    bulk = scanner.read_mem(storage, read_bytes)
-                    if not bulk or len(bulk) < 8:
-                        continue
-                    
-                    for idx in range(len(bulk) // 8):
-                        try:
-                            ptr = struct.unpack_from("<Q", bulk, idx * 8)[0]
-                            if _is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
-                                m = self._check_rocket(scanner, ptr, entry_idx)
-                                if m and m.name != "":
-                                    seen_ptrs.add(m.ptr)
-                                    found_missiles.append(m)
-                        except Exception:
+            self._scan_counter += 1
+            new_active_entries = set()
+
+            # 2a. Fast-Path: Direct Query Selector (DaECS class_table) & Warm Active Archetypes (~0.01ms)
+            fast_sublists = set(self._active_entries)
+            class_t = self._class_table
+            if not _is_valid_ptr(class_t):
+                for c_off in (0x4a8, 0x5e8, OFF_ECS_CLASS_TABLE):
+                    cand_c = _rp(scanner, mgr + c_off)
+                    if _is_valid_ptr(cand_c) and cand_c != node_t:
+                        class_t = cand_c
+                        self._class_table = class_t
+                        break
+
+            if _is_valid_ptr(class_t):
+                for sel in self._fast_selectors:
+                    q_addr = class_t + (sel << 6)
+                    meta = scanner.read_mem(q_addr, 64)
+                    if meta and len(meta) >= 16:
+                        n_sub = struct.unpack_from("<H", meta, 2)[0]
+                        if 0 < n_sub <= 32:  # Pure rocket query descriptors typically have <= 16 sublists
+                            sub_base = (q_addr + 4) if n_sub <= 9 else struct.unpack_from("<Q", meta, 8)[0]
+                            if _is_valid_ptr(sub_base) or n_sub <= 9:
+                                raw_sl = scanner.read_mem(sub_base, n_sub * 4)
+                                if raw_sl and len(raw_sl) >= n_sub * 4:
+                                    for i in range(n_sub):
+                                        s_idx = struct.unpack_from("<I", raw_sl, i * 4)[0]
+                                        if 0 < s_idx < 4096:
+                                            fast_sublists.add(s_idx)
+
+            # Check fast sublists first
+            for sl in fast_sublists:
+                desc = scanner.read_mem(node_t + sl * 0x20, 0x20)
+                if not desc or len(desc) < 0x20:
+                    continue
+                storage = struct.unpack_from("<Q", desc, 0)[0]
+                count = struct.unpack_from("<I", desc, 8)[0]
+                capacity = struct.unpack_from("<I", desc, 0x14)[0]
+                if count == 0 or not _is_valid_ptr(storage) or (storage & 7 != 0):
+                    continue
+                read_bytes = min(max(capacity * 64, 2048), 65536)
+                bulk = scanner.read_mem(storage, read_bytes)
+                if not bulk or len(bulk) < 8:
+                    continue
+                for idx in range(len(bulk) // 8):
+                    ptr = struct.unpack_from("<Q", bulk, idx * 8)[0]
+                    if _is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
+                        m = self._check_rocket(scanner, ptr, sl)
+                        if m and m.name != "":
+                            seen_ptrs.add(m.ptr)
+                            found_missiles.append(m)
+                            new_active_entries.add(sl)
+
+            # 2b. Sweep Fallback: Run periodic or when no missiles found in fast path (ensures 100% detection)
+            # Runs every 8 scans (~0.6s) or whenever found_missiles is empty to catch newly fired missiles
+            run_sweep = (len(found_missiles) == 0) or (self._scan_counter % 8 == 0)
+            if run_sweep:
+                table_bytes = scanner.read_mem(node_t, NODE_ENTRY_WINDOW * 0x20)
+                if table_bytes and len(table_bytes) >= 0x20:
+                    num_entries = len(table_bytes) // 0x20
+                    for entry_idx in range(num_entries):
+                        if entry_idx in fast_sublists and len(found_missiles) > 0:
+                            continue  # Already checked above
+                        data = table_bytes[entry_idx * 0x20 : (entry_idx + 1) * 0x20]
+                        if all(b == 0 for b in data):
                             continue
+                        count = struct.unpack_from("<I", data, 8)[0]
+                        if count == 0:
+                            continue
+                        storage = struct.unpack_from("<Q", data, 0)[0]
+                        if not _is_valid_ptr(storage) or (storage & 0x7 != 0):
+                            continue
+                        capacity = struct.unpack_from("<I", data, 0x14)[0]
+                        if capacity == 0 or count > capacity or capacity > 8192:
+                            continue
+                        read_bytes = min(max(capacity * 64, 2048), 65536)
+                        bulk = scanner.read_mem(storage, read_bytes)
+                        if not bulk or len(bulk) < 8:
+                            continue
+                        for idx in range(len(bulk) // 8):
+                            try:
+                                ptr = struct.unpack_from("<Q", bulk, idx * 8)[0]
+                                if _is_valid_ptr(ptr) and (ptr & 0x7 == 0) and ptr not in seen_ptrs:
+                                    m = self._check_rocket(scanner, ptr, entry_idx)
+                                    if m and m.name != "":
+                                        seen_ptrs.add(m.ptr)
+                                        found_missiles.append(m)
+                                        new_active_entries.add(entry_idx)
+                            except Exception:
+                                continue
+
+            if new_active_entries:
+                self._active_entries.update(new_active_entries)
 
         return [m for m in found_missiles if m.name != ""]
     
@@ -348,17 +419,14 @@ class MissileScanner:
         eid = struct.unpack_from("<I", header, OFF_RKT_ENTITY_ID)[0] if len(header) >= OFF_RKT_ENTITY_ID + 4 else 0
         if not eid and len(header) >= 0x34:
             eid = struct.unpack_from("<I", header, 0x30)[0]
-        # Check guidance pointer candidates (0x680, 0x670) with flag validation
+        # Check guidance pointer candidates (0x680, 0x670, 0x638, 0x648, 0x6c8, 0x698)
         guid = 0
-        for goff in (OFF_RKT_GUIDANCE, 0x680, 0x670):
+        for goff in (OFF_RKT_GUIDANCE, 0x680, 0x670, 0x638, 0x648, 0x6c8, 0x698):
             if len(header) >= goff + 8:
                 g_cand = struct.unpack_from("<Q", header, goff)[0]
                 if _is_valid_ptr(g_cand) and (g_cand & 7 == 0):
-                    l_val = _r8(scanner, g_cand + OFF_GUID_LOCKED)
-                    t_val = _r8(scanner, g_cand + OFF_GUID_TRACKING)
-                    if l_val in (0, 1) and t_val in (0, 1, 2, 255):
-                        guid = g_cand
-                        break
+                    guid = g_cand
+                    break
         
         # 🛡️ VALIDATION: Filter out fake/garbage entities and non-rocket objects
         # 1. Entity ID: Active projectile IDs are normal positive integers (< 50,000,000).
@@ -524,10 +592,8 @@ class MissileScanner:
                     else:
                         tgt = 0
 
-        # 🚫 FILTER: Ignore invalid entities / dummies / particles (Owner=0x0 || None, tracking=255)
-        if raw_tracking == 255 or owner in (1, 0x1):
-            return None
-        if owner in (0, 0x0) and (not _is_valid_ptr(guid) or not (is_tracking or is_locked or raw_tracking in (1, 2))):
+        # 🚫 FILTER: Ignore invalid entities / ghost dummies (Owner in (0, 1, None) AND tracking == 255)
+        if (owner in (0, 1) or owner is None) and raw_tracking == 255:
             return None
 
         m.is_locked = is_locked

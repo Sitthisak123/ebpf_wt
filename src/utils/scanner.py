@@ -48,6 +48,7 @@ BBOX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "unit_bbox_persiste
 VIEW_MATRIX_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "view_matrix_persistence.json")
 BARREL_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "barrel_offset_persistence.json")
 UNIT_STATUS_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "unit_status_persistence.json")
+ECS_PERSISTENCE_PATH = os.path.join(PROJECT_ROOT, "config", "ecs_persistence.json")
 DEFAULT_GAME_BINARY_PATH = "/home/xda-7/MyGames/WarThunder/linux64/aces"
 
 
@@ -283,6 +284,48 @@ def _write_unit_status_persistence(offsets_dict, source, updated_by_tool, confid
         with open(UNIT_STATUS_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
         return UNIT_STATUS_PERSISTENCE_PATH
+    except Exception:
+        return None
+
+
+def _load_ecs_persistence():
+    try:
+        if not os.path.exists(ECS_PERSISTENCE_PATH):
+            return None
+        with open(ECS_PERSISTENCE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not _fingerprint_matches(data):
+            return None
+        return {
+            "ecs_mgr_off": int(data.get("ecs_mgr_off", 0)),
+            "ecs_node_off": int(data.get("ecs_node_off", 0x178)),
+            "ecs_class_off": int(data.get("ecs_class_off", 0x4a8)),
+            "source": data.get("source") or "persisted",
+            "updated_by_tool": data.get("updated_by_tool", "unknown"),
+            "confidence": float(data.get("confidence", 0.0) or 0.0),
+        }
+    except Exception:
+        return None
+
+
+def _write_ecs_persistence(ecs_mgr_off, source, updated_by_tool, confidence=0.98):
+    try:
+        if not _can_overwrite_persistence(ECS_PERSISTENCE_PATH, confidence):
+            return None
+        os.makedirs(os.path.dirname(ECS_PERSISTENCE_PATH), exist_ok=True)
+        payload = {
+            "updated_at": __import__("datetime").datetime.now().isoformat(),
+            "ecs_mgr_off": int(ecs_mgr_off),
+            "ecs_node_off": int(getattr(mul, "OFF_ECS_NODE_TABLE", 0x178)),
+            "ecs_class_off": int(getattr(mul, "OFF_ECS_CLASS_TABLE", 0x4a8)),
+            "source": source,
+            "updated_by_tool": updated_by_tool,
+            "confidence": float(confidence),
+            "build_fingerprint": _get_binary_fingerprint(),
+        }
+        with open(ECS_PERSISTENCE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        return ECS_PERSISTENCE_PATH
     except Exception:
         return None
 
@@ -910,19 +953,34 @@ def init_dynamic_offsets(scanner, base_address):
     print("[*] 🔍 5/5 ตรวจสอบและค้นหา ECS Manager (OFF_ECS_MANAGER Persistence)...")
     ecs_ok = False
     
-    # 1. Check verified candidate offsets
-    for cand_off in (getattr(mul, "OFF_ECS_MANAGER", 0x8ccd918), 0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
-        test_mgr = mul._read_ptr(scanner, base_address + cand_off)
+    # 0. Check persistence file first
+    ecs_persistence = _load_ecs_persistence()
+    if ecs_persistence:
+        p_off = ecs_persistence.get("ecs_mgr_off", 0)
+        test_mgr = mul._read_ptr(scanner, base_address + p_off)
         if mul.is_valid_ptr(test_mgr):
             test_node = mul._read_ptr(scanner, test_mgr + getattr(mul, "OFF_ECS_NODE_TABLE", 0x178))
-            test_class = mul._read_ptr(scanner, test_mgr + getattr(mul, "OFF_ECS_CLASS_TABLE", 0x5E8))
             if mul.is_valid_ptr(test_node):
                 node_bytes = scanner.read_mem(test_node, 128)
                 if node_bytes and any(b != 0 for b in node_bytes):
                     ecs_ok = True
-                    mul.OFF_ECS_MANAGER = cand_off
-                    print(f"  [+] ✅ BINGO! ECS Manager = {hex(mul.OFF_ECS_MANAGER)} (Confirmed Active)")
-                    break
+                    mul.OFF_ECS_MANAGER = p_off
+                    print(f"  [+] ✅ OVERRIDE! ECS Manager from persistence = {hex(mul.OFF_ECS_MANAGER)} (tool:{ecs_persistence.get('updated_by_tool', 'scanner')} conf:{ecs_persistence.get('confidence', 0.98):.2f})")
+
+    # 1. Check verified candidate offsets
+    if not ecs_ok:
+        for cand_off in (getattr(mul, "OFF_ECS_MANAGER", 0x8cd5940), 0x8cd5940, 0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
+            test_mgr = mul._read_ptr(scanner, base_address + cand_off)
+            if mul.is_valid_ptr(test_mgr):
+                test_node = mul._read_ptr(scanner, test_mgr + getattr(mul, "OFF_ECS_NODE_TABLE", 0x178))
+                if mul.is_valid_ptr(test_node):
+                    node_bytes = scanner.read_mem(test_node, 128)
+                    if node_bytes and any(b != 0 for b in node_bytes):
+                        ecs_ok = True
+                        mul.OFF_ECS_MANAGER = cand_off
+                        print(f"  [+] ✅ BINGO! ECS Manager = {hex(mul.OFF_ECS_MANAGER)} (Confirmed Active)")
+                        _write_ecs_persistence(cand_off, "scanner_candidate_check", "scanner", 0.98)
+                        break
 
     # 2. If game updated and offset shifted, scan base region dynamically
     if not ecs_ok:
@@ -956,6 +1014,7 @@ def init_dynamic_offsets(scanner, base_address):
         if found_off:
             mul.OFF_ECS_MANAGER = found_off
             print(f"  [+] 🎉 DYNAMIC BINGO! OFF_ECS_MANAGER = {hex(mul.OFF_ECS_MANAGER)}")
+            _write_ecs_persistence(found_off, "scanner_dynamic_discovery", "scanner", 0.98)
         else:
             print(f"  [!] ⚠️ ใช้ค่า Default สำหรับ ECS Manager: {hex(mul.OFF_ECS_MANAGER)}")
 

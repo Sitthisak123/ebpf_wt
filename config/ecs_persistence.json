@@ -1,0 +1,14 @@
+{
+  "updated_at": "2026-10-03T14:22:00.000000",
+  "ecs_mgr_off": 147675456,
+  "ecs_node_off": 376,
+  "ecs_class_off": 1192,
+  "source": "scanner_dynamic_discovery",
+  "updated_by_tool": "scanner",
+  "confidence": 0.98,
+  "build_fingerprint": {
+    "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
+    "size": 180184608,
+    "mtime_ns": 1790843692000000000
+  }
+}

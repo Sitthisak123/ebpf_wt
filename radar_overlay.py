@@ -493,7 +493,7 @@ XRAY_SHOW_BREECH            = True     # แสดงท้ายรังเพ
 DRAW_BASE_HITPOINT = True
 BASE_HITPOINT_SIZE_MULT = 1
 DEBUG_DRAW_CALIBRATION_HIT = False
-SHOW_MY_UNIT_BOX = True                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
+SHOW_MY_UNIT_BOX = False                 # เปิด/ปิด การแสดงผล Bounding Box บนรถของผู้เล่นเอง
 SHOW_MY_UNIT_XRAY = False               # เปิด/ปิด การแสดงผลโมดูล X-Ray (Crew, Ammo, Engine, Breech) บนรถของผู้เล่นเอง (Disabled)
 SHOW_BOT_UNITS = True               # 🤖 เปิด/ปิด การแสดงผลยูนิต AI Bot (False = ซ่อนบอท, True = แสดงพร้อมป้าย [BOT])
 CALIBRATION_SAVE_PATH = os.path.join("dumps", "hitpoint_calibration_samples.jsonl")
@@ -7120,26 +7120,19 @@ class ESPOverlay(QOpenGLWidget):
                             if getattr(m, 'entity_id', 0) < 32:
                                 continue
 
-                            # 🚫 กรองข้าม entity ที่ผิดปกติ / ระเบิด / dummy: Owner=0x0 || None, tracking=255
+                            # 🚫 กรองข้ามเฉพาะ ghost dummy ที่ไม่มี Owner (0x0, 0x1, None) และ tracking=255
                             m_owner = getattr(m, 'owner', 0)
                             m_trk = getattr(m, 'tracking', 0)
                             m_guid = getattr(m, 'guidance_ptr', 0)
                             m_is_locked = getattr(m, 'is_locked', False)
                             m_is_tracking = getattr(m, 'is_tracking', False)
 
-                            if m_trk == 255 or ((m_owner in (0, None)) and m_trk == 255):
+                            if (m_owner in (0, 1, None)) and m_trk == 255:
                                 continue
 
-                            # 🚫 กรองข้าม entity ที่ไม่มี Owner และไม่มี Guidance นำวิถี
-                            if m_owner in (0, 0x0) and (not m_guid or not (m_is_tracking or m_trk in (1, 2) or m_is_locked)):
+                            # 🚫 กรองข้าม fallback ghost missiles ("guided_missile.blk") ที่ไม่มีชื่อจริงและไม่มี guidance struct
+                            if (m.name in ("guided_missile.blk", "missile.blk") or not m.name) and not m_guid:
                                 continue
-
-                            # 🚫 กรองข้าม fallback ghost missiles ("missile.blk") ที่ไม่มีชื่อจริงและไม่มี guidance
-                            if (m.name in ("guided_missile.blk", "missile.blk") or not m.name):
-                                if not m_guid or (m_trk == 0 and not m_is_locked and not m_is_tracking):
-                                    continue
-                                if m.speed < 100.0:
-                                    continue
 
                             current_scan_ptrs.add(m.ptr)
 
@@ -7347,33 +7340,25 @@ class ESPOverlay(QOpenGLWidget):
                         m = tr['missile']
 
                         # 🚫 กรองข้าม entity ความเร็วผิดปกติ หรือ EntityID ผิดปกติ
-                        if m.speed > 1800.0 or getattr(m, 'entity_id', 0) < 32:
+                        if m.speed > 4500.0 or getattr(m, 'entity_id', 0) < 32:
                             del self.missile_tracks[ptr]
                             continue
 
-                        # 🚫 กรองข้าม entity ที่ผิดปกติ / ระเบิด / dummy
+                        # 🚫 กรองข้ามเฉพาะ ghost dummy ที่ไม่มี Owner (0x0, 0x1, None) และ tracking=255
                         m_owner = getattr(m, 'owner', 0)
                         m_trk = getattr(m, 'tracking', 0)
                         m_guid = getattr(m, 'guidance_ptr', 0)
                         m_is_locked = getattr(m, 'is_locked', False)
                         m_is_tracking = getattr(m, 'is_tracking', False)
 
-                        if m_trk == 255 or ((m_owner in (0, None)) and m_trk == 255):
+                        if (m_owner in (0, 1, None)) and m_trk == 255:
                             del self.missile_tracks[ptr]
                             continue
 
-                        if m_owner in (0, 0x0) and (not m_guid or not (m_is_tracking or m_trk in (1, 2) or m_is_locked)):
+                        # 🚫 กรองข้าม fallback ghost missiles ("guided_missile.blk") ที่ไม่มีชื่อจริงและไม่มี guidance struct
+                        if (m.name in ("guided_missile.blk", "missile.blk") or not m.name) and not m_guid:
                             del self.missile_tracks[ptr]
                             continue
-
-                        # 🚫 กรองข้าม fallback ghost missiles ("missile.blk") ที่ไม่มีชื่อจริงและไม่มี guidance
-                        if (m.name in ("guided_missile.blk", "missile.blk") or not m.name):
-                            if not m_guid or (m_trk == 0 and not m_is_locked and not m_is_tracking):
-                                del self.missile_tracks[ptr]
-                                continue
-                            if m.speed < 100.0:
-                                del self.missile_tracks[ptr]
-                                continue
 
                         # ตรวจสอบขีดจำกัดเวลา Timeout และ Missed Scans
                         time_since_meas = curr_t - tr.get('last_meas_t', curr_t)
