@@ -194,12 +194,16 @@ class MissileScanner:
         self._mgr_ptr = 0
         self._class_table = 0
         self._last_scan_time = 0.0
+        self._last_sweep_time = 0.0
         self._initialized = False
         self._name_cache = {}
         self._props_name_cache = {}
         self._active_entries = set()
         self._scan_counter = 0
         self._fast_selectors = (108, 180, 336)
+        self.ecs_state = "INITIALIZING"
+        self.ecs_working = False
+        self.ecs_matched_selector = None
     
     def clear_cache(self):
         """Reset weapon name and props caches (called on match change)"""
@@ -211,6 +215,10 @@ class MissileScanner:
         self._class_table = 0
         self._initialized = False
         self._scan_counter = 0
+        self._last_sweep_time = 0.0
+        self.ecs_state = "INITIALIZING"
+        self.ecs_working = False
+        self.ecs_matched_selector = None
     
     def _init_ecs(self, scanner, base):
         """Initialize ECS manager pointers dynamically from mul.OFF_ECS_MANAGER"""
@@ -281,7 +289,7 @@ class MissileScanner:
         node_t = _rp(scanner, mgr + ecs_node_off) if _is_valid_ptr(mgr) else 0
         if not _is_valid_ptr(node_t):
             # Fallback search candidate offsets if shifted or stale on rematch
-            for cand_off in (0x8cd5940, 0x8ccd918, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
+            for cand_off in (0x8cd5940, 0x8ccd918, 0x88b9248, 0xb0e29b8, 0xb0e2b98, 0x8225aa0, 0x8226ba0):
                 test_m = _rp(scanner, base + cand_off)
                 if _is_valid_ptr(test_m):
                     test_node = _rp(scanner, test_m + ecs_node_off)
@@ -306,6 +314,7 @@ class MissileScanner:
                         self._class_table = class_t
                         break
 
+            matched_sel = None
             if _is_valid_ptr(class_t):
                 for sel in self._fast_selectors:
                     q_addr = class_t + (sel << 6)
@@ -317,10 +326,15 @@ class MissileScanner:
                             if _is_valid_ptr(sub_base) or n_sub <= 9:
                                 raw_sl = scanner.read_mem(sub_base, n_sub * 4)
                                 if raw_sl and len(raw_sl) >= n_sub * 4:
+                                    sel_added = False
                                     for i in range(n_sub):
                                         s_idx = struct.unpack_from("<I", raw_sl, i * 4)[0]
                                         if 0 < s_idx < 4096:
                                             fast_sublists.add(s_idx)
+                                            sel_added = True
+                                    if sel_added and matched_sel is None:
+                                        matched_sel = sel
+                                        self.ecs_matched_selector = sel
 
             # Check fast sublists first
             for sl in fast_sublists:
@@ -345,10 +359,29 @@ class MissileScanner:
                             found_missiles.append(m)
                             new_active_entries.add(sl)
 
-            # 2b. Sweep Fallback: Run periodic or when no missiles found in fast path (ensures 100% detection)
-            # Runs every 8 scans (~0.6s) or whenever found_missiles is empty to catch newly fired missiles
-            run_sweep = (len(found_missiles) == 0) or (self._scan_counter % 8 == 0)
+            # 2b. Sweep Fallback: LAST RESORT ONLY if Self-Learning does NOT work
+            # Self-learning is working if:
+            #   1) Query selector yielded valid sublists (e.g. Selector 108 returned [32, 33]), OR
+            #   2) Active learned entries exist (_active_entries > 0), OR
+            #   3) Missiles were successfully detected in this scan
+            self_learning_working = bool(
+                fast_sublists or (len(self._active_entries) > 0) or (len(found_missiles) > 0)
+            )
+
+            # Sweep Fallback is STRICTLY the LAST WAY:
+            # Runs ONLY when Self-Learning has failed / has no entries to query
+            # Throttled to at most once every 3.0s to ensure zero memory spam
+            time_since_sweep = now - self._last_sweep_time
+            run_sweep = False
+            if not self_learning_working:
+                if time_since_sweep >= 3.0:
+                    run_sweep = True
+            elif (self._scan_counter % 120 == 0) and (time_since_sweep >= 8.0):
+                # Ultra-rare background check (once every ~10s)
+                run_sweep = True
+
             if run_sweep:
+                self._last_sweep_time = now
                 table_bytes = scanner.read_mem(node_t, NODE_ENTRY_WINDOW * 0x20)
                 if table_bytes and len(table_bytes) >= 0x20:
                     num_entries = len(table_bytes) // 0x20
@@ -367,6 +400,15 @@ class MissileScanner:
                         capacity = struct.unpack_from("<I", data, 0x14)[0]
                         if capacity == 0 or count > capacity or capacity > 8192:
                             continue
+
+                        # Fast EID check: Node storage offset +0x00 is entity_id (dynamic projectiles: 32 <= eid < 50_000_000)
+                        sample = scanner.read_mem(storage, 8)
+                        if not sample:
+                            continue
+                        eid_head = struct.unpack_from("<I", sample, 0)[0]
+                        if eid_head < 32 or eid_head > 50_000_000:
+                            continue  # Skip buildings, hangar scenery, and static map meshes!
+
                         read_bytes = min(max(capacity * 64, 2048), 65536)
                         bulk = scanner.read_mem(storage, read_bytes)
                         if not bulk or len(bulk) < 8:
@@ -385,6 +427,27 @@ class MissileScanner:
 
             if new_active_entries:
                 self._active_entries.update(new_active_entries)
+
+            if matched_sel is not None:
+                self.ecs_working = True
+                nodes_desc = ", ".join(f"#{s}" for s in sorted(fast_sublists)[:4])
+                self.ecs_state = f"FAST-PATH [SEL {matched_sel}] (Node {nodes_desc})"
+            elif self._active_entries:
+                self.ecs_working = True
+                nodes_desc = ", ".join(f"#{s}" for s in sorted(self._active_entries)[:4])
+                self.ecs_state = f"SELF-LEARNING (Node {nodes_desc})"
+            elif _is_valid_ptr(class_t):
+                self.ecs_working = True
+                self.ecs_state = f"FAST-PATH READY [SEL {self._fast_selectors[0]}]"
+            elif run_sweep:
+                self.ecs_working = False
+                self.ecs_state = "SWEEP FALLBACK (0..350)"
+            else:
+                self.ecs_working = False
+                self.ecs_state = "SEARCHING SELECTOR"
+        else:
+            self.ecs_working = False
+            self.ecs_state = "SEARCHING ECS MGR"
 
         return [m for m in found_missiles if m.name != ""]
     

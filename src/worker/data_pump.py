@@ -155,6 +155,8 @@ class FrameSnapshot:
     missiles: List[Any] = field(default_factory=list)
     missile_scan_seq: int = 0
     missile_scan_t: float = 0.0
+    ecs_select_state: str = ""
+    ecs_working: bool = False
 
     # Active target selection
     active_target_ptr: int = 0
@@ -889,6 +891,8 @@ class DataPumpWorker(QThread):
         snap.missiles = list(self.latest_missiles)
         snap.missile_scan_seq = self.missile_scan_seq
         snap.missile_scan_t = self.last_missile_scan_t
+        snap.ecs_select_state = getattr(self.missile_scanner, 'ecs_state', "")
+        snap.ecs_working = getattr(self.missile_scanner, 'ecs_working', False)
         snap.valid_targets = valid_targets
         snap.is_valid = True
         return snap

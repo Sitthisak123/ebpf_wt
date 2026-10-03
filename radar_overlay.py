@@ -3037,7 +3037,7 @@ class FrameProfiler:
             "paint": 0.0,
             "total": 0.0,
         }
-        self.show_osd = True
+        self.show_osd = False
         self.last_slow_warn = 0.0
         self.frame_count = 0
 
@@ -3240,6 +3240,10 @@ class ESPOverlay(QOpenGLWidget):
         # 🚀 Hybrid Lockstep: เริ่ม Background Worker เพื่อประมวลผลงานหนัก (Missile, BBox, Barrels, Profiles)
         self._data_pump.start()
 
+        # 🕒 ECS Select State Auto-Hide: แสดงสถานะ ECS Select State บนหน้าจอ 3 วินาทีแรกเมื่อทำงานสำเร็จ แล้วซ่อนอัตโนมัติ
+        self.ecs_work_start_time = None
+        self.ecs_status_display_duration = 3.0  # seconds
+
 
     def _clear_match_state(self):
         """ล้างข้อมูลและสถานะของแมตช์เก่าออกทั้งหมดเมื่อเปลี่ยนแมตช์/โหลดฉากใหม่"""
@@ -3286,6 +3290,7 @@ class ESPOverlay(QOpenGLWidget):
         if hasattr(self, 'ballistic_zero_cache'):
             self.ballistic_zero_cache.clear()
         self.current_gun_info = classify_weapon_caliber(0.0, 0.0)
+        self.ecs_work_start_time = None
         reset_runtime_caches(clear_view=True)
 
     def _fatal_shutdown(self, reason, detail=""):
@@ -4132,6 +4137,7 @@ class ESPOverlay(QOpenGLWidget):
             
             # 🔄 ตรวจสอบการเปลี่ยนแมตช์ (CGame Base กลายเป็น 0 หรือเปลี่ยน Address)
             if cgame_base == 0: 
+                self.ecs_work_start_time = None
                 if self.last_cgame_base != 0:
                     dprint(f"🔄 แมตช์สิ้นสุด / รอเข้าห้องใหม่ (CGame กลายเป็น 0x0 จาก {hex(self.last_cgame_base)})", force=True)
                     self._clear_match_state()
@@ -4150,6 +4156,7 @@ class ESPOverlay(QOpenGLWidget):
             
             # 🐞 เช็ค View Matrix ขณะกำลังโหลดฉากหรือยังไม่พร้อมเรนเดอร์
             if not view_matrix: 
+                self.ecs_work_start_time = None
                 dprint("อ่าน View Matrix ไม่ได้! กำลังโหลดฉาก/กล้องยังไม่พร้อม", force=False)
                 painter.setPen(QColor(255, 200, 50, 220))
                 painter.setFont(QFont("Arial", 11, QFont.Bold))
@@ -4247,6 +4254,7 @@ class ESPOverlay(QOpenGLWidget):
                 self.live_velocity_debug = None
                 self.last_my_unit = my_unit
                 self.my_unit_spawn_grace_until = curr_t + 0.40
+                self.ecs_work_start_time = None
                 self.kalman_filters = {}
                 if hasattr(self, "missile_tracks"): self.missile_tracks.clear()
                 self.missile_cache = []
@@ -4277,8 +4285,6 @@ class ESPOverlay(QOpenGLWidget):
             current_bullet_cd = ballistic_profile.get("cx", 0.0)
             current_bullet_caliber = ballistic_profile.get("caliber", 0.0)
             worker_fps_str = f" (Pump: {int(snapshot.worker_fps)})" if (snapshot and snapshot.is_valid and snapshot.worker_fps > 0) else ""
-            painter.setPen(QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50))
-            painter.drawText(20, 90, f"📈 FPS : {int(self.current_fps)}{worker_fps_str}")
 
             # 🎯 Caliber & Ammunition Classification (Replaces AI Tracking on HUD)
             current_vehicle_name = getattr(snapshot, 'my_name', '') if (snapshot and snapshot.is_valid) else my_name
@@ -4293,12 +4299,69 @@ class ESPOverlay(QOpenGLWidget):
                 length=current_bullet_cd,
             )
             self.current_gun_info = gun_info
+
+            # 1. System Ready Banner (Always visible)
+            hud_y = 65
+            painter.setPen(QColor(100, 255, 100))
+            painter.setFont(QFont("Arial", 11, QFont.Bold))
+            painter.drawText(20, hud_y, "✅ [ESP ACTIVE / READY]")
+
+            # 2. FPS
+            hud_y += 25
+            painter.setFont(QFont("Arial", 10, QFont.Bold))
+            fps_color = QColor(*COLOR_FPS_GOOD) if self.current_fps > 45 else QColor(255, 50, 50)
+            painter.setPen(fps_color)
+            painter.drawText(20, hud_y, f"📈 FPS : {int(self.current_fps)}{worker_fps_str}")
+
+            # 3. Weapon Caliber Info
+            hud_y += 25
             painter.setPen(QColor(100, 220, 255))
-            painter.drawText(20, 115, gun_info["hud_str"])
+            painter.drawText(20, hud_y, gun_info["hud_str"])
+
+            # 4. ⚡ ECS Select State HUD (Auto-hide in 3s after it works)
+            ecs_state = ""
+            ecs_working = False
+            if snapshot and snapshot.is_valid and getattr(snapshot, 'ecs_select_state', None):
+                ecs_state = snapshot.ecs_select_state
+                ecs_working = bool(getattr(snapshot, 'ecs_working', False))
+            elif hasattr(self, 'missile_scanner'):
+                ecs_state = getattr(self.missile_scanner, 'ecs_state', '')
+                ecs_working = bool(getattr(self.missile_scanner, 'ecs_working', False))
+
+            is_osd_active = hasattr(self, 'profiler') and getattr(self.profiler, 'show_osd', False)
+            if ecs_working:
+                if getattr(self, 'ecs_work_start_time', None) is None:
+                    self.ecs_work_start_time = curr_t
+                time_ecs_working = curr_t - self.ecs_work_start_time
+                duration = getattr(self, 'ecs_status_display_duration', 3.0)
+                show_ecs_hud = (time_ecs_working <= duration) or is_osd_active
+                if time_ecs_working > (duration - 0.5) and not is_osd_active:
+                    ecs_alpha = int(min(255, max(0, ((duration - time_ecs_working) / 0.5) * 255)))
+                else:
+                    ecs_alpha = 255
+            else:
+                # Fallback / Searching / Error -> Keep visible so user knows status!
+                self.ecs_work_start_time = None
+                show_ecs_hud = True
+                ecs_alpha = 255
+
+            if show_ecs_hud and ecs_state:
+                hud_y += 25
+                painter.setFont(QFont("Arial", 10, QFont.Bold))
+                if ecs_working:
+                    painter.setPen(QColor(80, 240, 180, ecs_alpha))
+                    painter.drawText(20, hud_y, f"⚡ ECS: {ecs_state}")
+                else:
+                    painter.setPen(QColor(255, 180, 50, ecs_alpha))
+                    painter.drawText(20, hud_y, f"🔄 ECS: {ecs_state}")
+
+            # 5. Active Missiles
             active_m_count = len(self.missile_tracks) if hasattr(self, 'missile_tracks') and self.missile_tracks else (len(self.missile_cache) if hasattr(self, 'missile_cache') and self.missile_cache else 0)
             if active_m_count > 0:
+                hud_y += 25
+                painter.setFont(QFont("Arial", 11, QFont.Bold))
                 painter.setPen(QColor(255, 140, 40))
-                painter.drawText(20, 140, f"🚀 Active Missiles : {active_m_count}")
+                painter.drawText(20, hud_y, f"🚀 Active Missiles : {active_m_count}")
             
             my_spawn_in_grace = curr_t < self.my_unit_spawn_grace_until
             my_acc = (0.0, 0.0, 0.0)
