@@ -1,0 +1,140 @@
+{
+  "OFF_UNIT_ID": 8,
+  "OFF_VIEW_MATRIX": 472,
+  "TEST_VAL": 1234,
+  "updated_at": "2026-10-03T16:13:32.193016",
+  "build_fingerprint": {
+    "path": "/home/xda-7/MyGames/WarThunder/linux64/aces",
+    "size": 180184608,
+    "mtime_ns": 1790843692000000000
+  },
+  "MANAGER_OFFSET": 180531648,
+  "OFF_UNIT_STATE": 3984,
+  "OFF_UNIT_TEAM": 4112,
+  "OFF_UNIT_INFO": 4128,
+  "OFF_PLAYER_INFO": 3992,
+  "OFF_ACTIVE_UNITS": [
+    784,
+    true,
+    16
+  ],
+  "OFF_ACTIVE_EXTRA_UNIT_LISTS": [
+    [
+      808,
+      false,
+      16
+    ]
+  ],
+  "OFF_AIR_UNITS": [
+    784,
+    true
+  ],
+  "OFF_GROUND_UNITS": [
+    808,
+    false
+  ],
+  "OFF_CAMERA_PTR": 1632,
+  "OFF_UNIT_BBMIN": 608,
+  "OFF_UNIT_BBMAX": 620,
+  "OFF_WEAPON_PTR": 1008,
+  "BALLISTIC_STRUCT_BASE_OFF": 8480,
+  "BALLISTIC_SPEED_OFF": 8472,
+  "BALLISTIC_MASS_OFF": 8484,
+  "BALLISTIC_CALIBER_OFF": 8488,
+  "BALLISTIC_CX_OFF": 8492,
+  "BALLISTIC_MAX_DISTANCE_OFF": 8496,
+  "OFF_UNIT_X": 3384,
+  "OFF_UNIT_ROTATION": 3348,
+  "OFF_GROUND_MOVEMENT": 3376,
+  "OFF_GROUND_VEL": 104,
+  "OFF_AIR_MOVEMENT": 24,
+  "OFF_AIR_VEL": 792,
+  "OFF_CCIP_IMPACT": 7372,
+  "OFF_PROJ_LIST": 180366008,
+  "OFF_ECS_MANAGER": 147675456,
+  "OFF_ECS_NODE_TABLE": 376,
+  "OFF_ECS_CLASS_TABLE": 1512,
+  "OFF_RKT_ENTITY_ID": 64,
+  "OFF_RKT_OWNER": 80,
+  "OFF_RKT_STATE": 148,
+  "OFF_RKT_POS": 572,
+  "OFF_RKT_VEL": 600,
+  "OFF_RKT_DETONATED": 1056,
+  "OFF_RKT_PHASE": 1176,
+  "OFF_RKT_GUIDANCE": 1664,
+  "OFF_RKT_ALIVE": 1744,
+  "OFF_RKT_PROPS": 1808,
+  "OFF_GUID_LOCKED": 76,
+  "OFF_GUID_TRACKING": 77,
+  "OFF_GUID_TARGET_ID": 132,
+  "offsets_hex": {
+    "OFF_UNIT_ID": "0x8",
+    "OFF_VIEW_MATRIX": "0x1d8",
+    "TEST_VAL": "0x4d2",
+    "MANAGER_OFFSET": "0xac2b1c0",
+    "OFF_UNIT_STATE": "0xf90",
+    "OFF_UNIT_TEAM": "0x1010",
+    "OFF_UNIT_INFO": "0x1020",
+    "OFF_PLAYER_INFO": "0xf98",
+    "OFF_ACTIVE_UNITS": [
+      "0x310",
+      true,
+      "0x10"
+    ],
+    "OFF_ACTIVE_EXTRA_UNIT_LISTS": [
+      [
+        "0x328",
+        false,
+        "0x10"
+      ]
+    ],
+    "OFF_AIR_UNITS": [
+      "0x310",
+      true
+    ],
+    "OFF_GROUND_UNITS": [
+      "0x328",
+      false
+    ],
+    "OFF_CAMERA_PTR": "0x660",
+    "OFF_UNIT_BBMIN": "0x260",
+    "OFF_UNIT_BBMAX": "0x26c",
+    "OFF_WEAPON_PTR": "0x3f0",
+    "BALLISTIC_STRUCT_BASE_OFF": "0x2120",
+    "BALLISTIC_SPEED_OFF": "0x2118",
+    "BALLISTIC_MASS_OFF": "0x2124",
+    "BALLISTIC_CALIBER_OFF": "0x2128",
+    "BALLISTIC_CX_OFF": "0x212c",
+    "BALLISTIC_MAX_DISTANCE_OFF": "0x2130",
+    "OFF_UNIT_X": "0xd38",
+    "OFF_UNIT_ROTATION": "0xd14",
+    "OFF_GROUND_MOVEMENT": "0xd30",
+    "OFF_GROUND_VEL": "0x68",
+    "OFF_AIR_MOVEMENT": "0x18",
+    "OFF_AIR_VEL": "0x318",
+    "OFF_CCIP_IMPACT": "0x1ccc",
+    "OFF_PROJ_LIST": "0xac02ab8",
+    "OFF_ECS_MANAGER": "0x8cd5940",
+    "OFF_ECS_NODE_TABLE": "0x178",
+    "OFF_ECS_CLASS_TABLE": "0x5e8",
+    "OFF_RKT_ENTITY_ID": "0x40",
+    "OFF_RKT_OWNER": "0x50",
+    "OFF_RKT_STATE": "0x94",
+    "OFF_RKT_POS": "0x23c",
+    "OFF_RKT_VEL": "0x258",
+    "OFF_RKT_DETONATED": "0x420",
+    "OFF_RKT_PHASE": "0x498",
+    "OFF_RKT_GUIDANCE": "0x680",
+    "OFF_RKT_ALIVE": "0x6d0",
+    "OFF_RKT_PROPS": "0x710",
+    "OFF_GUID_LOCKED": "0x4c",
+    "OFF_GUID_TRACKING": "0x4d",
+    "OFF_GUID_TARGET_ID": "0x84",
+    "DAT_CONTROLLED_UNIT": "0xb02d508",
+    "OFF_INVUL_TIMER": "0xe6c",
+    "OFF_INVULNERABLE": "0xe90"
+  },
+  "DAT_CONTROLLED_UNIT": 184734984,
+  "OFF_INVUL_TIMER": 3692,
+  "OFF_INVULNERABLE": 3728
+}

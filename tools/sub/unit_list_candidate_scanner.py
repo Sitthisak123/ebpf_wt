@@ -68,6 +68,13 @@ def read_u8(scanner, addr):
     return raw[0]
 
 
+def read_u16(scanner, addr):
+    raw = scanner.read_mem(addr, 2)
+    if not raw or len(raw) < 2:
+        return 0
+    return struct.unpack("<H", raw)[0]
+
+
 def read_u32(scanner, addr):
     raw = scanner.read_mem(addr, 4)
     if not raw or len(raw) < 4:
@@ -148,7 +155,7 @@ def sample_unit(scanner, u_ptr, my_unit=0, my_team=0, my_pos=None):
     dist = dist3(pos, my_pos)
     info_ptr = read_u64(scanner, u_ptr + mul.OFF_UNIT_INFO) if mul.OFF_UNIT_INFO else 0
     team = read_u8(scanner, u_ptr + mul.OFF_UNIT_TEAM) if mul.OFF_UNIT_TEAM else 0
-    state = read_i32(scanner, u_ptr + mul.OFF_UNIT_STATE) if mul.OFF_UNIT_STATE else 0
+    state = read_u16(scanner, u_ptr + mul.OFF_UNIT_STATE) if mul.OFF_UNIT_STATE else 0
     profile = {}
     dna = {}
     cls = "unknown"

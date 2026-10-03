@@ -25,7 +25,7 @@ Create Offset repaire (Standalone Tool):
                 -RemoveDataSample
             -repaire:
                 -find new offset 
-        -desc: This tool are use DNA scan to get main offset and using snapshot saved data to compare with new data to find struct offsets 
+        -desc: This tool are use DNA scan to get main offset and using snapshot saved data to compare with new data to verify and find new struct offsets 
         -make each step an module(i mean make it for ez to mod, just fix specific module, i dont sure what is module)
         -GUI: 
             -show steps progress in topbar/navbar 

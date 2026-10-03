@@ -17,10 +17,10 @@ except Exception:
 # 🎯 2026 VERIFIED OFFSETS (อัปเดตล่าสุด)
 # ===================================================
 GHIDRA_BASE         = 0x400000
-DAT_MANAGER         = 0xb02b1c0
-MANAGER_OFFSET      = 0xac2b1c0
-MANAGER_CANDIDATE_OFFSETS = [0xac2b1c0, 0xac2b1a8, 0xac28160, 0xac27160]
-DAT_CONTROLLED_UNIT = 0xb02d508
+DAT_MANAGER         = 0xb0342e0
+MANAGER_OFFSET      = 0xac342e0
+MANAGER_CANDIDATE_OFFSETS = [0xac342e0, 0xac2b1c0, 0xac2b1a8, 0xac28160, 0xac27160]
+DAT_CONTROLLED_UNIT = 0xb036628
 
 OFF_CAMERA_PTR      = 0x660
 OFF_VIEW_MATRIX     = 0x1D8
@@ -138,7 +138,95 @@ SIGHT_POINTER_CHAINS = [
     [0x13E68, -0x75F0, 0x13D0, 0x7088]
 ]
 
+
+def load_unified_offsets(config_path=None):
+    """
+    โหลด Offset จาก config/offsets.json ที่สร้างโดย Standalone Offset Repair Tool
+    และอัปเดตตัวแปร OFF_* ในโมดูลนี้อัตโนมัติ โดยไม่ต้องเขียนตรรกะโค้ดใหม่
+    """
+    if config_path is None:
+        proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        config_path = os.path.join(proj_root, "config", "offsets.json")
+
+    if not os.path.exists(config_path):
+        return False
+
+    try:
+        import json
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        def _parse_val(val):
+            if isinstance(val, str) and (val.startswith("0x") or val.startswith("0X")):
+                try:
+                    return int(val, 16)
+                except ValueError:
+                    return val
+            elif isinstance(val, (list, tuple)):
+                return [_parse_val(x) for x in val]
+            return val
+
+        g = globals()
+        updated_count = 0
+        for k, raw_v in data.items():
+            if k in ("updated_at", "build_fingerprint", "offsets_hex"):
+                continue
+            v = _parse_val(raw_v)
+            if k == "OFF_ACTIVE_EXTRA_UNIT_LISTS":
+                if isinstance(v, int):
+                    g[k] = ((v, False, 0x10),)
+                elif isinstance(v, (list, tuple)):
+                    g[k] = tuple(tuple(item) if isinstance(item, (list, tuple)) else item for item in v)
+                updated_count += 1
+                continue
+            elif k == "OFF_ACTIVE_UNITS":
+                if isinstance(v, int):
+                    g[k] = (v, True, 0x10)
+                elif isinstance(v, (list, tuple)):
+                    g[k] = tuple(v)
+                updated_count += 1
+                continue
+            elif k == "OFF_AIR_UNITS":
+                if isinstance(v, int):
+                    g[k] = (v, True)
+                elif isinstance(v, (list, tuple)):
+                    g[k] = tuple(v)
+                updated_count += 1
+                continue
+            elif k == "OFF_GROUND_UNITS":
+                if isinstance(v, int):
+                    g[k] = (v, False)
+                elif isinstance(v, (list, tuple)):
+                    g[k] = tuple(v)
+                updated_count += 1
+                continue
+            elif k in g and isinstance(v, (int, float, list, tuple)):
+                if isinstance(v, list) and isinstance(g[k], tuple):
+                    g[k] = tuple(v)
+                else:
+                    g[k] = v
+                updated_count += 1
+            elif k.startswith("OFF_") or k.startswith("BALLISTIC_") or k in ("MANAGER_OFFSET", "DAT_MANAGER", "DAT_CONTROLLED_UNIT"):
+                if isinstance(v, list):
+                    g[k] = tuple(v)
+                else:
+                    g[k] = v
+                updated_count += 1
+
+        if updated_count > 0:
+            dprint(f"[+] Loaded {updated_count} unified offsets from {config_path}")
+        return True
+    except Exception as e:
+        dprint(f"[!] Failed to load unified offsets: {e}")
+        return False
+
+
+# โหลด unified offsets อัตโนมัติเมื่อ import โมดูลนี้
+load_unified_offsets()
+
+
 def is_valid_ptr(p):
+
     if not isinstance(p, int):
         return False
     return 0x10000 < p < 0x7FFFFFFFFFFF
@@ -1739,6 +1827,28 @@ def get_unit_xray_components(scanner, u_ptr, unit_pos, unit_rot_matrix):
 
 
 
+def get_my_unit(scanner, base_addr=0):
+    """
+    ดึงพอยเตอร์ของ Controlled Unit (My Unit)
+    """
+    if not scanner:
+        return 0
+    try:
+        if base_addr:
+            raw_ptr = scanner.read_mem(base_addr + (DAT_CONTROLLED_UNIT - 0x400000), 8)
+            if raw_ptr and len(raw_ptr) == 8:
+                ptr = struct.unpack("<Q", raw_ptr)[0]
+                if is_valid_ptr(ptr):
+                    return ptr
+        # Fallback to get_local_team
+        u_ptr, _ = get_local_team(scanner, base_addr)
+        if is_valid_ptr(u_ptr):
+            return u_ptr
+    except Exception:
+        pass
+    return 0
+
+
 def get_local_team(scanner, base_addr):
     try:
         # ใช้ตำแหน่งที่เราหาเจอใหม่
@@ -1829,8 +1939,8 @@ def get_unit_detailed_dna(scanner, u_ptr):
         dna["is_real_player"] = is_valid_ptr(pinfo_val)
         
         # 3. STATE
-        state_raw = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 4)
-        dna["state"] = struct.unpack("<i", state_raw)[0] if state_raw else -1
+        state_raw = scanner.read_mem(u_ptr + OFF_UNIT_STATE, 2)
+        dna["state"] = struct.unpack("<H", state_raw)[0] if state_raw else -1
 
         # 4. INFO POINTER ข้อมูลภายใน
         info_ptr_raw = scanner.read_mem(u_ptr + OFF_UNIT_INFO, 8)
